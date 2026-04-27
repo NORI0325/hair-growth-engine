@@ -6,10 +6,9 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Scissors, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 const loginSchema = z.object({
   email: z.string().email("有効なメールアドレスを入力してください"),
@@ -27,12 +26,7 @@ const Auth = () => {
   const [loading, setLoading] = useState(false);
 
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
-  const [signupForm, setSignupForm] = useState({
-    email: "",
-    password: "",
-    salonName: "",
-    fullName: "",
-  });
+  const [signupForm, setSignupForm] = useState({ email: "", password: "", salonName: "", fullName: "" });
 
   useEffect(() => {
     if (!authLoading && user) navigate("/dashboard", { replace: true });
@@ -41,134 +35,128 @@ const Auth = () => {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     const parsed = loginSchema.safeParse(loginForm);
-    if (!parsed.success) {
-      toast.error(parsed.error.errors[0].message);
-      return;
-    }
+    if (!parsed.success) { toast.error(parsed.error.errors[0].message); return; }
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({
-      email: parsed.data.email,
-      password: parsed.data.password,
-    });
+    const { error } = await supabase.auth.signInWithPassword({ email: parsed.data.email, password: parsed.data.password });
     setLoading(false);
     if (error) {
-      toast.error(error.message === "Invalid login credentials"
-        ? "メールアドレスまたはパスワードが間違っています"
-        : error.message);
+      toast.error(error.message === "Invalid login credentials" ? "メールアドレスまたはパスワードが間違っています" : error.message);
       return;
     }
-    toast.success("ログインしました");
+    toast.success("ようこそ");
     navigate("/dashboard");
   };
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     const parsed = signupSchema.safeParse(signupForm);
-    if (!parsed.success) {
-      toast.error(parsed.error.errors[0].message);
-      return;
-    }
+    if (!parsed.success) { toast.error(parsed.error.errors[0].message); return; }
     setLoading(true);
     const { error } = await supabase.auth.signUp({
       email: parsed.data.email,
       password: parsed.data.password,
       options: {
         emailRedirectTo: `${window.location.origin}/dashboard`,
-        data: {
-          full_name: parsed.data.fullName,
-          salon_name: parsed.data.salonName,
-        },
+        data: { full_name: parsed.data.fullName, salon_name: parsed.data.salonName },
       },
     });
     setLoading(false);
     if (error) {
-      toast.error(error.message.includes("already registered")
-        ? "このメールアドレスは既に登録されています"
-        : error.message);
+      toast.error(error.message.includes("already registered") ? "このメールアドレスは既に登録されています" : error.message);
       return;
     }
     toast.success("アカウントを作成しました。メールをご確認ください。");
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: "var(--gradient-soft)" }}>
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-4" style={{ background: "var(--gradient-primary)" }}>
-            <Scissors className="w-8 h-8 text-primary-foreground" />
-          </div>
-          <h1 className="text-3xl font-bold text-foreground">Salon Boost</h1>
-          <p className="text-muted-foreground mt-2">休眠客を呼び戻し、売上を最大化</p>
+    <div className="min-h-screen grid lg:grid-cols-2">
+      {/* Left visual */}
+      <div className="hidden lg:flex relative bg-primary text-primary-foreground p-16 flex-col justify-between overflow-hidden">
+        <div className="font-serif-en text-2xl tracking-luxury text-gold">SB</div>
+        <div className="space-y-8 max-w-md animate-fade-up">
+          <p className="eyebrow text-primary-foreground/50">— A New Chapter —</p>
+          <h2 className="display text-4xl leading-snug">
+            眠っているお客様を、<br />
+            <span className="font-serif-en italic text-gold">最も美しい形で</span><br />
+            呼び戻す。
+          </h2>
+          <div className="hairline w-16 opacity-60" />
+          <p className="text-sm text-primary-foreground/60 leading-loose">
+            Salon Boostは、選ばれ続けるサロンのための、静かで力強いCRM。
+          </p>
         </div>
+        <div className="text-xs text-primary-foreground/40 tracking-luxury">EST. 2026</div>
+      </div>
 
-        <Card className="shadow-lg border-border/50">
-          <CardHeader>
-            <CardTitle>オーナー専用</CardTitle>
-            <CardDescription>サロンの運営を始めましょう</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Tabs defaultValue="login" className="w-full">
-              <TabsList className="grid w-full grid-cols-2 mb-6">
-                <TabsTrigger value="login">ログイン</TabsTrigger>
-                <TabsTrigger value="signup">新規登録</TabsTrigger>
-              </TabsList>
+      {/* Right form */}
+      <div className="flex items-center justify-center p-8 lg:p-16 bg-background">
+        <div className="w-full max-w-sm animate-fade-up">
+          <p className="eyebrow mb-3">— For Owners Only —</p>
+          <h1 className="display text-3xl mb-2">オーナー専用</h1>
+          <p className="text-sm text-muted-foreground mb-10">サロンの新しい章を始めます。</p>
+          <div className="hairline mb-10" />
 
-              <TabsContent value="login">
-                <form onSubmit={handleLogin} className="space-y-4">
-                  <div>
-                    <Label htmlFor="login-email">メールアドレス</Label>
-                    <Input id="login-email" type="email" value={loginForm.email}
-                      onChange={(e) => setLoginForm({ ...loginForm, email: e.target.value })}
-                      required autoComplete="email" />
-                  </div>
-                  <div>
-                    <Label htmlFor="login-password">パスワード</Label>
-                    <Input id="login-password" type="password" value={loginForm.password}
-                      onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
-                      required autoComplete="current-password" />
-                  </div>
-                  <Button type="submit" className="w-full" disabled={loading}>
-                    {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                    ログイン
-                  </Button>
-                </form>
-              </TabsContent>
+          <Tabs defaultValue="login" className="w-full">
+            <TabsList className="grid w-full grid-cols-2 mb-8 bg-transparent border-b border-border rounded-none h-auto p-0">
+              <TabsTrigger value="login" className="rounded-none border-b-2 border-transparent data-[state=active]:border-gold data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-xs tracking-luxury py-3">SIGN IN</TabsTrigger>
+              <TabsTrigger value="signup" className="rounded-none border-b-2 border-transparent data-[state=active]:border-gold data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-xs tracking-luxury py-3">SIGN UP</TabsTrigger>
+            </TabsList>
 
-              <TabsContent value="signup">
-                <form onSubmit={handleSignup} className="space-y-4">
-                  <div>
-                    <Label htmlFor="signup-salon">サロン名</Label>
-                    <Input id="signup-salon" value={signupForm.salonName}
-                      onChange={(e) => setSignupForm({ ...signupForm, salonName: e.target.value })}
-                      placeholder="例: Hair Salon Bloom" required />
-                  </div>
-                  <div>
-                    <Label htmlFor="signup-name">お名前</Label>
-                    <Input id="signup-name" value={signupForm.fullName}
-                      onChange={(e) => setSignupForm({ ...signupForm, fullName: e.target.value })}
-                      required autoComplete="name" />
-                  </div>
-                  <div>
-                    <Label htmlFor="signup-email">メールアドレス</Label>
-                    <Input id="signup-email" type="email" value={signupForm.email}
-                      onChange={(e) => setSignupForm({ ...signupForm, email: e.target.value })}
-                      required autoComplete="email" />
-                  </div>
-                  <div>
-                    <Label htmlFor="signup-password">パスワード</Label>
-                    <Input id="signup-password" type="password" value={signupForm.password}
-                      onChange={(e) => setSignupForm({ ...signupForm, password: e.target.value })}
-                      required autoComplete="new-password" minLength={6} />
-                  </div>
-                  <Button type="submit" className="w-full" disabled={loading}>
-                    {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                    アカウント作成
-                  </Button>
-                </form>
-              </TabsContent>
-            </Tabs>
-          </CardContent>
-        </Card>
+            <TabsContent value="login">
+              <form onSubmit={handleLogin} className="space-y-6">
+                <div>
+                  <Label htmlFor="login-email" className="eyebrow mb-2 block">Email</Label>
+                  <Input id="login-email" type="email" value={loginForm.email}
+                    onChange={(e) => setLoginForm({ ...loginForm, email: e.target.value })}
+                    required autoComplete="email" className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
+                </div>
+                <div>
+                  <Label htmlFor="login-password" className="eyebrow mb-2 block">Password</Label>
+                  <Input id="login-password" type="password" value={loginForm.password}
+                    onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
+                    required autoComplete="current-password" className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
+                </div>
+                <Button type="submit" className="w-full rounded-none py-6 text-xs tracking-luxury bg-primary hover:bg-primary-glow" disabled={loading}>
+                  {loading && <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />}
+                  SIGN IN
+                </Button>
+              </form>
+            </TabsContent>
+
+            <TabsContent value="signup">
+              <form onSubmit={handleSignup} className="space-y-6">
+                <div>
+                  <Label htmlFor="signup-salon" className="eyebrow mb-2 block">Salon Name</Label>
+                  <Input id="signup-salon" value={signupForm.salonName}
+                    onChange={(e) => setSignupForm({ ...signupForm, salonName: e.target.value })}
+                    placeholder="Hair Salon Bloom" required className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
+                </div>
+                <div>
+                  <Label htmlFor="signup-name" className="eyebrow mb-2 block">Your Name</Label>
+                  <Input id="signup-name" value={signupForm.fullName}
+                    onChange={(e) => setSignupForm({ ...signupForm, fullName: e.target.value })}
+                    required autoComplete="name" className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
+                </div>
+                <div>
+                  <Label htmlFor="signup-email" className="eyebrow mb-2 block">Email</Label>
+                  <Input id="signup-email" type="email" value={signupForm.email}
+                    onChange={(e) => setSignupForm({ ...signupForm, email: e.target.value })}
+                    required autoComplete="email" className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
+                </div>
+                <div>
+                  <Label htmlFor="signup-password" className="eyebrow mb-2 block">Password</Label>
+                  <Input id="signup-password" type="password" value={signupForm.password}
+                    onChange={(e) => setSignupForm({ ...signupForm, password: e.target.value })}
+                    required autoComplete="new-password" minLength={6} className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
+                </div>
+                <Button type="submit" className="w-full rounded-none py-6 text-xs tracking-luxury bg-primary hover:bg-primary-glow" disabled={loading}>
+                  {loading && <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />}
+                  CREATE ACCOUNT
+                </Button>
+              </form>
+            </TabsContent>
+          </Tabs>
+        </div>
       </div>
     </div>
   );

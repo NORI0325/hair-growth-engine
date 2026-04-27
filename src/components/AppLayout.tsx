@@ -27,14 +27,12 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
   return (
     <div className="min-h-screen bg-background flex">
       <aside className="w-64 bg-sidebar text-sidebar-foreground flex flex-col border-r border-sidebar-border">
-        {/* Brand */}
         <div className="px-8 py-10 border-b border-sidebar-border/60">
           <div className="font-serif-en text-3xl text-gold tracking-luxury mb-1">SB</div>
           <div className="font-serif text-sm tracking-wider">Salon Boost</div>
           <div className="eyebrow text-[10px] text-sidebar-foreground/50 mt-1">Est. 2026</div>
         </div>
 
-        {/* Nav */}
         <nav className="flex-1 px-4 py-8 space-y-1">
           {navItems.map(({ to, label, en, icon: Icon }) => (
             <NavLink
@@ -44,23 +42,16 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
                 cn(
                   "group flex items-center gap-4 px-4 py-3 text-sm transition-all duration-300 relative",
                   isActive
-                    ? "text-gold"
+                    ? "text-gold before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:w-px before:h-6 before:bg-[hsl(var(--gold))]"
                     : "text-sidebar-foreground/70 hover:text-sidebar-foreground"
                 )
               }
             >
-              {({ isActive }) => (
-                <>
-                  {isActive && (
-                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-px h-6 bg-gold" />
-                  )}
-                  <Icon className="w-3.5 h-3.5 stroke-[1.5]" />
-                  <div className="flex flex-col">
-                    <span className="font-serif text-[13px] tracking-wider">{label}</span>
-                    <span className="eyebrow text-[9px] text-sidebar-foreground/40">{en}</span>
-                  </div>
-                </>
-              )}
+              <Icon className="w-3.5 h-3.5 stroke-[1.5]" />
+              <div className="flex flex-col">
+                <span className="font-serif text-[13px] tracking-wider">{label}</span>
+                <span className="eyebrow text-[9px] text-sidebar-foreground/40">{en}</span>
+              </div>
             </NavLink>
           ))}
         </nav>
