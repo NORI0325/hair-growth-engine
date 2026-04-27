@@ -1,1 +1,7 @@
 project_id = "miyedioemkzhetphjzzg"
+
+[functions.verify-booking-token]
+verify_jwt = false
+
+[functions.create-booking]
+verify_jwt = false
