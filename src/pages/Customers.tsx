@@ -1,10 +1,8 @@
 import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import AppLayout from "@/components/AppLayout";
+import PageHeader from "@/components/PageHeader";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Search, Loader2 } from "lucide-react";
 
@@ -26,11 +24,11 @@ const segmentOf = (lastVisit: string | null): "active" | "at_risk" | "dormant" |
   return "dormant";
 };
 
-const segmentLabel: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
-  active: { label: "アクティブ", variant: "default" },
-  at_risk: { label: "離脱予備軍", variant: "secondary" },
-  dormant: { label: "休眠", variant: "destructive" },
-  new: { label: "新規", variant: "outline" },
+const segmentInfo: Record<string, { label: string; en: string; color: string }> = {
+  active: { label: "アクティブ", en: "Active", color: "text-success" },
+  at_risk: { label: "離脱予備軍", en: "At Risk", color: "text-warning" },
+  dormant: { label: "休眠", en: "Dormant", color: "text-destructive" },
+  new: { label: "新規", en: "New", color: "text-muted-foreground" },
 };
 
 const Customers = () => {
@@ -68,81 +66,82 @@ const Customers = () => {
 
   return (
     <AppLayout>
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2">顧客一覧</h1>
-        <p className="text-muted-foreground">{customers.length}名の顧客が登録されています</p>
+      <PageHeader
+        eyebrow="No.02 — Guests"
+        title="顧客一覧"
+        description={`${customers.length} 名の大切なお客様が登録されています`}
+      />
+
+      <div className="flex flex-col md:flex-row gap-4 mb-10">
+        <div className="relative flex-1">
+          <Search className="absolute left-0 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+          <Input placeholder="氏名・メール・電話で検索" value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-6 rounded-none border-x-0 border-t-0 focus-visible:ring-0 focus-visible:border-gold" />
+        </div>
+        <Select value={segmentFilter} onValueChange={setSegmentFilter}>
+          <SelectTrigger className="w-full md:w-56 rounded-none border-x-0 border-t-0 focus:ring-0">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">すべて</SelectItem>
+            <SelectItem value="active">アクティブ</SelectItem>
+            <SelectItem value="at_risk">離脱予備軍</SelectItem>
+            <SelectItem value="dormant">休眠</SelectItem>
+            <SelectItem value="new">新規</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
-      <Card className="p-4 mb-6 shadow-soft">
-        <div className="flex flex-col md:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="氏名・メール・電話で検索" value={search}
-              onChange={(e) => setSearch(e.target.value)} className="pl-10" />
-          </div>
-          <Select value={segmentFilter} onValueChange={setSegmentFilter}>
-            <SelectTrigger className="w-full md:w-48">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">すべてのセグメント</SelectItem>
-              <SelectItem value="active">アクティブ</SelectItem>
-              <SelectItem value="at_risk">離脱予備軍</SelectItem>
-              <SelectItem value="dormant">休眠</SelectItem>
-              <SelectItem value="new">新規</SelectItem>
-            </SelectContent>
-          </Select>
+      {loading ? (
+        <div className="py-24 text-center">
+          <Loader2 className="w-5 h-5 animate-spin mx-auto text-gold" />
         </div>
-      </Card>
-
-      <Card className="shadow-soft">
-        {loading ? (
-          <div className="p-12 text-center">
-            <Loader2 className="w-8 h-8 animate-spin mx-auto text-primary" />
+      ) : filtered.length === 0 ? (
+        <div className="py-24 text-center">
+          <p className="eyebrow mb-3">— No Results —</p>
+          <p className="text-sm text-muted-foreground">該当する顧客が見つかりません</p>
+        </div>
+      ) : (
+        <div className="border-t border-border">
+          <div className="grid grid-cols-12 gap-4 py-4 border-b border-border eyebrow text-[10px]">
+            <div className="col-span-3">Name</div>
+            <div className="col-span-4">Contact</div>
+            <div className="col-span-2">Last Visit</div>
+            <div className="col-span-1 text-right">Visits</div>
+            <div className="col-span-2 text-right">Segment</div>
           </div>
-        ) : filtered.length === 0 ? (
-          <div className="p-12 text-center text-muted-foreground">
-            該当する顧客が見つかりません
-          </div>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>氏名</TableHead>
-                <TableHead>連絡先</TableHead>
-                <TableHead>最終来店</TableHead>
-                <TableHead>来店回数</TableHead>
-                <TableHead>累計金額</TableHead>
-                <TableHead>セグメント</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.slice(0, 200).map(c => {
-                const seg = segmentOf(c.last_visit_date);
-                const segInfo = segmentLabel[seg];
-                return (
-                  <TableRow key={c.id}>
-                    <TableCell className="font-medium">{c.full_name}</TableCell>
-                    <TableCell className="text-sm">
-                      <div>{c.email || "-"}</div>
-                      <div className="text-muted-foreground">{c.phone || "-"}</div>
-                    </TableCell>
-                    <TableCell>{c.last_visit_date || "未来店"}</TableCell>
-                    <TableCell>{c.visit_count}回</TableCell>
-                    <TableCell>¥{c.total_spent.toLocaleString()}</TableCell>
-                    <TableCell><Badge variant={segInfo.variant}>{segInfo.label}</Badge></TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        )}
-        {filtered.length > 200 && (
-          <div className="p-4 text-center text-sm text-muted-foreground border-t">
-            上位200件を表示しています（全{filtered.length}件）
-          </div>
-        )}
-      </Card>
+          {filtered.slice(0, 200).map(c => {
+            const seg = segmentOf(c.last_visit_date);
+            const info = segmentInfo[seg];
+            return (
+              <div key={c.id} className="grid grid-cols-12 gap-4 py-5 border-b border-border/60 hover:bg-secondary/30 transition-colors items-center">
+                <div className="col-span-3">
+                  <div className="font-serif text-sm">{c.full_name}</div>
+                  <div className="text-[11px] text-muted-foreground">¥{c.total_spent.toLocaleString()}</div>
+                </div>
+                <div className="col-span-4 text-xs text-muted-foreground">
+                  <div>{c.email || "—"}</div>
+                  <div>{c.phone || "—"}</div>
+                </div>
+                <div className="col-span-2 text-xs font-serif-en">{c.last_visit_date || "—"}</div>
+                <div className="col-span-1 text-right font-serif">{c.visit_count}</div>
+                <div className="col-span-2 text-right">
+                  <span className={`inline-flex items-center gap-2 text-[10px] tracking-luxury ${info.color}`}>
+                    <span className="w-1 h-1 rounded-full bg-current" />
+                    {info.en.toUpperCase()}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+          {filtered.length > 200 && (
+            <div className="py-6 text-center text-xs text-muted-foreground">
+              上位200件を表示しています（全{filtered.length}件）
+            </div>
+          )}
+        </div>
+      )}
     </AppLayout>
   );
 };
