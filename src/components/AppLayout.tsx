@@ -3,16 +3,16 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import {
-  LayoutDashboard, Users, Upload, Megaphone, Calendar, LogOut, Scissors,
+  LayoutDashboard, Users, Upload, Megaphone, Calendar, LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
-  { to: "/dashboard", label: "ダッシュボード", icon: LayoutDashboard },
-  { to: "/customers", label: "顧客一覧", icon: Users },
-  { to: "/import", label: "顧客インポート", icon: Upload },
-  { to: "/campaigns", label: "キャンペーン", icon: Megaphone },
-  { to: "/bookings", label: "予約管理", icon: Calendar },
+  { to: "/dashboard", label: "ダッシュボード", en: "Overview", icon: LayoutDashboard },
+  { to: "/customers", label: "顧客", en: "Guests", icon: Users },
+  { to: "/import", label: "インポート", en: "Import", icon: Upload },
+  { to: "/campaigns", label: "配信", en: "Outreach", icon: Megaphone },
+  { to: "/bookings", label: "予約", en: "Bookings", icon: Calendar },
 ];
 
 const AppLayout = ({ children }: { children: ReactNode }) => {
@@ -26,49 +26,59 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
 
   return (
     <div className="min-h-screen bg-background flex">
-      <aside className="w-64 bg-sidebar border-r border-sidebar-border flex flex-col">
-        <div className="p-6 border-b border-sidebar-border">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "var(--gradient-primary)" }}>
-              <Scissors className="w-5 h-5 text-primary-foreground" />
-            </div>
-            <div>
-              <h2 className="font-bold text-sidebar-foreground">Salon Boost</h2>
-              <p className="text-xs text-muted-foreground">売上アップツール</p>
-            </div>
-          </div>
+      <aside className="w-64 bg-sidebar text-sidebar-foreground flex flex-col border-r border-sidebar-border">
+        {/* Brand */}
+        <div className="px-8 py-10 border-b border-sidebar-border/60">
+          <div className="font-serif-en text-3xl text-gold tracking-luxury mb-1">SB</div>
+          <div className="font-serif text-sm tracking-wider">Salon Boost</div>
+          <div className="eyebrow text-[10px] text-sidebar-foreground/50 mt-1">Est. 2026</div>
         </div>
 
-        <nav className="flex-1 p-4 space-y-1">
-          {navItems.map(({ to, label, icon: Icon }) => (
+        {/* Nav */}
+        <nav className="flex-1 px-4 py-8 space-y-1">
+          {navItems.map(({ to, label, en, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}
               className={({ isActive }) =>
                 cn(
-                  "flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors",
+                  "group flex items-center gap-4 px-4 py-3 text-sm transition-all duration-300 relative",
                   isActive
-                    ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                    : "text-sidebar-foreground hover:bg-sidebar-accent"
+                    ? "text-gold"
+                    : "text-sidebar-foreground/70 hover:text-sidebar-foreground"
                 )
               }
             >
-              <Icon className="w-4 h-4" />
-              {label}
+              {({ isActive }) => (
+                <>
+                  {isActive && (
+                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-px h-6 bg-gold" />
+                  )}
+                  <Icon className="w-3.5 h-3.5 stroke-[1.5]" />
+                  <div className="flex flex-col">
+                    <span className="font-serif text-[13px] tracking-wider">{label}</span>
+                    <span className="eyebrow text-[9px] text-sidebar-foreground/40">{en}</span>
+                  </div>
+                </>
+              )}
             </NavLink>
           ))}
         </nav>
 
-        <div className="p-4 border-t border-sidebar-border">
-          <Button variant="ghost" className="w-full justify-start text-sidebar-foreground" onClick={handleSignOut}>
-            <LogOut className="w-4 h-4 mr-2" />
-            ログアウト
+        <div className="p-4 border-t border-sidebar-border/60">
+          <Button
+            variant="ghost"
+            className="w-full justify-start text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent text-xs tracking-luxury rounded-none"
+            onClick={handleSignOut}
+          >
+            <LogOut className="w-3.5 h-3.5 mr-2 stroke-[1.5]" />
+            SIGN OUT
           </Button>
         </div>
       </aside>
 
       <main className="flex-1 overflow-auto">
-        <div className="container mx-auto px-8 py-8 max-w-7xl">{children}</div>
+        <div className="container mx-auto px-12 py-12 max-w-7xl animate-fade-in">{children}</div>
       </main>
     </div>
   );
