@@ -2,11 +2,11 @@ import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import AppLayout from "@/components/AppLayout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import PageHeader from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Upload, FileText, CheckCircle2, Loader2, AlertCircle } from "lucide-react";
+import { Upload, FileText, Loader2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 
 interface ParsedRow {
@@ -80,12 +80,9 @@ const ImportCustomers = () => {
       const text = await f.text();
       const rows = parseCSV(text);
       setParsed(rows);
-      if (rows.length === 0) {
-        toast.error("有効な顧客データが見つかりませんでした");
-      } else {
-        toast.success(`${rows.length}件の顧客を読み込みました`);
-      }
-    } catch (err) {
+      if (rows.length === 0) toast.error("有効な顧客データが見つかりませんでした");
+      else toast.success(`${rows.length}件の顧客を読み込みました`);
+    } catch {
       toast.error("ファイルの読み込みに失敗しました");
     }
   };
@@ -100,12 +97,8 @@ const ImportCustomers = () => {
     for (let i = 0; i < parsed.length; i += batchSize) {
       const batch = parsed.slice(i, i + batchSize).map(r => ({ ...r, owner_id: user.id }));
       const { error } = await supabase.from("customers").insert(batch);
-      if (error) {
-        errs.push(`${i + 1}〜${i + batch.length}行目: ${error.message}`);
-      } else {
-        success += batch.length;
-        setImported(success);
-      }
+      if (error) errs.push(`${i + 1}〜${i + batch.length}行目: ${error.message}`);
+      else { success += batch.length; setImported(success); }
     }
 
     setImporting(false);
@@ -116,88 +109,88 @@ const ImportCustomers = () => {
 
   return (
     <AppLayout>
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2">顧客インポート</h1>
-        <p className="text-muted-foreground">Excel/CSVファイルから顧客データを一括登録できます</p>
-      </div>
+      <PageHeader
+        eyebrow="No.03 — Import"
+        title="顧客インポート"
+        description="眠れる資産を、一括で迎え入れる。"
+      />
 
-      <Card className="shadow-soft mb-6">
-        <CardHeader>
-          <CardTitle>CSVファイルをアップロード</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
-            <Upload className="w-10 h-10 mx-auto mb-3 text-muted-foreground" />
+      <div className="grid lg:grid-cols-3 gap-12">
+        <div className="lg:col-span-2 space-y-10">
+          <div className="border border-dashed border-border p-16 text-center bg-secondary/20 hover:border-gold/40 transition-colors">
+            <Upload className="w-6 h-6 mx-auto mb-4 text-muted-foreground stroke-[1.5]" />
             <Label htmlFor="csv-upload" className="cursor-pointer">
-              <span className="text-primary font-medium">ファイルを選択</span>
-              <span className="text-muted-foreground"> またはドロップ</span>
+              <span className="font-serif text-base text-gold gold-underline">ファイルを選択</span>
+              <span className="text-muted-foreground text-sm"> または、ここにドロップ</span>
               <Input id="csv-upload" type="file" accept=".csv,text/csv" className="hidden" onChange={handleFileChange} />
             </Label>
-            <p className="text-xs text-muted-foreground mt-2">CSV形式（UTF-8推奨）</p>
+            <p className="eyebrow text-[10px] mt-3">CSV · UTF-8</p>
           </div>
 
           {file && (
-            <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
-              <FileText className="w-5 h-5 text-primary" />
+            <div className="flex items-center gap-4 py-4 border-y border-border">
+              <FileText className="w-4 h-4 text-gold stroke-[1.5]" />
               <div className="flex-1">
-                <div className="font-medium text-sm">{file.name}</div>
-                <div className="text-xs text-muted-foreground">{parsed.length}件の顧客データ</div>
+                <div className="font-serif text-sm">{file.name}</div>
+                <div className="eyebrow text-[10px] mt-1">{parsed.length} Records</div>
               </div>
             </div>
           )}
 
-          <div className="text-sm text-muted-foreground space-y-1">
-            <p className="font-medium text-foreground">対応する列名（自動マッピング）：</p>
-            <ul className="list-disc list-inside space-y-0.5 ml-2">
-              <li>氏名 / name / 名前 <span className="text-destructive">（必須）</span></li>
-              <li>email / メール</li>
-              <li>phone / 電話</li>
-              <li>最終来店 / last_visit / 来店日</li>
-              <li>来店回数 / visit_count</li>
-              <li>累計 / total_spent / 売上</li>
-            </ul>
-          </div>
-        </CardContent>
-      </Card>
-
-      {parsed.length > 0 && (
-        <Card className="shadow-soft">
-          <CardHeader>
-            <CardTitle>プレビュー（最初の5件）</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2 mb-4">
-              {parsed.slice(0, 5).map((r, i) => (
-                <div key={i} className="text-sm p-3 bg-muted rounded-lg">
-                  <div className="font-medium">{r.full_name}</div>
-                  <div className="text-muted-foreground text-xs">
-                    {r.email || "-"} / {r.phone || "-"} / 最終来店: {r.last_visit_date || "-"} / 来店{r.visit_count}回
+          {parsed.length > 0 && (
+            <div>
+              <p className="eyebrow mb-4">— Preview (First 5) —</p>
+              <div className="border-t border-border">
+                {parsed.slice(0, 5).map((r, i) => (
+                  <div key={i} className="py-4 border-b border-border/60">
+                    <div className="font-serif text-sm">{r.full_name}</div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {r.email || "—"} · {r.phone || "—"} · 最終来店 {r.last_visit_date || "—"} · {r.visit_count}回
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-
-            <Button onClick={handleImport} disabled={importing} className="w-full" size="lg">
-              {importing ? (
-                <><Loader2 className="w-4 h-4 mr-2 animate-spin" />{imported}/{parsed.length} 登録中...</>
-              ) : (
-                <><CheckCircle2 className="w-4 h-4 mr-2" />{parsed.length}件を登録する</>
-              )}
-            </Button>
-
-            {errors.length > 0 && (
-              <div className="mt-4 p-3 bg-destructive/10 rounded-lg">
-                <div className="flex items-center gap-2 mb-2 text-destructive font-medium text-sm">
-                  <AlertCircle className="w-4 h-4" />エラー
-                </div>
-                {errors.map((e, i) => (
-                  <div key={i} className="text-xs text-destructive">{e}</div>
                 ))}
               </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+
+              <Button onClick={handleImport} disabled={importing} className="w-full mt-8 rounded-none py-6 text-xs tracking-luxury bg-primary hover:bg-primary-glow shadow-elegant" size="lg">
+                {importing ? (
+                  <><Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />{imported} / {parsed.length} IMPORTING...</>
+                ) : (
+                  <>IMPORT {parsed.length} GUESTS</>
+                )}
+              </Button>
+
+              {errors.length > 0 && (
+                <div className="mt-6 p-4 border border-destructive/40">
+                  <div className="flex items-center gap-2 mb-2 text-destructive text-xs eyebrow">
+                    <AlertCircle className="w-3.5 h-3.5" />Errors
+                  </div>
+                  {errors.map((e, i) => <div key={i} className="text-xs text-destructive">{e}</div>)}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Side: column reference */}
+        <div className="lg:col-span-1">
+          <p className="eyebrow mb-4">— Column Mapping —</p>
+          <div className="border-t border-border">
+            {[
+              { jp: "氏名 / name", req: true },
+              { jp: "email / メール" },
+              { jp: "phone / 電話" },
+              { jp: "最終来店 / last_visit" },
+              { jp: "来店回数 / visit_count" },
+              { jp: "累計 / total_spent" },
+            ].map((col, i) => (
+              <div key={i} className="py-3 border-b border-border/60 flex justify-between items-center">
+                <span className="text-xs font-serif">{col.jp}</span>
+                {col.req && <span className="eyebrow text-[9px] text-destructive">REQUIRED</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
     </AppLayout>
   );
 };

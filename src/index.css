@@ -2,93 +2,106 @@
 @tailwind components;
 @tailwind utilities;
 
-/* 美容室アプリのデザインシステム - 上品で温かみのあるカラー */
+/*
+  Salon Boost — Design System
+  「銀座の高級サロン」をイメージした静謐で上質な世界観。
+  墨 × シャンパンゴールド × アイボリー。Aesop / 資生堂THE GINZAの空気感。
+*/
 
 @layer base {
   :root {
-    --background: 30 25% 98%;
-    --foreground: 25 25% 15%;
+    /* 基調: 温かみのあるアイボリー */
+    --background: 36 25% 97%;
+    --foreground: 25 15% 12%;
 
     --card: 0 0% 100%;
-    --card-foreground: 25 25% 15%;
+    --card-foreground: 25 15% 12%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 25 25% 15%;
+    --popover-foreground: 25 15% 12%;
 
-    /* メインブランド: 深いローズゴールド */
-    --primary: 350 55% 45%;
-    --primary-foreground: 30 25% 98%;
-    --primary-glow: 350 70% 60%;
+    /* メイン: 墨色（深いチャコール） */
+    --primary: 25 12% 15%;
+    --primary-foreground: 36 30% 97%;
+    --primary-glow: 25 10% 25%;
 
-    /* セカンダリ: 柔らかいベージュ */
-    --secondary: 30 30% 92%;
-    --secondary-foreground: 25 30% 25%;
+    /* セカンダリ: シャンパンベージュ */
+    --secondary: 35 25% 92%;
+    --secondary-foreground: 25 15% 18%;
 
-    --muted: 30 20% 94%;
-    --muted-foreground: 25 15% 45%;
+    --muted: 35 18% 94%;
+    --muted-foreground: 25 8% 42%;
 
-    --accent: 35 60% 55%;
-    --accent-foreground: 0 0% 100%;
+    /* アクセント: シャンパンゴールド */
+    --accent: 38 45% 55%;
+    --accent-foreground: 25 15% 12%;
+    --gold: 38 50% 58%;
+    --gold-light: 42 60% 75%;
+    --gold-dark: 35 40% 42%;
 
-    --destructive: 0 75% 50%;
-    --destructive-foreground: 0 0% 100%;
+    --destructive: 0 55% 45%;
+    --destructive-foreground: 36 30% 97%;
 
-    --success: 145 60% 40%;
-    --success-foreground: 0 0% 100%;
+    --success: 145 30% 38%;
+    --success-foreground: 36 30% 97%;
 
-    --warning: 35 95% 55%;
-    --warning-foreground: 0 0% 100%;
+    --warning: 30 60% 50%;
+    --warning-foreground: 36 30% 97%;
 
-    --border: 30 20% 88%;
-    --input: 30 20% 90%;
-    --ring: 350 55% 45%;
+    --border: 30 15% 88%;
+    --input: 30 15% 90%;
+    --ring: 38 45% 55%;
 
-    --radius: 0.75rem;
+    --radius: 0.25rem;
 
-    --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary-glow)));
-    --gradient-soft: linear-gradient(135deg, hsl(30 30% 96%), hsl(350 30% 96%));
-    --shadow-elegant: 0 10px 30px -10px hsl(var(--primary) / 0.25);
-    --shadow-soft: 0 4px 20px -8px hsl(25 25% 15% / 0.08);
+    --gradient-primary: linear-gradient(135deg, hsl(25 15% 15%), hsl(25 10% 28%));
+    --gradient-gold: linear-gradient(135deg, hsl(38 50% 58%), hsl(42 60% 72%));
+    --gradient-soft: linear-gradient(180deg, hsl(36 28% 98%) 0%, hsl(35 22% 95%) 100%);
+    --gradient-hero: radial-gradient(ellipse at top, hsl(38 35% 92%) 0%, hsl(36 25% 97%) 60%);
 
-    --sidebar-background: 30 25% 96%;
-    --sidebar-foreground: 25 25% 20%;
-    --sidebar-primary: 350 55% 45%;
-    --sidebar-primary-foreground: 30 25% 98%;
-    --sidebar-accent: 30 30% 90%;
-    --sidebar-accent-foreground: 25 30% 25%;
-    --sidebar-border: 30 20% 85%;
-    --sidebar-ring: 350 55% 45%;
+    --shadow-elegant: 0 24px 60px -28px hsl(25 15% 12% / 0.18);
+    --shadow-soft: 0 1px 2px hsl(25 15% 12% / 0.04), 0 8px 24px -12px hsl(25 15% 12% / 0.08);
+    --shadow-gold: 0 12px 40px -16px hsl(38 50% 50% / 0.35);
+
+    --sidebar-background: 25 15% 12%;
+    --sidebar-foreground: 36 20% 88%;
+    --sidebar-primary: 38 50% 58%;
+    --sidebar-primary-foreground: 25 15% 12%;
+    --sidebar-accent: 25 12% 18%;
+    --sidebar-accent-foreground: 36 25% 95%;
+    --sidebar-border: 25 10% 22%;
+    --sidebar-ring: 38 50% 58%;
   }
 
   .dark {
-    --background: 25 20% 10%;
-    --foreground: 30 25% 95%;
-    --card: 25 20% 13%;
-    --card-foreground: 30 25% 95%;
-    --popover: 25 20% 13%;
-    --popover-foreground: 30 25% 95%;
-    --primary: 350 65% 60%;
-    --primary-foreground: 25 20% 10%;
-    --primary-glow: 350 75% 70%;
-    --secondary: 25 15% 20%;
-    --secondary-foreground: 30 25% 95%;
-    --muted: 25 15% 18%;
-    --muted-foreground: 30 15% 65%;
-    --accent: 35 60% 55%;
-    --accent-foreground: 25 20% 10%;
-    --destructive: 0 65% 50%;
-    --destructive-foreground: 30 25% 95%;
-    --border: 25 15% 22%;
-    --input: 25 15% 22%;
-    --ring: 350 65% 60%;
-    --sidebar-background: 25 20% 12%;
-    --sidebar-foreground: 30 25% 90%;
-    --sidebar-primary: 350 65% 60%;
-    --sidebar-primary-foreground: 25 20% 10%;
-    --sidebar-accent: 25 15% 18%;
-    --sidebar-accent-foreground: 30 25% 90%;
-    --sidebar-border: 25 15% 20%;
-    --sidebar-ring: 350 65% 60%;
+    --background: 25 15% 8%;
+    --foreground: 36 20% 92%;
+    --card: 25 12% 11%;
+    --card-foreground: 36 20% 92%;
+    --popover: 25 12% 11%;
+    --popover-foreground: 36 20% 92%;
+    --primary: 38 50% 58%;
+    --primary-foreground: 25 15% 8%;
+    --primary-glow: 42 60% 72%;
+    --secondary: 25 10% 16%;
+    --secondary-foreground: 36 20% 92%;
+    --muted: 25 10% 14%;
+    --muted-foreground: 36 12% 60%;
+    --accent: 38 50% 58%;
+    --accent-foreground: 25 15% 8%;
+    --destructive: 0 55% 50%;
+    --destructive-foreground: 36 20% 92%;
+    --border: 25 10% 18%;
+    --input: 25 10% 18%;
+    --ring: 38 50% 58%;
+    --sidebar-background: 25 15% 6%;
+    --sidebar-foreground: 36 18% 85%;
+    --sidebar-primary: 38 50% 58%;
+    --sidebar-primary-foreground: 25 15% 8%;
+    --sidebar-accent: 25 10% 12%;
+    --sidebar-accent-foreground: 36 20% 90%;
+    --sidebar-border: 25 8% 16%;
+    --sidebar-ring: 38 50% 58%;
   }
 }
 
@@ -97,8 +110,109 @@
     @apply border-border;
   }
 
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
   body {
     @apply bg-background text-foreground;
-    font-feature-settings: "palt";
+    font-family: "Inter", "Noto Serif JP", -apple-system, BlinkMacSystemFont, sans-serif;
+    font-feature-settings: "palt", "kern";
+    letter-spacing: 0.01em;
   }
+
+  h1, h2, h3, h4, h5 {
+    font-family: "Noto Serif JP", "Cormorant Garamond", serif;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+  }
+
+  .font-serif-en {
+    font-family: "Cormorant Garamond", "Noto Serif JP", serif;
+    letter-spacing: 0.04em;
+  }
+
+  .font-serif-jp {
+    font-family: "Noto Serif JP", serif;
+  }
+
+  .tracking-luxury {
+    letter-spacing: 0.18em;
+  }
+}
+
+@layer components {
+  /* ヘアライン区切り（ゴールド細線） */
+  .hairline {
+    @apply h-px w-full;
+    background: linear-gradient(90deg, transparent, hsl(var(--accent) / 0.4), transparent);
+  }
+
+  .hairline-vertical {
+    @apply w-px h-full;
+    background: linear-gradient(180deg, transparent, hsl(var(--accent) / 0.4), transparent);
+  }
+
+  /* 章番号（高級雑誌風） */
+  .eyebrow {
+    @apply text-xs uppercase tracking-luxury text-muted-foreground font-medium;
+    font-family: "Cormorant Garamond", serif;
+    letter-spacing: 0.25em;
+  }
+
+  /* ゴールドのアンダーライン */
+  .gold-underline {
+    background-image: linear-gradient(transparent calc(100% - 1px), hsl(var(--accent)) 1px);
+    background-repeat: no-repeat;
+    background-size: 0% 100%;
+    transition: background-size 0.5s ease;
+  }
+  .gold-underline:hover {
+    background-size: 100% 100%;
+  }
+
+  /* セリフ大見出し */
+  .display {
+    font-family: "Noto Serif JP", serif;
+    font-weight: 400;
+    letter-spacing: 0.02em;
+    line-height: 1.25;
+  }
+}
+
+@layer utilities {
+  .text-gold {
+    color: hsl(var(--gold));
+  }
+  .bg-gold {
+    background-color: hsl(var(--gold));
+  }
+  .border-gold {
+    border-color: hsl(var(--gold));
+  }
+
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+  .animate-fade-up {
+    animation: fade-up 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .animate-fade-in {
+    animation: fade-in 0.8s ease-out both;
+  }
+  .animate-delay-100 { animation-delay: 0.1s; }
+  .animate-delay-200 { animation-delay: 0.2s; }
+  .animate-delay-300 { animation-delay: 0.3s; }
+  .animate-delay-400 { animation-delay: 0.4s; }
 }

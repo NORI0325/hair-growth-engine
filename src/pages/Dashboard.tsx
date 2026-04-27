@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import AppLayout from "@/components/AppLayout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, UserX, Calendar, Megaphone, TrendingUp } from "lucide-react";
+import PageHeader from "@/components/PageHeader";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface Stats {
@@ -18,7 +18,6 @@ const Dashboard = () => {
 
   useEffect(() => {
     const load = async () => {
-      const today = new Date().toISOString().split("T")[0];
       const startOfMonth = new Date();
       startOfMonth.setDate(1);
       const monthStart = startOfMonth.toISOString().split("T")[0];
@@ -53,47 +52,51 @@ const Dashboard = () => {
   }, []);
 
   const cards = [
-    { title: "顧客総数", value: stats?.totalCustomers, icon: Users, color: "text-primary", desc: "登録された顧客の合計" },
-    { title: "休眠客", value: stats?.dormantCustomers, icon: UserX, color: "text-destructive", desc: "180日以上来店なし - 掘り起こし対象" },
-    { title: "離脱予備軍", value: stats?.atRiskCustomers, icon: TrendingUp, color: "text-warning", desc: "90〜180日未来店 - 早期アプローチ推奨" },
-    { title: "今月の予約", value: stats?.monthlyBookings, icon: Calendar, color: "text-success", desc: "今月入った予約件数" },
-    { title: "配信済キャンペーン", value: stats?.totalCampaigns, icon: Megaphone, color: "text-accent", desc: "これまで配信したキャンペーン" },
+    { num: "i", label: "顧客総数", en: "Total Guests", value: stats?.totalCustomers, desc: "登録された大切な資産" },
+    { num: "ii", label: "休眠客", en: "Dormant", value: stats?.dormantCustomers, desc: "180日以上、再会を待つお客様", accent: true },
+    { num: "iii", label: "離脱予備軍", en: "At Risk", value: stats?.atRiskCustomers, desc: "90〜180日、心が離れる前に" },
+    { num: "iv", label: "今月の予約", en: "Bookings", value: stats?.monthlyBookings, desc: "本月迎える再会の数" },
+    { num: "v", label: "配信履歴", en: "Outreach", value: stats?.totalCampaigns, desc: "これまで届けた言葉の数" },
   ];
 
   return (
     <AppLayout>
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2">ダッシュボード</h1>
-        <p className="text-muted-foreground">サロンの現状を一目で確認できます</p>
-      </div>
+      <PageHeader
+        eyebrow="No.01 — Overview"
+        title="ダッシュボード"
+        description="サロンの現状を、静かに見つめる時間を。"
+      />
 
       {stats?.totalCustomers === 0 && (
-        <Card className="mb-6 border-primary/30 bg-primary/5">
-          <CardContent className="pt-6">
-            <h3 className="font-bold mb-2">まずは顧客データをインポートしましょう</h3>
-            <p className="text-sm text-muted-foreground">
-              サイドバーの「顧客インポート」からExcel/CSVファイルをアップロードして始めましょう。
+        <Card className="mb-10 border-gold/40 rounded-none shadow-soft">
+          <CardContent className="p-8">
+            <p className="eyebrow mb-3 text-gold">— First Step —</p>
+            <h3 className="display text-2xl mb-3">まずは、お客様を迎え入れましょう</h3>
+            <p className="text-sm text-muted-foreground leading-loose">
+              左のメニュー「インポート」からExcel/CSVファイルをアップロードして、<br />
+              眠れる資産を呼び覚ます最初の一歩を踏み出してください。
             </p>
           </CardContent>
         </Card>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {cards.map(({ title, value, icon: Icon, color, desc }) => (
-          <Card key={title} className="shadow-soft">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
-              <Icon className={`w-5 h-5 ${color}`} />
-            </CardHeader>
-            <CardContent>
-              {value === undefined ? (
-                <Skeleton className="h-9 w-20" />
-              ) : (
-                <div className="text-3xl font-bold">{value.toLocaleString()}</div>
-              )}
-              <p className="text-xs text-muted-foreground mt-2">{desc}</p>
-            </CardContent>
-          </Card>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-px bg-border">
+        {cards.map(({ num, label, en, value, desc, accent }) => (
+          <div key={label} className={`bg-card p-10 transition-all hover:bg-secondary/40 ${accent ? "relative" : ""}`}>
+            {accent && <div className="absolute top-0 left-0 w-full h-px bg-gold" />}
+            <div className="flex items-baseline justify-between mb-6">
+              <span className="font-serif-en italic text-2xl text-gold/70">{num}.</span>
+              <span className="eyebrow text-[10px]">{en}</span>
+            </div>
+            <div className="font-serif text-sm text-muted-foreground mb-3 tracking-wider">{label}</div>
+            {value === undefined ? (
+              <Skeleton className="h-12 w-24" />
+            ) : (
+              <div className="display text-5xl mb-4">{value.toLocaleString()}</div>
+            )}
+            <div className="hairline mb-3" />
+            <p className="text-xs text-muted-foreground leading-relaxed">{desc}</p>
+          </div>
         ))}
       </div>
     </AppLayout>

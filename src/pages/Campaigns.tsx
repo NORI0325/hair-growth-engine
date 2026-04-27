@@ -2,17 +2,16 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import AppLayout from "@/components/AppLayout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import PageHeader from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Megaphone, Send, Loader2, Users, Mail, MessageSquare } from "lucide-react";
+import { Send, Loader2, Mail, MessageSquare } from "lucide-react";
 
 interface Campaign {
   id: string;
@@ -57,6 +56,13 @@ const TEMPLATES = [
   },
 ];
 
+const statusInfo = (s: string) => {
+  if (s === "sent") return { label: "Sent", color: "text-success" };
+  if (s === "sending") return { label: "Sending", color: "text-warning" };
+  if (s === "failed") return { label: "Failed", color: "text-destructive" };
+  return { label: "Draft", color: "text-muted-foreground" };
+};
+
 const Campaigns = () => {
   const { user } = useAuth();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -64,12 +70,8 @@ const Campaigns = () => {
   const [sending, setSending] = useState(false);
 
   const [form, setForm] = useState({
-    title: "",
-    email_subject: "",
-    email_body: "",
-    sms_body: "",
-    send_email: true,
-    send_sms: false,
+    title: "", email_subject: "", email_body: "", sms_body: "",
+    send_email: true, send_sms: false,
     target_segment: "dormant" as "active" | "at_risk" | "dormant" | "all",
   });
 
@@ -85,25 +87,13 @@ const Campaigns = () => {
 
   const applyTemplate = (idx: number) => {
     const t = TEMPLATES[idx];
-    setForm(f => ({
-      ...f,
-      title: t.name,
-      email_subject: t.subject,
-      email_body: t.body,
-      sms_body: t.sms,
-    }));
+    setForm(f => ({ ...f, title: t.name, email_subject: t.subject, email_body: t.body, sms_body: t.sms }));
   };
 
   const handleSend = async () => {
     if (!user) return;
-    if (!form.title || !form.email_subject || !form.email_body) {
-      toast.error("タイトル・件名・本文を入力してください");
-      return;
-    }
-    if (form.send_sms && !form.sms_body) {
-      toast.error("SMS本文を入力してください");
-      return;
-    }
+    if (!form.title || !form.email_subject || !form.email_body) { toast.error("タイトル・件名・本文を入力してください"); return; }
+    if (form.send_sms && !form.sms_body) { toast.error("SMS本文を入力してください"); return; }
 
     setSending(true);
     const { data: campaign, error } = await supabase
@@ -122,157 +112,155 @@ const Campaigns = () => {
       .select()
       .single();
 
-    if (error || !campaign) {
-      toast.error("キャンペーン作成に失敗しました");
-      setSending(false);
-      return;
-    }
+    if (error || !campaign) { toast.error("キャンペーン作成に失敗しました"); setSending(false); return; }
 
     const { data: result, error: invokeError } = await supabase.functions.invoke("send-campaign", {
       body: { campaign_id: campaign.id },
     });
 
     setSending(false);
-    if (invokeError) {
-      toast.error("配信に失敗しました: " + invokeError.message);
-      return;
-    }
+    if (invokeError) { toast.error("配信に失敗しました: " + invokeError.message); return; }
 
     toast.success(`配信を開始しました (${result?.recipients || 0}名)`);
     setOpen(false);
-    setForm({
-      title: "", email_subject: "", email_body: "", sms_body: "",
-      send_email: true, send_sms: false, target_segment: "dormant",
-    });
+    setForm({ title: "", email_subject: "", email_body: "", sms_body: "", send_email: true, send_sms: false, target_segment: "dormant" });
     load();
-  };
-
-  const statusBadge = (s: string) => {
-    if (s === "sent") return <Badge variant="default">配信済</Badge>;
-    if (s === "sending") return <Badge variant="secondary">配信中</Badge>;
-    if (s === "failed") return <Badge variant="destructive">失敗</Badge>;
-    return <Badge variant="outline">下書き</Badge>;
   };
 
   return (
     <AppLayout>
-      <div className="flex justify-between items-center mb-8">
-        <div>
-          <h1 className="text-3xl font-bold mb-2">キャンペーン</h1>
-          <p className="text-muted-foreground">休眠客への配信で売上を呼び戻しましょう</p>
-        </div>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button size="lg" style={{ background: "var(--gradient-primary)" }}>
-              <Megaphone className="w-4 h-4 mr-2" />新規キャンペーン
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>新規キャンペーン作成</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label>テンプレートから選択</Label>
-                <div className="grid grid-cols-2 gap-2 mt-2">
-                  {TEMPLATES.map((t, i) => (
-                    <Button key={i} variant="outline" size="sm" onClick={() => applyTemplate(i)}>
-                      {t.name}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <Label htmlFor="title">キャンペーンタイトル（管理用）</Label>
-                <Input id="title" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} />
-              </div>
-
-              <div>
-                <Label htmlFor="segment">配信対象</Label>
-                <Select value={form.target_segment} onValueChange={(v: any) => setForm({ ...form, target_segment: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="dormant">休眠客（180日以上未来店）- おすすめ</SelectItem>
-                    <SelectItem value="at_risk">離脱予備軍（90〜180日）</SelectItem>
-                    <SelectItem value="active">アクティブ客</SelectItem>
-                    <SelectItem value="all">全顧客</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                <div className="flex items-center gap-2">
-                  <Mail className="w-4 h-4" />
-                  <Label>メール配信</Label>
-                </div>
-                <Switch checked={form.send_email} onCheckedChange={v => setForm({ ...form, send_email: v })} />
-              </div>
-
-              {form.send_email && (
-                <>
-                  <div>
-                    <Label htmlFor="subject">メール件名</Label>
-                    <Input id="subject" value={form.email_subject} onChange={e => setForm({ ...form, email_subject: e.target.value })} />
-                  </div>
-                  <div>
-                    <Label htmlFor="body">メール本文（{`{{name}}`} で氏名、{`{{booking_link}}`} で予約リンク）</Label>
-                    <Textarea id="body" rows={8} value={form.email_body} onChange={e => setForm({ ...form, email_body: e.target.value })} />
-                  </div>
-                </>
-              )}
-
-              <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                <div className="flex items-center gap-2">
-                  <MessageSquare className="w-4 h-4" />
-                  <Label>SMS配信（重要顧客への高反応率）</Label>
-                </div>
-                <Switch checked={form.send_sms} onCheckedChange={v => setForm({ ...form, send_sms: v })} />
-              </div>
-
-              {form.send_sms && (
-                <div>
-                  <Label htmlFor="sms">SMS本文（160字以内推奨）</Label>
-                  <Textarea id="sms" rows={3} value={form.sms_body} onChange={e => setForm({ ...form, sms_body: e.target.value })} />
-                </div>
-              )}
-
-              <Button onClick={handleSend} disabled={sending} className="w-full" size="lg">
-                {sending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />配信中...</>
-                  : <><Send className="w-4 h-4 mr-2" />今すぐ配信</>}
+      <PageHeader
+        eyebrow="No.04 — Outreach"
+        title="配信"
+        description="眠っているお客様の心に、静かに届く言葉を。"
+        action={
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <Button size="lg" className="rounded-none px-8 py-6 text-xs tracking-luxury bg-primary hover:bg-primary-glow">
+                + COMPOSE
               </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-      </div>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto rounded-none">
+              <DialogHeader>
+                <p className="eyebrow mb-2">— New Outreach —</p>
+                <DialogTitle className="display text-2xl">新規キャンペーン</DialogTitle>
+              </DialogHeader>
+              <div className="hairline my-4" />
+              <div className="space-y-6">
+                <div>
+                  <Label className="eyebrow mb-3 block">Templates</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {TEMPLATES.map((t, i) => (
+                      <Button key={i} variant="outline" size="sm" onClick={() => applyTemplate(i)}
+                        className="rounded-none text-xs h-auto py-3 font-serif text-left justify-start whitespace-normal">
+                        {t.name}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="title" className="eyebrow mb-2 block">Title</Label>
+                  <Input id="title" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })}
+                    className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
+                </div>
+
+                <div>
+                  <Label className="eyebrow mb-2 block">Target Segment</Label>
+                  <Select value={form.target_segment} onValueChange={(v: any) => setForm({ ...form, target_segment: v })}>
+                    <SelectTrigger className="rounded-none border-x-0 border-t-0 focus:ring-0"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="dormant">休眠客（180日以上）— 推奨</SelectItem>
+                      <SelectItem value="at_risk">離脱予備軍（90〜180日）</SelectItem>
+                      <SelectItem value="active">アクティブ客</SelectItem>
+                      <SelectItem value="all">全顧客</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex items-center justify-between py-3 border-y border-border">
+                  <div className="flex items-center gap-3">
+                    <Mail className="w-3.5 h-3.5 stroke-[1.5]" />
+                    <Label className="font-serif">メール配信</Label>
+                  </div>
+                  <Switch checked={form.send_email} onCheckedChange={v => setForm({ ...form, send_email: v })} />
+                </div>
+
+                {form.send_email && (
+                  <>
+                    <div>
+                      <Label htmlFor="subject" className="eyebrow mb-2 block">Subject</Label>
+                      <Input id="subject" value={form.email_subject} onChange={e => setForm({ ...form, email_subject: e.target.value })}
+                        className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
+                    </div>
+                    <div>
+                      <Label htmlFor="body" className="eyebrow mb-2 block">Body — {`{{name}}`} {`{{booking_link}}`}</Label>
+                      <Textarea id="body" rows={8} value={form.email_body} onChange={e => setForm({ ...form, email_body: e.target.value })}
+                        className="rounded-none focus-visible:ring-0 focus-visible:border-gold font-serif" />
+                    </div>
+                  </>
+                )}
+
+                <div className="flex items-center justify-between py-3 border-y border-border">
+                  <div className="flex items-center gap-3">
+                    <MessageSquare className="w-3.5 h-3.5 stroke-[1.5]" />
+                    <Label className="font-serif">SMS配信</Label>
+                  </div>
+                  <Switch checked={form.send_sms} onCheckedChange={v => setForm({ ...form, send_sms: v })} />
+                </div>
+
+                {form.send_sms && (
+                  <div>
+                    <Label htmlFor="sms" className="eyebrow mb-2 block">SMS Body (160 chars)</Label>
+                    <Textarea id="sms" rows={3} value={form.sms_body} onChange={e => setForm({ ...form, sms_body: e.target.value })}
+                      className="rounded-none focus-visible:ring-0 focus-visible:border-gold font-serif" />
+                  </div>
+                )}
+
+                <Button onClick={handleSend} disabled={sending} className="w-full rounded-none py-6 text-xs tracking-luxury bg-primary hover:bg-primary-glow" size="lg">
+                  {sending ? <><Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />SENDING...</>
+                    : <><Send className="w-3.5 h-3.5 mr-2 stroke-[1.5]" />SEND NOW</>}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        }
+      />
 
       {campaigns.length === 0 ? (
-        <Card className="p-12 text-center shadow-soft">
-          <Megaphone className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-          <h3 className="font-bold mb-2">まだキャンペーンがありません</h3>
-          <p className="text-sm text-muted-foreground mb-6">
-            休眠客に「お久しぶりクーポン」を送って、来店を促しましょう
-          </p>
-        </Card>
+        <div className="py-24 text-center">
+          <p className="eyebrow mb-3">— Awaiting First Outreach —</p>
+          <h3 className="display text-2xl mb-3">まだ配信がありません</h3>
+          <p className="text-sm text-muted-foreground">休眠客に「お久しぶりクーポン」を送って、来店を促しましょう</p>
+        </div>
       ) : (
-        <div className="space-y-3">
-          {campaigns.map(c => (
-            <Card key={c.id} className="shadow-soft">
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-bold">{c.title}</h3>
-                  {statusBadge(c.status)}
+        <div className="border-t border-border">
+          {campaigns.map(c => {
+            const status = statusInfo(c.status);
+            return (
+              <div key={c.id} className="grid grid-cols-12 gap-6 py-8 border-b border-border/60 hover:bg-secondary/30 transition-colors items-center">
+                <div className="col-span-6">
+                  <div className="font-serif text-base mb-1">{c.title}</div>
+                  <div className="text-xs text-muted-foreground">{c.email_subject}</div>
                 </div>
-                <p className="text-sm text-muted-foreground mb-3">{c.email_subject}</p>
-                <div className="flex items-center gap-4 text-sm">
-                  <span className="flex items-center gap-1"><Users className="w-3.5 h-3.5" />{c.total_recipients}名</span>
-                  {c.send_email && <span className="flex items-center gap-1"><Mail className="w-3.5 h-3.5" />メール</span>}
-                  {c.send_sms && <span className="flex items-center gap-1"><MessageSquare className="w-3.5 h-3.5" />SMS</span>}
-                  {c.sent_at && <span className="text-muted-foreground">{new Date(c.sent_at).toLocaleString("ja-JP")}</span>}
+                <div className="col-span-2 text-xs">
+                  <div className="font-serif-en text-2xl">{c.total_recipients}</div>
+                  <div className="eyebrow text-[9px]">Recipients</div>
                 </div>
-              </CardContent>
-            </Card>
-          ))}
+                <div className="col-span-2 flex gap-3 text-xs text-muted-foreground">
+                  {c.send_email && <Mail className="w-3.5 h-3.5 stroke-[1.5]" />}
+                  {c.send_sms && <MessageSquare className="w-3.5 h-3.5 stroke-[1.5]" />}
+                  {c.sent_at && <span className="font-serif-en text-[11px]">{new Date(c.sent_at).toLocaleDateString("ja-JP")}</span>}
+                </div>
+                <div className="col-span-2 text-right">
+                  <span className={`inline-flex items-center gap-2 text-[10px] tracking-luxury ${status.color}`}>
+                    <span className="w-1 h-1 rounded-full bg-current" />
+                    {status.label.toUpperCase()}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </AppLayout>
