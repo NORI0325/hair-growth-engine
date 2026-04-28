@@ -102,25 +102,27 @@ Deno.serve(async (req) => {
           templateData = { customerName: customer.full_name, salonName, reviewUrl };
           body = `${customer.full_name}様\nいつもご来店ありがとうございます。\nもしよろしければGoogleでサロンのご感想をいただけますと大変嬉しいです🙇‍♀️\n→ ${reviewUrl}\n\n${salonName}`;
         } else if (job.job_type === "reminder") {
-          // 予約前日リマインド：LINEのみ（メール未連携客には送らない＝うっとうしさ回避）
           const p = (job.payload as any) || {};
           const dateStr = p.booking_date || "";
           const timeStr = (p.booking_time || "").slice(0, 5);
           const menu = p.menu || "";
+          templateName = "booking-reminder";
+          templateData = { customerName: customer.full_name, salonName, bookingDate: dateStr, bookingTime: timeStr, menu, bookingLink };
           body = `🌸 明日のご予約のリマインドです\n\n${customer.full_name}様\n\n📅 ${dateStr}\n🕐 ${timeStr}\n💇 ${menu}\n\nお会いできるのを楽しみにしております。\n変更・キャンセルは恐れ入りますが、こちらから：\n→ ${bookingLink}\n\n${salonName}`;
-          // メールテンプレは作らずLINE限定運用
-          templateName = "";
         } else if (job.job_type === "reactivation") {
           const days = (job.payload as any)?.days_since || 90;
+          templateName = "reactivation";
+          templateData = { customerName: customer.full_name, salonName, bookingLink, daysSince: days };
           body = `${customer.full_name}様\n\nお久しぶりです。前回ご来店から${days}日が経ちました。\nまた${salonName}でお会いできるのを楽しみにしております🌸\n\n【復活キャンペーン】次回ご予約で20%OFF\n→ ${bookingLink}`;
-          templateName = "";
         } else if (job.job_type === "aftercare") {
           const menu = (job.payload as any)?.menu || "";
+          templateName = "aftercare";
+          templateData = { customerName: customer.full_name, salonName, menu };
           body = `${customer.full_name}様\n\n先日は${menu ? `${menu}で` : ""}ご来店ありがとうございました🌸\n\nそろそろ1週間。仕上がりはいかがでしょうか？\n\n💡 美しさを長持ちさせるコツ\n・洗髪後はタオルドライ→すぐドライヤー\n・週1〜2回のヘアマスクで保湿\n・紫外線対策に洗い流さないトリートメント\n\nお気軽にご相談ください。\n${salonName}`;
-          templateName = "";
         } else if (job.job_type === "next_suggestion") {
+          templateName = "next-suggestion";
+          templateData = { customerName: customer.full_name, salonName, bookingLink };
           body = `${customer.full_name}様\n\n前回のご来店から1ヶ月が経ちました。\n根元の伸び・カラーの色落ちが気になり始める時期です✨\n\n今ご予約いただくと、ご希望のお日にちが選びやすくなっております。\n→ ${bookingLink}\n\n${salonName}`;
-          templateName = "";
         }
 
         // === 配信チャネル決定ロジック（重複防止）===
