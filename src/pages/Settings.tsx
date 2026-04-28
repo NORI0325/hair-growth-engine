@@ -55,6 +55,21 @@ const Settings = () => {
     })();
   }, [user]);
 
+  const toggleTestMode = async (v: boolean) => {
+    if (!user) return;
+    setForm({ ...form, test_mode: v });
+    const { error } = await supabase
+      .from("profiles")
+      .update({ test_mode: v } as any)
+      .eq("id", user.id);
+    if (error) {
+      setForm({ ...form, test_mode: !v });
+      toast.error("テストモードの切替に失敗しました");
+      return;
+    }
+    toast.success(v ? "🧪 テストモードをONにしました" : "テストモードをOFFにしました");
+  };
+
   const save = async () => {
     if (!user) return;
     setSaving(true);
@@ -180,7 +195,7 @@ const Settings = () => {
                 {form.test_mode ? "🧪 ON — テスト中の予約は集計から除外されます" : "● OFF — 通常運用中"}
               </div>
             </div>
-            <Switch checked={form.test_mode} onCheckedChange={v => setForm({...form, test_mode: v})} />
+            <Switch checked={form.test_mode} onCheckedChange={toggleTestMode} />
           </div>
 
           <AlertDialog>
