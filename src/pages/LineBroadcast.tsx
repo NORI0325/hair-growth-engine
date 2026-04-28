@@ -182,14 +182,68 @@ const LineBroadcast = () => {
           </div>
 
           <div>
-            <Label className="mb-2 block font-serif text-sm">本文</Label>
+            <div className="flex items-center justify-between mb-2">
+              <Label className="font-serif text-sm">本文</Label>
+              <div className="flex gap-1">
+                <Dialog open={showLib} onOpenChange={setShowLib}>
+                  <DialogTrigger asChild>
+                    <Button type="button" size="sm" variant="outline" className="h-7 text-[11px]">
+                      <BookOpen className="w-3 h-3 mr-1" />ライブラリ ({templates.length})
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-2xl">
+                    <DialogHeader><DialogTitle>保存済みテンプレート</DialogTitle></DialogHeader>
+                    <div className="space-y-2 max-h-96 overflow-auto">
+                      {templates.length === 0 ? (
+                        <p className="text-sm text-muted-foreground text-center py-8">まだ保存済みテンプレートはありません</p>
+                      ) : templates.map(t => (
+                        <div key={t.id} className="border p-3 rounded hover:bg-muted/50">
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="font-medium text-sm">{t.title}</div>
+                            <div className="flex gap-1">
+                              <Button size="sm" variant="ghost" onClick={() => useTemplate(t)}>使う</Button>
+                              <Button size="sm" variant="ghost" onClick={() => deleteTemplate(t.id)}>
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          </div>
+                          <p className="text-xs text-muted-foreground line-clamp-2 whitespace-pre-wrap">{t.message}</p>
+                          <div className="text-[10px] text-muted-foreground mt-1">使用 {t.use_count}回</div>
+                        </div>
+                      ))}
+                    </div>
+                  </DialogContent>
+                </Dialog>
+                <Dialog open={showSave} onOpenChange={setShowSave}>
+                  <DialogTrigger asChild>
+                    <Button type="button" size="sm" variant="outline" className="h-7 text-[11px]" disabled={!message.trim()}>
+                      <BookmarkPlus className="w-3 h-3 mr-1" />保存
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader><DialogTitle>テンプレートに保存</DialogTitle></DialogHeader>
+                    <Input placeholder="テンプレート名（例：年末年始のご挨拶）" value={saveTitle} onChange={e => setSaveTitle(e.target.value)} />
+                    <DialogFooter>
+                      <Button onClick={saveAsTemplate} disabled={!saveTitle.trim()}>保存</Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </div>
             <Textarea value={message} onChange={e => setMessage(e.target.value)}
               placeholder="例：{{name}}様&#10;&#10;今週末、特別キャンペーンのお知らせです🌸&#10;..."
               rows={8}
               className="rounded-none focus-visible:ring-0 focus-visible:border-gold" />
-            <p className="text-[10px] text-muted-foreground mt-2">
-              {`{{name}}`} はお客様のお名前に自動置換されます。 / {message.length} / 1000文字
-            </p>
+            <div className="flex items-center gap-2 mt-2 flex-wrap">
+              <Sparkles className="w-3 h-3 text-primary" />
+              <Button size="sm" variant="outline" className="h-6 text-[10px]" disabled={aiBusy} onClick={() => aiAssist("polish")}>整える</Button>
+              <Button size="sm" variant="outline" className="h-6 text-[10px]" disabled={aiBusy} onClick={() => aiAssist("shorten")}>短く</Button>
+              <Button size="sm" variant="outline" className="h-6 text-[10px]" disabled={aiBusy} onClick={() => aiAssist("emoji")}>絵文字+</Button>
+              <Button size="sm" variant="outline" className="h-6 text-[10px]" disabled={aiBusy} onClick={() => aiAssist("tone")}>丁寧に</Button>
+              {aiBusy && <span className="text-[10px] text-muted-foreground">処理中...</span>}
+              <span className="text-[10px] text-muted-foreground ml-auto">{message.length} / 1000</span>
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-1">{`{{name}}`} はお客様のお名前に自動置換されます</p>
           </div>
 
           <AlertDialog>
