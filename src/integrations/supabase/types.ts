@@ -55,6 +55,7 @@ export type Database = {
           menu: string
           notes: string | null
           owner_id: string
+          revenue: number | null
           status: Database["public"]["Enums"]["booking_status"]
           updated_at: string
         }
@@ -69,6 +70,7 @@ export type Database = {
           menu: string
           notes?: string | null
           owner_id: string
+          revenue?: number | null
           status?: Database["public"]["Enums"]["booking_status"]
           updated_at?: string
         }
@@ -83,6 +85,7 @@ export type Database = {
           menu?: string
           notes?: string | null
           owner_id?: string
+          revenue?: number | null
           status?: Database["public"]["Enums"]["booking_status"]
           updated_at?: string
         }
@@ -422,6 +425,11 @@ export type Database = {
         Args: { last_visit: string }
         Returns: Database["public"]["Enums"]["customer_segment"]
       }
+      calculate_vip_tier: {
+        Args: { _total_spent: number; _visit_count: number }
+        Returns: string
+      }
+      create_birthday_jobs_for_month: { Args: never; Returns: number }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
