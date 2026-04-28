@@ -6,7 +6,7 @@ import PageHeader from "@/components/PageHeader";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Loader2, Star, MessageCircle } from "lucide-react";
+import { Loader2, Star, MessageCircle, Bell } from "lucide-react";
 import { toast } from "sonner";
 
 const Settings = () => {
@@ -18,6 +18,7 @@ const Settings = () => {
     google_review_url: "",
     line_add_friend_url: "",
     line_channel_access_token: "",
+    owner_notification_email: "",
   });
 
   useEffect(() => {
@@ -25,7 +26,7 @@ const Settings = () => {
     (async () => {
       const { data } = await supabase
         .from("profiles")
-        .select("salon_name, google_review_url, line_add_friend_url, line_channel_access_token")
+        .select("salon_name, google_review_url, line_add_friend_url, line_channel_access_token, owner_notification_email")
         .eq("id", user.id)
         .maybeSingle();
       if (data) {
@@ -34,6 +35,7 @@ const Settings = () => {
           google_review_url: data.google_review_url || "",
           line_add_friend_url: data.line_add_friend_url || "",
           line_channel_access_token: data.line_channel_access_token || "",
+          owner_notification_email: (data as any).owner_notification_email || "",
         });
       }
       setLoading(false);
