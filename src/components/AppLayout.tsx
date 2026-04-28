@@ -65,7 +65,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
             onClick={handleSignOut}
           >
             <LogOut className="w-3.5 h-3.5 mr-2 stroke-[1.5]" />
-            SIGN OUT
+            ログアウト <span className="ml-2 opacity-50 text-[9px]">SIGN OUT</span>
           </Button>
         </div>
       </aside>

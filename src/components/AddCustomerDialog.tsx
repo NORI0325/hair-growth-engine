@@ -65,46 +65,46 @@ const AddCustomerDialog = ({ open, onOpenChange, onAdded }: Props) => {
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-5 mt-4">
           <div>
-            <Label className="eyebrow mb-2 block">Full Name *</Label>
+            <Label className="mb-2 block font-serif text-sm">お名前 <span className="text-destructive">*</span> <span className="eyebrow text-[9px] text-muted-foreground ml-1">Full Name</span></Label>
             <Input value={form.full_name} onChange={e => setForm({...form, full_name: e.target.value})}
               required className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label className="eyebrow mb-2 block">Phone</Label>
+              <Label className="mb-2 block font-serif text-sm">電話番号 <span className="eyebrow text-[9px] text-muted-foreground ml-1">Phone</span></Label>
               <Input type="tel" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})}
                 className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
             </div>
             <div>
-              <Label className="eyebrow mb-2 block">Email</Label>
+              <Label className="mb-2 block font-serif text-sm">メール <span className="eyebrow text-[9px] text-muted-foreground ml-1">Email</span></Label>
               <Input type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})}
                 className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
+            </div>
           </div>
           <div>
-            <Label className="eyebrow mb-2 block">Birthday — for auto coupons</Label>
+            <Label className="mb-2 block font-serif text-sm">誕生日 <span className="eyebrow text-[9px] text-muted-foreground ml-1">Birthday — 誕生月クーポン自動配信</span></Label>
             <Input type="date" value={form.birthday} onChange={e => setForm({...form, birthday: e.target.value})}
               className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
           </div>
-          </div>
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <Label className="eyebrow mb-2 block">Last Visit</Label>
+              <Label className="mb-2 block font-serif text-sm">最終来店 <span className="eyebrow text-[9px] text-muted-foreground ml-1">Last</span></Label>
               <Input type="date" value={form.last_visit_date} onChange={e => setForm({...form, last_visit_date: e.target.value})}
                 className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
             </div>
             <div>
-              <Label className="eyebrow mb-2 block">Visits</Label>
+              <Label className="mb-2 block font-serif text-sm">来店回数 <span className="eyebrow text-[9px] text-muted-foreground ml-1">Visits</span></Label>
               <Input type="number" min={0} value={form.visit_count} onChange={e => setForm({...form, visit_count: e.target.value})}
                 className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
             </div>
             <div>
-              <Label className="eyebrow mb-2 block">Spent (¥)</Label>
+              <Label className="mb-2 block font-serif text-sm">累計売上 <span className="eyebrow text-[9px] text-muted-foreground ml-1">¥</span></Label>
               <Input type="number" min={0} value={form.total_spent} onChange={e => setForm({...form, total_spent: e.target.value})}
                 className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
             </div>
           </div>
           <div>
-            <Label className="eyebrow mb-2 block">LINE User ID — for LINE delivery</Label>
+            <Label className="mb-2 block font-serif text-sm">LINEユーザーID <span className="eyebrow text-[9px] text-muted-foreground ml-1">LINE User ID — LINE配信用</span></Label>
             <Input value={form.line_user_id} onChange={e => setForm({...form, line_user_id: e.target.value})}
               placeholder="Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
               className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
@@ -112,7 +112,7 @@ const AddCustomerDialog = ({ open, onOpenChange, onAdded }: Props) => {
           <Button type="submit" disabled={loading}
             className="w-full rounded-none py-6 text-xs tracking-luxury bg-primary hover:bg-primary-glow">
             {loading && <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />}
-            ADD GUEST
+            お客様を追加 <span className="ml-2 opacity-60 text-[10px]">ADD GUEST</span>
           </Button>
         </form>
       </DialogContent>

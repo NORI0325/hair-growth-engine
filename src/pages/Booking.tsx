@@ -94,10 +94,10 @@ const Booking = () => {
             {time} のご来店をお待ちしております。
           </p>
           <div className="text-left text-xs space-y-3 max-w-xs mx-auto pt-6 border-t border-border">
-            <div className="flex justify-between"><span className="eyebrow">Date</span><span className="font-serif">{new Date(date).toLocaleDateString("ja-JP")}</span></div>
-            <div className="flex justify-between"><span className="eyebrow">Time</span><span className="font-serif">{time}</span></div>
-            <div className="flex justify-between"><span className="eyebrow">Menu</span><span className="font-serif">{menu}</span></div>
-            <div className="flex justify-between"><span className="eyebrow">Salon</span><span className="font-serif">{salonName}</span></div>
+            <div className="flex justify-between"><span className="font-serif text-muted-foreground">日付</span><span className="font-serif">{new Date(date).toLocaleDateString("ja-JP")}</span></div>
+            <div className="flex justify-between"><span className="font-serif text-muted-foreground">時間</span><span className="font-serif">{time}</span></div>
+            <div className="flex justify-between"><span className="font-serif text-muted-foreground">メニュー</span><span className="font-serif">{menu}</span></div>
+            <div className="flex justify-between"><span className="font-serif text-muted-foreground">サロン</span><span className="font-serif">{salonName}</span></div>
           </div>
         </div>
       </div>
@@ -131,13 +131,13 @@ const Booking = () => {
         {/* フォーム */}
         <div className="space-y-8 animate-fade-up animate-delay-200">
           <div>
-            <p className="eyebrow mb-3">No.01 — Date</p>
+            <p className="eyebrow mb-3">No.01 — ご希望日 / Date</p>
             <Input id="date" type="date" min={minDate} value={date} onChange={e => setDate(e.target.value)}
               className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
           </div>
 
           <div>
-            <p className="eyebrow mb-3">No.02 — Time</p>
+            <p className="eyebrow mb-3">No.02 — ご希望時間 / Time</p>
             <div className="grid grid-cols-5 gap-px bg-border">
               {TIMES.map(t => (
                 <button key={t} type="button" onClick={() => setTime(t)}
@@ -149,7 +149,7 @@ const Booking = () => {
           </div>
 
           <div>
-            <p className="eyebrow mb-3">No.03 — Menu</p>
+            <p className="eyebrow mb-3">No.03 — メニュー / Menu</p>
             <div className="grid grid-cols-2 gap-px bg-border">
               {MENUS.map(m => (
                 <button key={m} type="button" onClick={() => setMenu(m)}
@@ -161,14 +161,14 @@ const Booking = () => {
           </div>
 
           <div>
-            <Label htmlFor="notes" className="eyebrow mb-3 block">Notes (optional)</Label>
+            <Label htmlFor="notes" className="eyebrow mb-3 block">ご要望 / Notes（任意）</Label>
             <Textarea id="notes" rows={2} value={notes} onChange={e => setNotes(e.target.value)}
               className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold resize-none" />
           </div>
 
           <Button onClick={handleBook} disabled={booking} className="w-full rounded-none py-7 text-xs tracking-luxury bg-primary hover:bg-primary-glow shadow-elegant" size="lg">
             {booking ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> : null}
-            CONFIRM RESERVATION
+            この内容で予約する <span className="ml-2 opacity-60 text-[10px]">CONFIRM</span>
           </Button>
         </div>
 

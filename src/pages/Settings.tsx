@@ -67,7 +67,7 @@ const Settings = () => {
 
       <div className="max-w-2xl space-y-12">
         <section className="space-y-5">
-          <Label className="eyebrow block">Salon Name</Label>
+          <Label className="block font-serif text-sm">サロン名 <span className="eyebrow text-[9px] text-muted-foreground ml-1">Salon Name</span></Label>
           <Input value={form.salon_name} onChange={e => setForm({...form, salon_name: e.target.value})}
             className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
         </section>
@@ -82,7 +82,7 @@ const Settings = () => {
             Googleビジネスプロフィールの「クチコミを書く」短縮URL（g.page/r/... 形式）を貼り付けてください。
           </p>
           <div>
-            <Label className="eyebrow mb-2 block">Google Review URL</Label>
+            <Label className="mb-2 block font-serif text-sm">レビュー投稿URL <span className="eyebrow text-[9px] text-muted-foreground ml-1">Google Review URL</span></Label>
             <Input value={form.google_review_url} onChange={e => setForm({...form, google_review_url: e.target.value})}
               placeholder="https://g.page/r/..."
               className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
@@ -99,13 +99,13 @@ const Settings = () => {
             日本のサロン顧客の反応率が最も高い媒体です。
           </p>
           <div>
-            <Label className="eyebrow mb-2 block">LINE 友だち追加URL</Label>
+            <Label className="mb-2 block font-serif text-sm">LINE 友だち追加URL <span className="eyebrow text-[9px] text-muted-foreground ml-1">Add Friend</span></Label>
             <Input value={form.line_add_friend_url} onChange={e => setForm({...form, line_add_friend_url: e.target.value})}
               placeholder="https://lin.ee/xxxxxx"
               className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
           </div>
           <div>
-            <Label className="eyebrow mb-2 block">Channel Access Token</Label>
+            <Label className="mb-2 block font-serif text-sm">チャネルアクセストークン <span className="eyebrow text-[9px] text-muted-foreground ml-1">Channel Access Token</span></Label>
             <Input type="password" value={form.line_channel_access_token}
               onChange={e => setForm({...form, line_channel_access_token: e.target.value})}
               placeholder="長期トークン"
@@ -119,7 +119,7 @@ const Settings = () => {
         <Button onClick={save} disabled={saving}
           className="rounded-none px-12 py-6 text-xs tracking-luxury bg-primary hover:bg-primary-glow">
           {saving && <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />}
-          SAVE SETTINGS
+          設定を保存する <span className="ml-2 opacity-60 text-[10px]">SAVE</span>
         </Button>
       </div>
     </AppLayout>

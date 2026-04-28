@@ -19,10 +19,10 @@ interface Booking {
 }
 
 const statusInfo = (s: string) => {
-  if (s === "confirmed") return { label: "Confirmed", color: "text-gold" };
-  if (s === "completed") return { label: "Visited", color: "text-success" };
-  if (s === "cancelled") return { label: "Cancelled", color: "text-destructive" };
-  return { label: "Pending", color: "text-muted-foreground" };
+  if (s === "confirmed") return { label: "確定", color: "text-gold" };
+  if (s === "completed") return { label: "来店済", color: "text-success" };
+  if (s === "cancelled") return { label: "キャンセル", color: "text-destructive" };
+  return { label: "未確定", color: "text-muted-foreground" };
 };
 
 const Bookings = () => {
@@ -122,9 +122,9 @@ const Bookings = () => {
                           {b.campaign_id && <div className="text-[10px] mt-1 eyebrow text-gold">— from outreach</div>}
                         </div>
                         <div className="col-span-1">
-                          <span className={`inline-flex items-center gap-2 text-[10px] tracking-luxury ${status.color}`}>
+                          <span className={`inline-flex items-center gap-2 text-[11px] font-serif ${status.color}`}>
                             <span className="w-1 h-1 rounded-full bg-current" />
-                            {status.label.toUpperCase()}
+                            {status.label}
                           </span>
                         </div>
                         <div className="col-span-2 flex items-center justify-end gap-1">
