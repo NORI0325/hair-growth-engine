@@ -42,11 +42,34 @@ const LineBroadcast = () => {
   const [logs, setLogs] = useState<LogRow[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(true);
   const [counts, setCounts] = useState<Record<string, number>>({});
+  const [aiBusy, setAiBusy] = useState(false);
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [saveTitle, setSaveTitle] = useState("");
+  const [showLib, setShowLib] = useState(false);
+  const [showSave, setShowSave] = useState(false);
 
   const loadLogs = async () => {
     if (!user) return;
     setLoadingLogs(true);
     const { data } = await supabase
+      .from("line_message_log" as any)
+      .select("id, job_type, message, status, error, created_at, customer_id")
+      .eq("owner_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(50);
+    setLogs((data as any) || []);
+    setLoadingLogs(false);
+  };
+
+  const loadTemplates = async () => {
+    if (!user) return;
+    const { data } = await supabase
+      .from("line_templates")
+      .select("*")
+      .eq("owner_id", user.id)
+      .order("use_count", { ascending: false });
+    setTemplates(data || []);
+  };
       .from("line_message_log" as any)
       .select("id, job_type, message, status, error, created_at, customer_id")
       .eq("owner_id", user.id)
