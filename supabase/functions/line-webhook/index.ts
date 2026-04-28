@@ -111,6 +111,28 @@ Deno.serve(async (req) => {
 
       if (ev.type === "message" && ev.message?.type === "text" && replyToken && userId) {
         const text: string = ev.message.text || "";
+
+        // リッチメニュー定型文への応答
+        if (text === "特典を見る" || text === "特典") {
+          const { data: cust } = await supabase
+            .from("customers")
+            .select("full_name")
+            .eq("owner_id", owner.id)
+            .eq("line_user_id", userId)
+            .maybeSingle();
+          const name = cust?.full_name ? `${cust.full_name}様` : "お客様";
+          const msg = cust
+            ? `🎁 ${name}\n\n現在ご利用いただける特典：\n・次回ご予約で20%OFF\n・ご紹介で1,000円分クーポン\n・お誕生月に30%OFFクーポン配布\n\nご予約は「予約する」ボタンからどうぞ🌸`
+            : `🎁 まずはLINE連携をお願いします\n\nご登録のお電話番号をこのトークに送信してください（例：090-1234-5678）。連携後、特典クーポンをお届けします。`;
+          await replyLine(accessToken, replyToken, msg);
+          continue;
+        }
+        if (text === "お問合せ") {
+          await replyLine(accessToken, replyToken,
+            `お問合せありがとうございます🙇‍♀️\n\nご質問・ご要望はこのトークに直接お送りください。スタッフが営業時間内に確認のうえ返信いたします。\n\n※ ご予約の変更・キャンセルは「予約する」ボタンから行えます。`);
+          continue;
+        }
+
         const phone = normalizePhone(text);
 
         if (!phone) {
