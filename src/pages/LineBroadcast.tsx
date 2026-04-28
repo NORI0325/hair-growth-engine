@@ -70,14 +70,6 @@ const LineBroadcast = () => {
       .order("use_count", { ascending: false });
     setTemplates(data || []);
   };
-      .from("line_message_log" as any)
-      .select("id, job_type, message, status, error, created_at, customer_id")
-      .eq("owner_id", user.id)
-      .order("created_at", { ascending: false })
-      .limit(50);
-    setLogs((data as any) || []);
-    setLoadingLogs(false);
-  };
 
   const loadCounts = async () => {
     if (!user) return;
