@@ -103,7 +103,7 @@ Deno.serve(async (req) => {
       await supabase.from("line_message_log").insert(logs as any);
     }
 
-    return new Response(JSON.stringify({ success: true, total: list.length, sent, failed }),
+    return new Response(JSON.stringify({ success: true, total: list.length, sent, failed, skipped }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
     console.error("[line-broadcast] error", e);
