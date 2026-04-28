@@ -17,6 +17,7 @@ const schema = z.object({
   last_visit_date: z.string().optional(),
   visit_count: z.coerce.number().int().min(0).max(10000).optional(),
   total_spent: z.coerce.number().int().min(0).max(100000000).optional(),
+  line_user_id: z.string().trim().max(100).optional(),
 });
 
 interface Props {
