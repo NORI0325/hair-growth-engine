@@ -19,12 +19,15 @@ const Settings = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [testingLine, setTestingLine] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [lineTestUserId, setLineTestUserId] = useState("");
   const [form, setForm] = useState({
     salon_name: "",
     google_review_url: "",
     line_add_friend_url: "",
     line_channel_access_token: "",
+    line_channel_secret: "",
     owner_notification_email: "",
     test_mode: false,
   });
@@ -34,7 +37,7 @@ const Settings = () => {
     (async () => {
       const { data } = await supabase
         .from("profiles")
-        .select("salon_name, google_review_url, line_add_friend_url, line_channel_access_token, owner_notification_email, test_mode")
+        .select("salon_name, google_review_url, line_add_friend_url, line_channel_access_token, line_channel_secret, owner_notification_email, test_mode")
         .eq("id", user.id)
         .maybeSingle();
       if (data) {
@@ -43,6 +46,7 @@ const Settings = () => {
           google_review_url: data.google_review_url || "",
           line_add_friend_url: data.line_add_friend_url || "",
           line_channel_access_token: data.line_channel_access_token || "",
+          line_channel_secret: (data as any).line_channel_secret || "",
           owner_notification_email: (data as any).owner_notification_email || "",
           test_mode: (data as any).test_mode || false,
         });
@@ -61,6 +65,7 @@ const Settings = () => {
         google_review_url: form.google_review_url.trim() || null,
         line_add_friend_url: form.line_add_friend_url.trim() || null,
         line_channel_access_token: form.line_channel_access_token.trim() || null,
+        line_channel_secret: form.line_channel_secret.trim() || null,
         owner_notification_email: form.owner_notification_email.trim() || null,
         test_mode: form.test_mode,
       } as any)
@@ -68,6 +73,28 @@ const Settings = () => {
     setSaving(false);
     if (error) { toast.error("保存に失敗しました"); return; }
     toast.success("設定を保存しました");
+  };
+
+  const sendLineTest = async () => {
+    if (!form.line_channel_access_token.trim()) {
+      toast.error("先にチャネルアクセストークンを保存してください");
+      return;
+    }
+    if (!lineTestUserId.trim()) {
+      toast.error("送信先のLINE UserIDを入力してください");
+      return;
+    }
+    setTestingLine(true);
+    const { data, error } = await supabase.functions.invoke("line-test-push", {
+      body: { lineUserId: lineTestUserId.trim() },
+    });
+    setTestingLine(false);
+    if (error || !(data as any)?.success) {
+      const msg = (data as any)?.message || error?.message || "送信に失敗しました";
+      toast.error(msg);
+      return;
+    }
+    toast.success("✅ LINEへテスト送信しました。トークを確認してください。");
   };
 
   const sendTestEmail = async () => {
