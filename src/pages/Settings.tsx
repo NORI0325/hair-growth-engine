@@ -52,7 +52,8 @@ const Settings = () => {
         google_review_url: form.google_review_url.trim() || null,
         line_add_friend_url: form.line_add_friend_url.trim() || null,
         line_channel_access_token: form.line_channel_access_token.trim() || null,
-      })
+        owner_notification_email: form.owner_notification_email.trim() || null,
+      } as any)
       .eq("id", user.id);
     setSaving(false);
     if (error) { toast.error("保存に失敗しました"); return; }
