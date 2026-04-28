@@ -32,19 +32,19 @@ const Dashboard = () => {
       const atRiskCutoff = new Date();  atRiskCutoff.setDate(atRiskCutoff.getDate() - 90);
 
       const [allCust, dormant, atRisk, bookings, campaigns, allCustomersData, monthRevenue, campaignBookings] = await Promise.all([
-        supabase.from("customers").select("id", { count: "exact", head: true }),
-        supabase.from("customers").select("id", { count: "exact", head: true })
+        supabase.from("customers").select("id", { count: "exact", head: true }).eq("is_test", false),
+        supabase.from("customers").select("id", { count: "exact", head: true }).eq("is_test", false)
           .lt("last_visit_date", dormantCutoff.toISOString().split("T")[0]),
-        supabase.from("customers").select("id", { count: "exact", head: true })
+        supabase.from("customers").select("id", { count: "exact", head: true }).eq("is_test", false)
           .gte("last_visit_date", dormantCutoff.toISOString().split("T")[0])
           .lt("last_visit_date", atRiskCutoff.toISOString().split("T")[0]),
-        supabase.from("bookings").select("id", { count: "exact", head: true })
+        supabase.from("bookings").select("id", { count: "exact", head: true }).eq("is_test", false)
           .gte("booking_date", monthStart),
         supabase.from("campaigns").select("id", { count: "exact", head: true })
           .eq("status", "sent"),
-        supabase.from("customers").select("visit_count, total_spent, birthday").limit(5000),
-        supabase.from("bookings").select("revenue").gte("booking_date", monthStart).eq("status", "completed"),
-        supabase.from("bookings").select("id", { count: "exact", head: true })
+        supabase.from("customers").select("visit_count, total_spent, birthday").eq("is_test", false).limit(5000),
+        supabase.from("bookings").select("revenue").eq("is_test", false).gte("booking_date", monthStart).eq("status", "completed"),
+        supabase.from("bookings").select("id", { count: "exact", head: true }).eq("is_test", false)
           .not("campaign_id", "is", null)
           .gte("booking_date", monthStart),
       ]);
