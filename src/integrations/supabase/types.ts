@@ -427,6 +427,9 @@ export type Database = {
           owner_notification_email: string | null
           public_menus: string[] | null
           public_slug: string | null
+          reactivation_enabled: boolean
+          reminder_enabled: boolean
+          reminder_hour: number
           salon_name: string | null
           test_mode: boolean
           updated_at: string
@@ -444,6 +447,9 @@ export type Database = {
           owner_notification_email?: string | null
           public_menus?: string[] | null
           public_slug?: string | null
+          reactivation_enabled?: boolean
+          reminder_enabled?: boolean
+          reminder_hour?: number
           salon_name?: string | null
           test_mode?: boolean
           updated_at?: string
@@ -461,6 +467,9 @@ export type Database = {
           owner_notification_email?: string | null
           public_menus?: string[] | null
           public_slug?: string | null
+          reactivation_enabled?: boolean
+          reminder_enabled?: boolean
+          reminder_hour?: number
           salon_name?: string | null
           test_mode?: boolean
           updated_at?: string
@@ -568,6 +577,7 @@ export type Database = {
         Returns: string
       }
       create_birthday_jobs_for_month: { Args: never; Returns: number }
+      create_reactivation_jobs: { Args: never; Returns: number }
       delete_email: {
         Args: { message_id: number; queue_name: string }
         Returns: boolean
