@@ -80,14 +80,17 @@ Deno.serve(async (req) => {
         const bookingLink = tokenRow?.token ? `${APP_ORIGIN}/book/${tokenRow.token}` : "";
         const lineToken = profile?.line_channel_access_token;
 
-        let body = "";
-        let subject = "";
+        let templateName = "";
+        let templateData: Record<string, any> = {};
+        let body = ""; // LINE用テキスト
 
         if (job.job_type === "thank_you") {
-          subject = `${salonName}より お礼とお得なご案内`;
+          templateName = "thank-you";
+          templateData = { customerName: customer.full_name, salonName, bookingLink, menu: (job.payload as any)?.menu };
           body = `${customer.full_name}様\n本日はご来店ありがとうございました。\n次回ご予約で20%OFFクーポンをご用意しました。\n→ ${bookingLink}\n\n${salonName}`;
         } else if (job.job_type === "birthday") {
-          subject = `${salonName}より お誕生月おめでとうございます`;
+          templateName = "birthday";
+          templateData = { customerName: customer.full_name, salonName, bookingLink };
           body = `${customer.full_name}様\nお誕生月おめでとうございます🎂\n30%OFFのバースデークーポンをお贈りします。\n→ ${bookingLink}\n\n${salonName}`;
         } else if (job.job_type === "review_request") {
           const reviewUrl = profile?.google_review_url;
@@ -95,13 +98,21 @@ Deno.serve(async (req) => {
             await supabase.from("scheduled_jobs").update({ status: "skipped", error: "no_review_url" }).eq("id", job.id);
             continue;
           }
-          subject = `${salonName}より ご感想のお願い`;
+          templateName = "review-request";
+          templateData = { customerName: customer.full_name, salonName, reviewUrl };
           body = `${customer.full_name}様\nいつもご来店ありがとうございます。\nもしよろしければGoogleでサロンのご感想をいただけますと大変嬉しいです🙇‍♀️\n→ ${reviewUrl}\n\n${salonName}`;
         }
 
-        // Email（モック：本番はLovable Emails等）
-        if (customer.email) {
-          console.log(`[EMAIL] To: ${customer.email}\nSubject: ${subject}\n${body}`);
+        // メール送信（送信キュー経由）
+        if (customer.email && templateName) {
+          await supabase.functions.invoke("send-transactional-email", {
+            body: {
+              templateName,
+              recipientEmail: customer.email,
+              idempotencyKey: `${job.job_type}-${job.id}`,
+              templateData,
+            },
+          });
         }
 
         // LINE Push（設定済みの場合）
