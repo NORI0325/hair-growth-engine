@@ -299,7 +299,15 @@ const Settings = () => {
               <li>LINE Developers コンソール → Messaging API設定</li>
               <li>「チャネルアクセストークン（長期）」を発行 → 下に貼り付け</li>
               <li>「チャネル基本設定」→「チャネルシークレット」をコピー → 下に貼り付け</li>
-              <li>Webhook URLに次を設定：<br/><code className="text-[10px] text-gold break-all">https://miyedioemkzhetphjzzg.supabase.co/functions/v1/line-webhook</code></li>
+              <li>
+                Webhook URLに次を設定（コピーして貼り付け）：
+                <div className="mt-1 flex items-center gap-2">
+                  <code className="text-[10px] text-gold break-all flex-1">{WEBHOOK_URL}</code>
+                  <button type="button" onClick={copyWebhook} className="text-gold hover:text-gold/70" aria-label="copy">
+                    <Copy className="w-3 h-3" />
+                  </button>
+                </div>
+              </li>
               <li>「Webhookの利用」をオン、「応答メッセージ」「あいさつメッセージ」をオフ</li>
             </ol>
           </div>
