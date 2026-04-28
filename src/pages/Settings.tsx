@@ -6,7 +6,7 @@ import PageHeader from "@/components/PageHeader";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Loader2, Star, MessageCircle } from "lucide-react";
+import { Loader2, Star, MessageCircle, Bell } from "lucide-react";
 import { toast } from "sonner";
 
 const Settings = () => {
@@ -18,6 +18,7 @@ const Settings = () => {
     google_review_url: "",
     line_add_friend_url: "",
     line_channel_access_token: "",
+    owner_notification_email: "",
   });
 
   useEffect(() => {
@@ -25,7 +26,7 @@ const Settings = () => {
     (async () => {
       const { data } = await supabase
         .from("profiles")
-        .select("salon_name, google_review_url, line_add_friend_url, line_channel_access_token")
+        .select("salon_name, google_review_url, line_add_friend_url, line_channel_access_token, owner_notification_email")
         .eq("id", user.id)
         .maybeSingle();
       if (data) {
@@ -34,6 +35,7 @@ const Settings = () => {
           google_review_url: data.google_review_url || "",
           line_add_friend_url: data.line_add_friend_url || "",
           line_channel_access_token: data.line_channel_access_token || "",
+          owner_notification_email: (data as any).owner_notification_email || "",
         });
       }
       setLoading(false);
@@ -50,7 +52,8 @@ const Settings = () => {
         google_review_url: form.google_review_url.trim() || null,
         line_add_friend_url: form.line_add_friend_url.trim() || null,
         line_channel_access_token: form.line_channel_access_token.trim() || null,
-      })
+        owner_notification_email: form.owner_notification_email.trim() || null,
+      } as any)
       .eq("id", user.id);
     setSaving(false);
     if (error) { toast.error("保存に失敗しました"); return; }
@@ -70,6 +73,25 @@ const Settings = () => {
           <Label className="block font-serif text-sm">サロン名 <span className="eyebrow text-[9px] text-muted-foreground ml-1">Salon Name</span></Label>
           <Input value={form.salon_name} onChange={e => setForm({...form, salon_name: e.target.value})}
             className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
+        </section>
+
+        <section className="space-y-5 pt-8 border-t border-border">
+          <div className="flex items-center gap-3">
+            <Bell className="w-4 h-4 text-gold" />
+            <h2 className="display text-xl">予約通知メール</h2>
+          </div>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            新規予約・キャンセルが入った瞬間に、ここで指定したメールアドレスへ即時通知が届きます。
+            スマホのメールアプリで受信すれば、予約の見逃しを防げます。
+          </p>
+          <div>
+            <Label className="mb-2 block font-serif text-sm">通知の宛先 <span className="eyebrow text-[9px] text-muted-foreground ml-1">Notification Email</span></Label>
+            <Input type="email" value={form.owner_notification_email}
+              onChange={e => setForm({...form, owner_notification_email: e.target.value})}
+              placeholder="info@arunehair.com"
+              className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
+            <p className="text-[10px] text-muted-foreground mt-2">空欄の場合は通知されません</p>
+          </div>
         </section>
 
         <section className="space-y-5 pt-8 border-t border-border">

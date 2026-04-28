@@ -66,6 +66,13 @@ const PublicBooking = () => {
       toast.error("ご予約に失敗しました。お手数ですが再度お試しください。");
       return;
     }
+    // オーナーへメール通知（失敗してもユーザー体験には影響しない）
+    const bookingId = (data as any)?.booking_id;
+    if (bookingId) {
+      supabase.functions.invoke("notify-owner-booking", {
+        body: { bookingId, eventType: "created" },
+      }).catch(() => {});
+    }
     setCompleted(true);
   };
 

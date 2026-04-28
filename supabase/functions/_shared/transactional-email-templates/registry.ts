@@ -13,10 +13,12 @@ import { template as thankYou } from './thank-you.tsx'
 import { template as birthday } from './birthday.tsx'
 import { template as reviewRequest } from './review-request.tsx'
 import { template as bookingConfirmation } from './booking-confirmation.tsx'
+import { template as bookingAlertOwner } from './booking-alert-owner.tsx'
 
 export const TEMPLATES: Record<string, TemplateEntry> = {
   'thank-you': thankYou,
   'birthday': birthday,
   'review-request': reviewRequest,
   'booking-confirmation': bookingConfirmation,
+  'booking-alert-owner': bookingAlertOwner,
 }
