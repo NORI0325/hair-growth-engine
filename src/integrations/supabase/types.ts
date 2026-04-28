@@ -316,25 +316,79 @@ export type Database = {
       }
       profiles: {
         Row: {
+          close_time: string | null
           created_at: string
           full_name: string | null
           id: string
+          open_time: string | null
+          public_menus: string[] | null
+          public_slug: string | null
           salon_name: string | null
           updated_at: string
         }
         Insert: {
+          close_time?: string | null
           created_at?: string
           full_name?: string | null
           id: string
+          open_time?: string | null
+          public_menus?: string[] | null
+          public_slug?: string | null
           salon_name?: string | null
           updated_at?: string
         }
         Update: {
+          close_time?: string | null
           created_at?: string
           full_name?: string | null
           id?: string
+          open_time?: string | null
+          public_menus?: string[] | null
+          public_slug?: string | null
           salon_name?: string | null
           updated_at?: string
+        }
+        Relationships: []
+      }
+      scheduled_jobs: {
+        Row: {
+          booking_id: string | null
+          created_at: string
+          customer_id: string
+          error: string | null
+          id: string
+          job_type: string
+          owner_id: string
+          payload: Json | null
+          scheduled_for: string
+          sent_at: string | null
+          status: string
+        }
+        Insert: {
+          booking_id?: string | null
+          created_at?: string
+          customer_id: string
+          error?: string | null
+          id?: string
+          job_type: string
+          owner_id: string
+          payload?: Json | null
+          scheduled_for: string
+          sent_at?: string | null
+          status?: string
+        }
+        Update: {
+          booking_id?: string | null
+          created_at?: string
+          customer_id?: string
+          error?: string | null
+          id?: string
+          job_type?: string
+          owner_id?: string
+          payload?: Json | null
+          scheduled_for?: string
+          sent_at?: string | null
+          status?: string
         }
         Relationships: []
       }
@@ -374,6 +428,19 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      public_create_booking: {
+        Args: {
+          _booking_date: string
+          _booking_time: string
+          _email: string
+          _full_name: string
+          _menu: string
+          _notes: string
+          _phone: string
+          _salon_slug: string
+        }
+        Returns: Json
       }
     }
     Enums: {
