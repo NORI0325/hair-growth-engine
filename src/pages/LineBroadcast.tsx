@@ -6,12 +6,16 @@ import PageHeader from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Send, MessageCircle, History } from "lucide-react";
+import { Loader2, Send, MessageCircle, History, Sparkles, BookmarkPlus, BookOpen, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { Input } from "@/components/ui/input";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter,
+} from "@/components/ui/dialog";
 
 type LogRow = {
   id: string;
