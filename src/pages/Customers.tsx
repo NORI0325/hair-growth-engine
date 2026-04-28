@@ -21,6 +21,8 @@ interface Customer {
   last_visit_date: string | null;
   visit_count: number;
   total_spent: number;
+  line_user_id?: string | null;
+  notes?: string | null;
 }
 
 const segmentOf = (lastVisit: string | null): "active" | "at_risk" | "dormant" | "new" => {
