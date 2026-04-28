@@ -13,6 +13,7 @@ const schema = z.object({
   full_name: z.string().trim().min(1, "お名前は必須です").max(100),
   phone: z.string().trim().max(20).optional(),
   email: z.string().trim().email("正しいメールアドレス").max(255).optional().or(z.literal("")),
+  birthday: z.string().optional(),
   last_visit_date: z.string().optional(),
   visit_count: z.coerce.number().int().min(0).max(10000).optional(),
   total_spent: z.coerce.number().int().min(0).max(100000000).optional(),
@@ -27,7 +28,7 @@ interface Props {
 const AddCustomerDialog = ({ open, onOpenChange, onAdded }: Props) => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState({ full_name: "", phone: "", email: "", last_visit_date: "", visit_count: "0", total_spent: "0" });
+  const [form, setForm] = useState({ full_name: "", phone: "", email: "", birthday: "", last_visit_date: "", visit_count: "0", total_spent: "0" });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,6 +41,7 @@ const AddCustomerDialog = ({ open, onOpenChange, onAdded }: Props) => {
       full_name: parsed.data.full_name,
       phone: parsed.data.phone || null,
       email: parsed.data.email || null,
+      birthday: parsed.data.birthday || null,
       last_visit_date: parsed.data.last_visit_date || null,
       visit_count: parsed.data.visit_count ?? 0,
       total_spent: parsed.data.total_spent ?? 0,
@@ -47,7 +49,7 @@ const AddCustomerDialog = ({ open, onOpenChange, onAdded }: Props) => {
     setLoading(false);
     if (error) { toast.error("登録に失敗しました"); return; }
     toast.success("顧客を追加しました");
-    setForm({ full_name: "", phone: "", email: "", last_visit_date: "", visit_count: "0", total_spent: "0" });
+    setForm({ full_name: "", phone: "", email: "", birthday: "", last_visit_date: "", visit_count: "0", total_spent: "0" });
     onOpenChange(false);
     onAdded();
   };
