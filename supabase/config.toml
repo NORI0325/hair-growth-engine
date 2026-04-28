@@ -32,3 +32,9 @@ verify_jwt = false
 
 [functions.line-test-push]
 verify_jwt = true
+
+[functions.line-setup-rich-menu]
+verify_jwt = true
+
+[functions.create-reactivation-jobs]
+verify_jwt = false
