@@ -162,13 +162,21 @@ Deno.serve(async (req) => {
         sms_sent: false,
       };
 
-      // メール（現在はログのみ。Lovable Email Domain設定後に実装拡張）
+      // メール（送信キュー経由で実配信）
       if (campaign.send_email && c.email) {
-        // TODO: 本番ではLovable Emailsまたは設定したメールサービスを使用
-        console.log(`[EMAIL] To: ${c.email}, Subject: ${campaign.email_subject}`);
-        console.log(`Body: ${renderTemplate(campaign.email_body, vars)}`);
-        send.email_sent = true;
-        emailSuccess++;
+        const r = await supabase.functions.invoke("send-transactional-email", {
+          body: {
+            templateName: "thank-you",
+            recipientEmail: c.email,
+            idempotencyKey: `campaign-${campaign_id}-${c.id}`,
+            templateData: {
+              customerName: c.full_name,
+              salonName: ownerProfile?.salon_name || "サロン",
+              bookingLink,
+            },
+          },
+        });
+        if (!r.error) { send.email_sent = true; emailSuccess++; }
       }
 
       // SMS
