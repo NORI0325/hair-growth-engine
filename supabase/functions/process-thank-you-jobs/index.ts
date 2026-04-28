@@ -80,9 +80,40 @@ Deno.serve(async (req) => {
         const bookingLink = tokenRow?.token ? `${APP_ORIGIN}/book/${tokenRow.token}` : "";
         const lineToken = profile?.line_channel_access_token;
 
-        let templateName = "";
-        let templateData: Record<string, any> = {};
-        let body = ""; // LINE用テキスト
+        // === テンプレート上書き取得（チャネル別） ===
+        const jobTypeToTemplateKey: Record<string, string> = {
+          thank_you: "thank-you", birthday: "birthday", review_request: "review-request",
+          reminder: "booking-reminder", reactivation: "reactivation",
+          aftercare: "aftercare", next_suggestion: "next-suggestion",
+        };
+        const tmplKey = jobTypeToTemplateKey[job.job_type] || job.job_type;
+        const channelForOverride = (lineToken && customer.line_user_id) ? "line" : "email";
+        const { data: override } = await supabase
+          .from("template_overrides")
+          .select("*")
+          .eq("owner_id", job.owner_id)
+          .eq("channel", channelForOverride)
+          .eq("template_key", tmplKey)
+          .maybeSingle();
+
+        // 無効化されていたらスキップ
+        if (override && override.enabled === false) {
+          await supabase.from("scheduled_jobs").update({ status: "skipped", error: "template_disabled" }).eq("id", job.id);
+          continue;
+        }
+
+        // クーポン取得
+        let couponText = "";
+        if (override?.coupon_id) {
+          const { data: coupon } = await supabase
+            .from("coupons")
+            .select("title, description, discount_type, discount_value, expires_at")
+            .eq("id", override.coupon_id).maybeSingle();
+          if (coupon) {
+            const value = coupon.discount_type === "percent" ? `${coupon.discount_value}%OFF` : `¥${coupon.discount_value}OFF`;
+            couponText = `\n\n🎁 ${coupon.title} (${value})${coupon.expires_at ? ` ※${coupon.expires_at}まで` : ""}`;
+          }
+        }
 
         if (job.job_type === "thank_you") {
           templateName = "thank-you";
