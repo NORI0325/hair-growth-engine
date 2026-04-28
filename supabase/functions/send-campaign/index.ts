@@ -41,6 +41,24 @@ const sendSMS = async (to: string, body: string): Promise<{ ok: boolean; error?:
   }
 };
 
+// LINE Push送信
+const sendLine = async (token: string, userId: string, text: string): Promise<{ ok: boolean; error?: string }> => {
+  try {
+    const res = await fetch("https://api.line.me/v2/bot/message/push", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ to: userId, messages: [{ type: "text", text: text.slice(0, 4900) }] }),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      return { ok: false, error: `LINE ${res.status}: ${body.slice(0, 200)}` };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "unknown" };
+  }
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
