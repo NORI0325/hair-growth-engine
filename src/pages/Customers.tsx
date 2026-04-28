@@ -120,26 +120,36 @@ const Customers = () => {
         <div className="border-t border-border">
           <div className="grid grid-cols-12 gap-4 py-4 border-b border-border eyebrow text-[10px]">
             <div className="col-span-3">Name</div>
-            <div className="col-span-4">Contact</div>
+            <div className="col-span-3">Contact</div>
             <div className="col-span-2">Last Visit</div>
             <div className="col-span-1 text-right">Visits</div>
+            <div className="col-span-1 text-right">Tier</div>
             <div className="col-span-2 text-right">Segment</div>
           </div>
           {filtered.slice(0, 200).map(c => {
             const seg = segmentOf(c.last_visit_date);
             const info = segmentInfo[seg];
+            const tier = calculateVipTier(c.visit_count, c.total_spent);
+            const t = tierInfo[tier];
+            const birthdayThisMonth = isBirthdayMonth(c.birthday);
             return (
-              <div key={c.id} className="grid grid-cols-12 gap-4 py-5 border-b border-border/60 hover:bg-secondary/30 transition-colors items-center">
+              <div key={c.id} className={`grid grid-cols-12 gap-4 py-5 border-b border-border/60 hover:bg-secondary/30 transition-colors items-center ${t.bg}`}>
                 <div className="col-span-3">
-                  <div className="font-serif text-sm">{c.full_name}</div>
+                  <div className="font-serif text-sm flex items-center gap-2">
+                    {c.full_name}
+                    {birthdayThisMonth && <span title="今月誕生日" className="text-[10px] text-gold">🎂</span>}
+                  </div>
                   <div className="text-[11px] text-muted-foreground">¥{c.total_spent.toLocaleString()}</div>
                 </div>
-                <div className="col-span-4 text-xs text-muted-foreground">
-                  <div>{c.email || "—"}</div>
+                <div className="col-span-3 text-xs text-muted-foreground">
+                  <div className="truncate">{c.email || "—"}</div>
                   <div>{c.phone || "—"}</div>
                 </div>
                 <div className="col-span-2 text-xs font-serif-en">{c.last_visit_date || "—"}</div>
                 <div className="col-span-1 text-right font-serif">{c.visit_count}</div>
+                <div className="col-span-1 text-right">
+                  <span className={`text-[10px] tracking-luxury ${t.color}`}>{t.en.toUpperCase()}</span>
+                </div>
                 <div className="col-span-2 text-right">
                   <span className={`inline-flex items-center gap-2 text-[10px] tracking-luxury ${info.color}`}>
                     <span className="w-1 h-1 rounded-full bg-current" />
