@@ -77,7 +77,12 @@ const AddCustomerDialog = ({ open, onOpenChange, onAdded }: Props) => {
               <Label className="eyebrow mb-2 block">Email</Label>
               <Input type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})}
                 className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
-            </div>
+          </div>
+          <div>
+            <Label className="eyebrow mb-2 block">Birthday — for auto coupons</Label>
+            <Input type="date" value={form.birthday} onChange={e => setForm({...form, birthday: e.target.value})}
+              className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
+          </div>
           </div>
           <div className="grid grid-cols-3 gap-4">
             <div>
