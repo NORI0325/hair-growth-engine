@@ -195,7 +195,7 @@ const Settings = () => {
                 {form.test_mode ? "🧪 ON — テスト中の予約は集計から除外されます" : "● OFF — 通常運用中"}
               </div>
             </div>
-            <Switch checked={form.test_mode} onCheckedChange={v => setForm({...form, test_mode: v})} />
+            <Switch checked={form.test_mode} onCheckedChange={toggleTestMode} />
           </div>
 
           <AlertDialog>
