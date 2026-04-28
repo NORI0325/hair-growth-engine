@@ -13,6 +13,8 @@ interface Booking {
   menu: string;
   notes: string | null;
   status: string;
+  revenue: number | null;
+  campaign_id: string | null;
   customers: { full_name: string; phone: string | null } | null;
 }
 
@@ -31,7 +33,7 @@ const Bookings = () => {
     setLoading(true);
     const { data } = await supabase
       .from("bookings")
-      .select("id, booking_date, booking_time, menu, notes, status, customers(full_name, phone)")
+      .select("id, booking_date, booking_time, menu, notes, status, revenue, campaign_id, customers(full_name, phone)")
       .order("booking_date", { ascending: true })
       .order("booking_time", { ascending: true });
     if (data) setBookings(data as any);
@@ -40,11 +42,21 @@ const Bookings = () => {
 
   useEffect(() => { load(); }, []);
 
-  const updateStatus = async (id: string, status: "completed" | "cancelled" | "confirmed") => {
-    const { error } = await supabase.from("bookings").update({ status }).eq("id", id);
+  const updateStatus = async (id: string, status: "completed" | "cancelled" | "confirmed", revenue?: number) => {
+    const update: any = { status };
+    if (revenue != null) update.revenue = revenue;
+    const { error } = await supabase.from("bookings").update(update).eq("id", id);
     if (error) { toast.error("更新に失敗しました"); return; }
     toast.success("ステータスを更新しました");
     load();
+  };
+
+  const handleComplete = (b: Booking) => {
+    const input = window.prompt(`${b.customers?.full_name || "お客様"}様の売上金額を入力してください（¥）`, "0");
+    if (input === null) return;
+    const amount = parseInt(input.replace(/[^\d]/g, ""), 10);
+    if (isNaN(amount) || amount < 0) { toast.error("正しい金額を入力してください"); return; }
+    updateStatus(b.id, "completed", amount);
   };
 
   const grouped = bookings.reduce((acc, b) => {
