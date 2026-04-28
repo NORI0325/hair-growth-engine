@@ -74,7 +74,10 @@ Deno.serve(async (req) => {
     }
 
     const { data: targets } = await q.limit(2000);
-    const list = targets || [];
+    // LINE User IDは "U" + 32桁の英数字。それ以外（旧LINE ID等）は除外する
+    const isValidLineUserId = (s: string | null) => !!s && /^U[0-9a-f]{32}$/i.test(s);
+    const list = (targets || []).filter(c => isValidLineUserId(c.line_user_id));
+    const skipped = (targets || []).length - list.length;
 
     let sent = 0, failed = 0;
     const logs: any[] = [];
