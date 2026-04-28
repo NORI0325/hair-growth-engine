@@ -182,8 +182,15 @@ Deno.serve(async (req) => {
           send.sms_error = result.error;
           smsFailed++;
         }
-        // レート制限対策
         await new Promise(r => setTimeout(r, 100));
+      }
+
+      // LINE Push（顧客にLINE ID登録 + サロンにトークン登録があれば）
+      if (lineToken && c.line_user_id) {
+        const lineBody = renderTemplate(campaign.sms_body || campaign.email_body || "", vars);
+        const r = await sendLine(lineToken, c.line_user_id, lineBody);
+        if (!r.ok) send.sms_error = (send.sms_error ? send.sms_error + " | " : "") + r.error;
+        await new Promise(r => setTimeout(r, 50));
       }
 
       sends.push(send);
