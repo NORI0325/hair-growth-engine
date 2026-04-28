@@ -2,9 +2,11 @@ import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import AppLayout from "@/components/AppLayout";
 import PageHeader from "@/components/PageHeader";
+import AddCustomerDialog from "@/components/AddCustomerDialog";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, Loader2 } from "lucide-react";
+import { Search, Loader2, Plus } from "lucide-react";
 
 interface Customer {
   id: string;
@@ -36,19 +38,20 @@ const Customers = () => {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [segmentFilter, setSegmentFilter] = useState<string>("all");
+  const [addOpen, setAddOpen] = useState(false);
 
-  useEffect(() => {
-    const load = async () => {
-      const { data, error } = await supabase
-        .from("customers")
-        .select("id, full_name, email, phone, last_visit_date, visit_count, total_spent")
-        .order("last_visit_date", { ascending: false, nullsFirst: false })
-        .limit(1000);
-      if (!error && data) setCustomers(data);
-      setLoading(false);
-    };
-    load();
-  }, []);
+  const load = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("customers")
+      .select("id, full_name, email, phone, last_visit_date, visit_count, total_spent")
+      .order("last_visit_date", { ascending: false, nullsFirst: false })
+      .limit(1000);
+    if (!error && data) setCustomers(data);
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, []);
 
   const filtered = useMemo(() => {
     return customers.filter(c => {
@@ -66,11 +69,19 @@ const Customers = () => {
 
   return (
     <AppLayout>
-      <PageHeader
-        eyebrow="No.02 — Guests"
-        title="顧客一覧"
-        description={`${customers.length} 名の大切なお客様が登録されています`}
-      />
+      <div className="flex items-start justify-between mb-10 gap-4">
+        <PageHeader
+          eyebrow="No.02 — Guests"
+          title="顧客一覧"
+          description={`${customers.length} 名の大切なお客様が登録されています`}
+        />
+        <Button onClick={() => setAddOpen(true)}
+          className="rounded-none px-5 py-5 text-xs tracking-luxury bg-primary hover:bg-primary-glow shrink-0 mt-2">
+          <Plus className="w-3.5 h-3.5 mr-2 stroke-[1.5]" /> ADD GUEST
+        </Button>
+      </div>
+
+      <AddCustomerDialog open={addOpen} onOpenChange={setAddOpen} onAdded={load} />
 
       <div className="flex flex-col md:flex-row gap-4 mb-10">
         <div className="relative flex-1">

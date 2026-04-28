@@ -13,6 +13,8 @@ import ImportCustomers from "./pages/ImportCustomers";
 import Campaigns from "./pages/Campaigns";
 import Bookings from "./pages/Bookings";
 import Booking from "./pages/Booking";
+import PublicBooking from "./pages/PublicBooking";
+import Share from "./pages/Share";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -28,11 +30,13 @@ const App = () => (
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/book/:token" element={<Booking />} />
+            <Route path="/salon/:slug" element={<PublicBooking />} />
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/customers" element={<ProtectedRoute><Customers /></ProtectedRoute>} />
             <Route path="/import" element={<ProtectedRoute><ImportCustomers /></ProtectedRoute>} />
             <Route path="/campaigns" element={<ProtectedRoute><Campaigns /></ProtectedRoute>} />
             <Route path="/bookings" element={<ProtectedRoute><Bookings /></ProtectedRoute>} />
+            <Route path="/share" element={<ProtectedRoute><Share /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
