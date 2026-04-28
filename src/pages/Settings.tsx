@@ -55,6 +55,21 @@ const Settings = () => {
     })();
   }, [user]);
 
+  const toggleTestMode = async (v: boolean) => {
+    if (!user) return;
+    setForm({ ...form, test_mode: v });
+    const { error } = await supabase
+      .from("profiles")
+      .update({ test_mode: v } as any)
+      .eq("id", user.id);
+    if (error) {
+      setForm({ ...form, test_mode: !v });
+      toast.error("テストモードの切替に失敗しました");
+      return;
+    }
+    toast.success(v ? "🧪 テストモードをONにしました" : "テストモードをOFFにしました");
+  };
+
   const save = async () => {
     if (!user) return;
     setSaving(true);
