@@ -91,7 +91,9 @@ Deno.serve(async (req) => {
         .eq("id", customer.owner_id)
         .maybeSingle();
       if (cust?.line_user_id && prof?.line_channel_access_token) {
-        const text = `🌸 ご予約ありがとうございます\n\n${cust.full_name}様\n${prof.salon_name || "サロン"}でのご予約が確定しました。\n\n📅 ${date}\n🕐 ${time}\n💇 ${menu}\n\nお会いできるのを楽しみにお待ちしております。`;
+        const APP_ORIGIN = Deno.env.get("APP_ORIGIN") || "https://hair-growth-engine.lovable.app";
+        const bookingLink = `${APP_ORIGIN}/book/${token}`;
+        const text = `🌸 ご予約ありがとうございます\n\n${cust.full_name}様\n${prof.salon_name || "サロン"}でのご予約が確定しました。\n\n📅 ${date}\n🕐 ${time}\n💇 ${menu}\n\nお会いできるのを楽しみにお待ちしております。\n\n変更・キャンセルはこちら：\n→ ${bookingLink}`;
         await sendLinePush(prof.line_channel_access_token, cust.line_user_id, text);
       }
     } catch (e) {

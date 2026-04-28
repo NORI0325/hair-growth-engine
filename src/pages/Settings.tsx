@@ -6,7 +6,7 @@ import PageHeader from "@/components/PageHeader";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Loader2, Star, MessageCircle, Bell, FlaskConical, Send, Trash2 } from "lucide-react";
+import { Loader2, Star, MessageCircle, Bell, FlaskConical, Send, Trash2, Sparkles, Clock, RefreshCw, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -14,12 +14,16 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
+const WEBHOOK_URL = "https://miyedioemkzhetphjzzg.supabase.co/functions/v1/line-webhook";
+
 const Settings = () => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testingLine, setTestingLine] = useState(false);
+  const [settingMenu, setSettingMenu] = useState(false);
+  const [runningReactivation, setRunningReactivation] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [lineTestUserId, setLineTestUserId] = useState("");
   const [form, setForm] = useState({
@@ -30,6 +34,9 @@ const Settings = () => {
     line_channel_secret: "",
     owner_notification_email: "",
     test_mode: false,
+    reminder_enabled: true,
+    reactivation_enabled: true,
+    reminder_hour: 19,
   });
 
   useEffect(() => {
@@ -37,23 +44,28 @@ const Settings = () => {
     (async () => {
       const { data } = await supabase
         .from("profiles")
-        .select("salon_name, google_review_url, line_add_friend_url, line_channel_access_token, line_channel_secret, owner_notification_email, test_mode")
+        .select("salon_name, google_review_url, line_add_friend_url, line_channel_access_token, line_channel_secret, owner_notification_email, test_mode, reminder_enabled, reactivation_enabled, reminder_hour")
         .eq("id", user.id)
         .maybeSingle();
       if (data) {
+        const d = data as any;
         setForm({
-          salon_name: data.salon_name || "",
-          google_review_url: data.google_review_url || "",
-          line_add_friend_url: data.line_add_friend_url || "",
-          line_channel_access_token: data.line_channel_access_token || "",
-          line_channel_secret: (data as any).line_channel_secret || "",
-          owner_notification_email: (data as any).owner_notification_email || "",
-          test_mode: (data as any).test_mode || false,
+          salon_name: d.salon_name || "",
+          google_review_url: d.google_review_url || "",
+          line_add_friend_url: d.line_add_friend_url || "",
+          line_channel_access_token: d.line_channel_access_token || "",
+          line_channel_secret: d.line_channel_secret || "",
+          owner_notification_email: d.owner_notification_email || "",
+          test_mode: d.test_mode || false,
+          reminder_enabled: d.reminder_enabled ?? true,
+          reactivation_enabled: d.reactivation_enabled ?? true,
+          reminder_hour: d.reminder_hour ?? 19,
         });
       }
       setLoading(false);
     })();
   }, [user]);
+
 
   const toggleTestMode = async (v: boolean) => {
     if (!user) return;
@@ -83,12 +95,41 @@ const Settings = () => {
         line_channel_secret: form.line_channel_secret.trim() || null,
         owner_notification_email: form.owner_notification_email.trim() || null,
         test_mode: form.test_mode,
+        reminder_enabled: form.reminder_enabled,
+        reactivation_enabled: form.reactivation_enabled,
+        reminder_hour: form.reminder_hour,
       } as any)
       .eq("id", user.id);
     setSaving(false);
     if (error) { toast.error("保存に失敗しました"); return; }
     toast.success("設定を保存しました");
   };
+
+  const setupRichMenu = async () => {
+    setSettingMenu(true);
+    const { data, error } = await supabase.functions.invoke("line-setup-rich-menu", { body: {} });
+    setSettingMenu(false);
+    if (error || !(data as any)?.success) {
+      toast.error((data as any)?.message || error?.message || "リッチメニュー設定に失敗しました");
+      return;
+    }
+    toast.success("✅ リッチメニュー（予約/特典/お問合せ）を設定しました。LINEを開いて確認してください。");
+  };
+
+  const runReactivation = async () => {
+    setRunningReactivation(true);
+    const { data, error } = await supabase.functions.invoke("create-reactivation-jobs", { body: {} });
+    setRunningReactivation(false);
+    if (error) { toast.error("実行に失敗しました"); return; }
+    const n = (data as any)?.created ?? 0;
+    toast.success(n > 0 ? `${n}名の離脱客に復活ステップを登録しました` : "対象の離脱客は今のところいません ✨");
+  };
+
+  const copyWebhook = async () => {
+    await navigator.clipboard.writeText(WEBHOOK_URL);
+    toast.success("Webhook URLをコピーしました");
+  };
+
 
   const sendLineTest = async () => {
     if (!form.line_channel_access_token.trim()) {
@@ -258,7 +299,15 @@ const Settings = () => {
               <li>LINE Developers コンソール → Messaging API設定</li>
               <li>「チャネルアクセストークン（長期）」を発行 → 下に貼り付け</li>
               <li>「チャネル基本設定」→「チャネルシークレット」をコピー → 下に貼り付け</li>
-              <li>Webhook URLに次を設定：<br/><code className="text-[10px] text-gold break-all">https://miyedioemkzhetphjzzg.supabase.co/functions/v1/line-webhook</code></li>
+              <li>
+                Webhook URLに次を設定（コピーして貼り付け）：
+                <div className="mt-1 flex items-center gap-2">
+                  <code className="text-[10px] text-gold break-all flex-1">{WEBHOOK_URL}</code>
+                  <button type="button" onClick={copyWebhook} className="text-gold hover:text-gold/70" aria-label="copy">
+                    <Copy className="w-3 h-3" />
+                  </button>
+                </div>
+              </li>
               <li>「Webhookの利用」をオン、「応答メッセージ」「あいさつメッセージ」をオフ</li>
             </ol>
           </div>
@@ -300,6 +349,83 @@ const Settings = () => {
               {testingLine ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> : <Send className="w-3.5 h-3.5 mr-2" />}
               LINEへテスト送信 <span className="ml-2 opacity-60 text-[10px]">TEST LINE</span>
             </Button>
+          </div>
+        </section>
+
+        <section className="space-y-5 pt-8 border-t border-border">
+          <div className="flex items-center gap-3">
+            <Sparkles className="w-4 h-4 text-gold" />
+            <h2 className="display text-xl">LINE自動配信</h2>
+          </div>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            日本一のサロンが必ずやっている「来店前日リマインド」「離脱客の復活」を自動化します。
+            LINE登録済みのお客様にのみ送信されます（メールには送らないので、うっとうしさゼロ）。
+          </p>
+
+          <div className="flex items-center justify-between p-5 border border-border bg-secondary/20">
+            <div className="flex items-start gap-3">
+              <Clock className="w-4 h-4 text-gold mt-0.5" />
+              <div>
+                <div className="font-serif text-sm">来店前日リマインド</div>
+                <div className="text-[10px] text-muted-foreground mt-1">
+                  予約日の前日{form.reminder_hour}時に「明日お待ちしています」を自動配信。無断キャンセル激減。
+                </div>
+              </div>
+            </div>
+            <Switch checked={form.reminder_enabled}
+              onCheckedChange={v => setForm({...form, reminder_enabled: v})} />
+          </div>
+          {form.reminder_enabled && (
+            <div className="pl-8">
+              <Label className="block font-serif text-xs mb-2">配信時刻</Label>
+              <select value={form.reminder_hour}
+                onChange={e => setForm({...form, reminder_hour: parseInt(e.target.value)})}
+                className="bg-background border border-border px-3 py-1.5 text-xs rounded-none focus:outline-none focus:border-gold">
+                {[10,11,12,13,14,15,16,17,18,19,20,21].map(h => (
+                  <option key={h} value={h}>{h}:00</option>
+                ))}
+              </select>
+              <p className="text-[10px] text-muted-foreground mt-2">推奨：18〜20時（仕事帰りで一番開封されやすい時間帯）</p>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between p-5 border border-border bg-secondary/20">
+            <div className="flex items-start gap-3">
+              <RefreshCw className="w-4 h-4 text-gold mt-0.5" />
+              <div>
+                <div className="font-serif text-sm">離脱客の自動復活ステップ</div>
+                <div className="text-[10px] text-muted-foreground mt-1">
+                  最終来店から90〜120日経ったお客様に「20%OFF復活クーポン」を自動配信。
+                </div>
+              </div>
+            </div>
+            <Switch checked={form.reactivation_enabled}
+              onCheckedChange={v => setForm({...form, reactivation_enabled: v})} />
+          </div>
+
+          <Button type="button" onClick={runReactivation} disabled={runningReactivation} variant="outline"
+            className="rounded-none border-gold/40 text-xs tracking-luxury hover:bg-gold/5">
+            {runningReactivation ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5 mr-2" />}
+            離脱客を今すぐ抽出して送信予約 <span className="ml-2 opacity-60 text-[10px]">RUN NOW</span>
+          </Button>
+          <p className="text-[10px] text-muted-foreground">
+            ※ 通常は毎日自動で実行されます（保存後に有効化）。今すぐ動作確認したいときに使ってください。
+          </p>
+
+          <div className="pt-6 border-t border-border/50 space-y-3">
+            <Label className="block font-serif text-sm">📱 リッチメニュー一発設定 <span className="eyebrow text-[9px] text-muted-foreground ml-1">Rich Menu</span></Label>
+            <p className="text-[10px] text-muted-foreground leading-relaxed">
+              LINEトーク画面の下に常設される「予約 / 特典 / お問合せ」3ボタンメニューを自動セットアップします。
+              友だち追加した瞬間から、お客様がワンタップで予約できる導線が完成します。
+            </p>
+            <Button type="button" onClick={setupRichMenu} disabled={settingMenu} variant="outline"
+              className="rounded-none border-gold/40 text-xs tracking-luxury hover:bg-gold/5">
+              {settingMenu ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> : <Sparkles className="w-3.5 h-3.5 mr-2" />}
+              リッチメニューを設定する <span className="ml-2 opacity-60 text-[10px]">SETUP</span>
+            </Button>
+            <p className="text-[10px] text-muted-foreground">
+              ※ チャネルアクセストークンの保存と、サロン公開URLが必要です。
+            </p>
           </div>
         </section>
 

@@ -40,7 +40,7 @@ Deno.serve(async (req) => {
       .from("scheduled_jobs")
       .select("id, owner_id, customer_id, booking_id, job_type, payload")
       .eq("status", "pending")
-      .in("job_type", ["thank_you", "birthday", "review_request"])
+      .in("job_type", ["thank_you", "birthday", "review_request", "reminder", "reactivation"])
       .lte("scheduled_for", new Date().toISOString())
       .limit(200);
 
@@ -101,6 +101,20 @@ Deno.serve(async (req) => {
           templateName = "review-request";
           templateData = { customerName: customer.full_name, salonName, reviewUrl };
           body = `${customer.full_name}様\nいつもご来店ありがとうございます。\nもしよろしければGoogleでサロンのご感想をいただけますと大変嬉しいです🙇‍♀️\n→ ${reviewUrl}\n\n${salonName}`;
+        } else if (job.job_type === "reminder") {
+          // 予約前日リマインド：LINEのみ（メール未連携客には送らない＝うっとうしさ回避）
+          const p = (job.payload as any) || {};
+          const dateStr = p.booking_date || "";
+          const timeStr = (p.booking_time || "").slice(0, 5);
+          const menu = p.menu || "";
+          body = `🌸 明日のご予約のリマインドです\n\n${customer.full_name}様\n\n📅 ${dateStr}\n🕐 ${timeStr}\n💇 ${menu}\n\nお会いできるのを楽しみにしております。\n変更・キャンセルは恐れ入りますが、こちらから：\n→ ${bookingLink}\n\n${salonName}`;
+          // メールテンプレは作らずLINE限定運用
+          templateName = "";
+        } else if (job.job_type === "reactivation") {
+          const days = (job.payload as any)?.days_since || 90;
+          body = `${customer.full_name}様\n\nお久しぶりです。前回ご来店から${days}日が経ちました。\nまた${salonName}でお会いできるのを楽しみにしております🌸\n\n【復活キャンペーン】次回ご予約で20%OFF\n→ ${bookingLink}`;
+          // 復活はテンプレ未作成。LINEのみ送信（メールは別途キャンペーン機能で）
+          templateName = "";
         }
 
         // === 配信チャネル決定ロジック（重複防止）===
