@@ -74,7 +74,10 @@ Deno.serve(async (req) => {
     }
 
     const { data: targets } = await q.limit(2000);
-    const list = targets || [];
+    // LINE User IDは "U" + 32桁の英数字。それ以外（旧LINE ID等）は除外する
+    const isValidLineUserId = (s: string | null) => !!s && /^U[0-9a-f]{32}$/i.test(s);
+    const list = (targets || []).filter(c => isValidLineUserId(c.line_user_id));
+    const skipped = (targets || []).length - list.length;
 
     let sent = 0, failed = 0;
     const logs: any[] = [];
@@ -100,7 +103,7 @@ Deno.serve(async (req) => {
       await supabase.from("line_message_log").insert(logs as any);
     }
 
-    return new Response(JSON.stringify({ success: true, total: list.length, sent, failed }),
+    return new Response(JSON.stringify({ success: true, total: list.length, sent, failed, skipped }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
     console.error("[line-broadcast] error", e);
