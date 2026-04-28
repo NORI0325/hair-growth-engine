@@ -131,6 +131,16 @@ Deno.serve(async (req) => {
 
         if (hasLine) {
           const r = await sendLinePush(lineToken!, customer.line_user_id!, body);
+          // ログ記録
+          await supabase.from("line_message_log").insert({
+            owner_id: job.owner_id,
+            customer_id: customer.id,
+            job_type: job.job_type,
+            line_user_id: customer.line_user_id,
+            message: body,
+            status: r.ok ? "sent" : "failed",
+            error: r.ok ? null : r.err,
+          } as any);
           if (r.ok) {
             channelUsed = "line";
             console.log(`[LINE] sent to ${customer.line_user_id}`);
