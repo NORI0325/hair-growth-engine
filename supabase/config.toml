@@ -38,3 +38,6 @@ verify_jwt = true
 
 [functions.create-reactivation-jobs]
 verify_jwt = false
+
+[functions.line-broadcast]
+verify_jwt = true
