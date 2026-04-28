@@ -29,7 +29,7 @@ interface Props {
 const AddCustomerDialog = ({ open, onOpenChange, onAdded }: Props) => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState({ full_name: "", phone: "", email: "", birthday: "", last_visit_date: "", visit_count: "0", total_spent: "0" });
+  const [form, setForm] = useState({ full_name: "", phone: "", email: "", birthday: "", last_visit_date: "", visit_count: "0", total_spent: "0", line_user_id: "" });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,11 +46,12 @@ const AddCustomerDialog = ({ open, onOpenChange, onAdded }: Props) => {
       last_visit_date: parsed.data.last_visit_date || null,
       visit_count: parsed.data.visit_count ?? 0,
       total_spent: parsed.data.total_spent ?? 0,
+      line_user_id: parsed.data.line_user_id || null,
     });
     setLoading(false);
     if (error) { toast.error("登録に失敗しました"); return; }
     toast.success("顧客を追加しました");
-    setForm({ full_name: "", phone: "", email: "", birthday: "", last_visit_date: "", visit_count: "0", total_spent: "0" });
+    setForm({ full_name: "", phone: "", email: "", birthday: "", last_visit_date: "", visit_count: "0", total_spent: "0", line_user_id: "" });
     onOpenChange(false);
     onAdded();
   };
