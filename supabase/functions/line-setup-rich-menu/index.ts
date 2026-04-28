@@ -76,7 +76,7 @@ Deno.serve(async (req) => {
     }
 
     const APP_ORIGIN = Deno.env.get("APP_ORIGIN") || "https://hair-growth-engine.lovable.app";
-    const bookingUrl = `${APP_ORIGIN}/r/${profile.public_slug}`;
+    const bookingUrl = `${APP_ORIGIN}/salon/${profile.public_slug}`;
 
     // 既存メニュー全削除
     try {
