@@ -18,6 +18,9 @@ import Share from "./pages/Share";
 import Settings from "./pages/Settings";
 import EmailLogs from "./pages/EmailLogs";
 import LineBroadcast from "./pages/LineBroadcast";
+import Templates from "./pages/Templates";
+import Schedule from "./pages/Schedule";
+import Performance from "./pages/Performance";
 import Unsubscribe from "./pages/Unsubscribe";
 import NotFound from "./pages/NotFound";
 
@@ -44,6 +47,9 @@ const App = () => (
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             <Route path="/email-logs" element={<ProtectedRoute><EmailLogs /></ProtectedRoute>} />
             <Route path="/line-broadcast" element={<ProtectedRoute><LineBroadcast /></ProtectedRoute>} />
+            <Route path="/templates" element={<ProtectedRoute><Templates /></ProtectedRoute>} />
+            <Route path="/schedule" element={<ProtectedRoute><Schedule /></ProtectedRoute>} />
+            <Route path="/performance" element={<ProtectedRoute><Performance /></ProtectedRoute>} />
             <Route path="/unsubscribe" element={<Unsubscribe />} />
             <Route path="*" element={<NotFound />} />
           </Routes>

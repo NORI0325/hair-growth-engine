@@ -80,9 +80,44 @@ Deno.serve(async (req) => {
         const bookingLink = tokenRow?.token ? `${APP_ORIGIN}/book/${tokenRow.token}` : "";
         const lineToken = profile?.line_channel_access_token;
 
+        // === テンプレート上書き取得（チャネル別） ===
+        const jobTypeToTemplateKey: Record<string, string> = {
+          thank_you: "thank-you", birthday: "birthday", review_request: "review-request",
+          reminder: "booking-reminder", reactivation: "reactivation",
+          aftercare: "aftercare", next_suggestion: "next-suggestion",
+        };
+        const tmplKey = jobTypeToTemplateKey[job.job_type] || job.job_type;
+        const channelForOverride = (lineToken && customer.line_user_id) ? "line" : "email";
+        const { data: override } = await supabase
+          .from("template_overrides")
+          .select("*")
+          .eq("owner_id", job.owner_id)
+          .eq("channel", channelForOverride)
+          .eq("template_key", tmplKey)
+          .maybeSingle();
+
+        // 無効化されていたらスキップ
+        if (override && override.enabled === false) {
+          await supabase.from("scheduled_jobs").update({ status: "skipped", error: "template_disabled" }).eq("id", job.id);
+          continue;
+        }
+
+        // クーポン取得
+        let couponText = "";
+        if (override?.coupon_id) {
+          const { data: coupon } = await supabase
+            .from("coupons")
+            .select("title, description, discount_type, discount_value, expires_at")
+            .eq("id", override.coupon_id).maybeSingle();
+          if (coupon) {
+            const value = coupon.discount_type === "percent" ? `${coupon.discount_value}%OFF` : `¥${coupon.discount_value}OFF`;
+            couponText = `\n\n🎁 ${coupon.title} (${value})${coupon.expires_at ? ` ※${coupon.expires_at}まで` : ""}`;
+          }
+        }
+
         let templateName = "";
         let templateData: Record<string, any> = {};
-        let body = ""; // LINE用テキスト
+        let body = "";
 
         if (job.job_type === "thank_you") {
           templateName = "thank-you";
@@ -125,7 +160,28 @@ Deno.serve(async (req) => {
           body = `${customer.full_name}様\n\n前回のご来店から1ヶ月が経ちました。\n根元の伸び・カラーの色落ちが気になり始める時期です✨\n\n今ご予約いただくと、ご希望のお日にちが選びやすくなっております。\n→ ${bookingLink}\n\n${salonName}`;
         }
 
-        // === 配信チャネル決定ロジック（重複防止）===
+        // === オーナーカスタマイズ（上書き）適用 ===
+        const renderVars = (s: string) => s
+          .replace(/\{\{customer_name\}\}/g, customer.full_name)
+          .replace(/\{\{salon_name\}\}/g, salonName)
+          .replace(/\{\{menu\}\}/g, (job.payload as any)?.menu || "")
+          .replace(/\{\{booking_link\}\}/g, bookingLink)
+          .replace(/\{\{days_since\}\}/g, String((job.payload as any)?.days_since || ""));
+
+        if (override && (override.greeting || override.body)) {
+          const greeting = override.greeting ? renderVars(override.greeting) : `${customer.full_name}様`;
+          const customBody = override.body ? renderVars(override.body) : "";
+          const ctaLabel = override.cta_label || "ご予約はこちら";
+          const ctaUrl = override.cta_url || bookingLink;
+          const signature = override.signature || salonName;
+          body = `${greeting}\n\n${customBody}${couponText}\n\n→ ${ctaLabel}: ${ctaUrl}\n\n${signature}`;
+          // メール側にも上書き内容を渡す（テンプレ側で参照可能）
+          templateData = { ...templateData, override: { greeting, body: customBody, ctaLabel, ctaUrl, signature, couponText } };
+        } else if (couponText) {
+          body = body + couponText;
+          templateData = { ...templateData, couponText };
+        }
+
         // ルール：LINE連携済み → LINEのみ / 未連携 → メールのみ
         const hasLine = !!(lineToken && customer.line_user_id);
         let lineErr: string | undefined;
@@ -138,6 +194,7 @@ Deno.serve(async (req) => {
             owner_id: job.owner_id,
             customer_id: customer.id,
             job_type: job.job_type,
+            template_key: tmplKey,
             line_user_id: customer.line_user_id,
             message: body,
             status: r.ok ? "sent" : "failed",
