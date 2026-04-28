@@ -6,19 +6,27 @@ import PageHeader from "@/components/PageHeader";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Loader2, Star, MessageCircle, Bell } from "lucide-react";
+import { Loader2, Star, MessageCircle, Bell, FlaskConical, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { Switch } from "@/components/ui/switch";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 const Settings = () => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [form, setForm] = useState({
     salon_name: "",
     google_review_url: "",
     line_add_friend_url: "",
     line_channel_access_token: "",
     owner_notification_email: "",
+    test_mode: false,
   });
 
   useEffect(() => {
@@ -26,7 +34,7 @@ const Settings = () => {
     (async () => {
       const { data } = await supabase
         .from("profiles")
-        .select("salon_name, google_review_url, line_add_friend_url, line_channel_access_token, owner_notification_email")
+        .select("salon_name, google_review_url, line_add_friend_url, line_channel_access_token, owner_notification_email, test_mode")
         .eq("id", user.id)
         .maybeSingle();
       if (data) {
@@ -36,6 +44,7 @@ const Settings = () => {
           line_add_friend_url: data.line_add_friend_url || "",
           line_channel_access_token: data.line_channel_access_token || "",
           owner_notification_email: (data as any).owner_notification_email || "",
+          test_mode: (data as any).test_mode || false,
         });
       }
       setLoading(false);
@@ -53,11 +62,36 @@ const Settings = () => {
         line_add_friend_url: form.line_add_friend_url.trim() || null,
         line_channel_access_token: form.line_channel_access_token.trim() || null,
         owner_notification_email: form.owner_notification_email.trim() || null,
+        test_mode: form.test_mode,
       } as any)
       .eq("id", user.id);
     setSaving(false);
     if (error) { toast.error("保存に失敗しました"); return; }
     toast.success("設定を保存しました");
+  };
+
+  const sendTestEmail = async () => {
+    if (!form.owner_notification_email.trim()) {
+      toast.error("先に通知の宛先メールアドレスを保存してください");
+      return;
+    }
+    setTesting(true);
+    const { error } = await supabase.functions.invoke("notify-owner-booking", {
+      body: { test: true, recipientEmail: form.owner_notification_email.trim(), salonName: form.salon_name || "あなたのサロン" },
+    });
+    setTesting(false);
+    if (error) { toast.error("テスト送信に失敗しました"); return; }
+    toast.success("テストメールを送信しました。受信箱をご確認ください。");
+  };
+
+  const deleteTestData = async () => {
+    if (!user) return;
+    setDeleting(true);
+    const { data, error } = await supabase.rpc("delete_test_data" as any, { _owner_id: user.id });
+    setDeleting(false);
+    if (error || !(data as any)?.success) { toast.error("削除に失敗しました"); return; }
+    const d = data as any;
+    toast.success(`テストデータを削除しました（予約${d.deleted_bookings}件 / 顧客${d.deleted_customers}件）`);
   };
 
   if (loading) {
