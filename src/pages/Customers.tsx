@@ -189,7 +189,15 @@ const Customers = () => {
               <div key={c.id} className={`grid grid-cols-12 gap-4 py-5 border-b border-border/60 hover:bg-secondary/30 transition-colors items-center ${t.bg}`}>
                 <div className="col-span-3">
                   <div className="font-serif text-sm flex items-center gap-2">
-                    {c.full_name}
+                    <button
+                      type="button"
+                      onClick={() => setEditTarget(c)}
+                      className="hover:text-gold transition-colors text-left inline-flex items-center gap-1.5 group"
+                      title="編集"
+                    >
+                      {c.full_name}
+                      <Pencil className="w-3 h-3 opacity-0 group-hover:opacity-60 stroke-[1.5]" />
+                    </button>
                     {birthdayThisMonth && <span title="今月誕生日" className="text-[10px] text-gold">🎂</span>}
                   </div>
                   <div className="text-[11px] text-muted-foreground">¥{c.total_spent.toLocaleString()}</div>
