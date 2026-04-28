@@ -116,7 +116,12 @@ const Bookings = () => {
                           <div className="font-serif-en text-2xl">{b.booking_time.slice(0, 5)}</div>
                         </div>
                         <div className="col-span-4">
-                          <div className="font-serif text-sm">{b.customers?.full_name || "—"}</div>
+                          <div className="font-serif text-sm flex items-center gap-2">
+                            {b.customers?.full_name || "—"}
+                            {b.is_test && (
+                              <span className="text-[9px] px-1.5 py-0.5 border border-destructive/40 text-destructive tracking-luxury">TEST</span>
+                            )}
+                          </div>
                           <div className="text-xs text-muted-foreground">{b.customers?.phone || ""}</div>
                         </div>
                         <div className="col-span-3 text-sm font-serif text-muted-foreground">
