@@ -14,12 +14,16 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
+const WEBHOOK_URL = "https://miyedioemkzhetphjzzg.supabase.co/functions/v1/line-webhook";
+
 const Settings = () => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testingLine, setTestingLine] = useState(false);
+  const [settingMenu, setSettingMenu] = useState(false);
+  const [runningReactivation, setRunningReactivation] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [lineTestUserId, setLineTestUserId] = useState("");
   const [form, setForm] = useState({
@@ -30,6 +34,9 @@ const Settings = () => {
     line_channel_secret: "",
     owner_notification_email: "",
     test_mode: false,
+    reminder_enabled: true,
+    reactivation_enabled: true,
+    reminder_hour: 19,
   });
 
   useEffect(() => {
@@ -37,23 +44,28 @@ const Settings = () => {
     (async () => {
       const { data } = await supabase
         .from("profiles")
-        .select("salon_name, google_review_url, line_add_friend_url, line_channel_access_token, line_channel_secret, owner_notification_email, test_mode")
+        .select("salon_name, google_review_url, line_add_friend_url, line_channel_access_token, line_channel_secret, owner_notification_email, test_mode, reminder_enabled, reactivation_enabled, reminder_hour")
         .eq("id", user.id)
         .maybeSingle();
       if (data) {
+        const d = data as any;
         setForm({
-          salon_name: data.salon_name || "",
-          google_review_url: data.google_review_url || "",
-          line_add_friend_url: data.line_add_friend_url || "",
-          line_channel_access_token: data.line_channel_access_token || "",
-          line_channel_secret: (data as any).line_channel_secret || "",
-          owner_notification_email: (data as any).owner_notification_email || "",
-          test_mode: (data as any).test_mode || false,
+          salon_name: d.salon_name || "",
+          google_review_url: d.google_review_url || "",
+          line_add_friend_url: d.line_add_friend_url || "",
+          line_channel_access_token: d.line_channel_access_token || "",
+          line_channel_secret: d.line_channel_secret || "",
+          owner_notification_email: d.owner_notification_email || "",
+          test_mode: d.test_mode || false,
+          reminder_enabled: d.reminder_enabled ?? true,
+          reactivation_enabled: d.reactivation_enabled ?? true,
+          reminder_hour: d.reminder_hour ?? 19,
         });
       }
       setLoading(false);
     })();
   }, [user]);
+
 
   const toggleTestMode = async (v: boolean) => {
     if (!user) return;
