@@ -95,12 +95,41 @@ const Settings = () => {
         line_channel_secret: form.line_channel_secret.trim() || null,
         owner_notification_email: form.owner_notification_email.trim() || null,
         test_mode: form.test_mode,
+        reminder_enabled: form.reminder_enabled,
+        reactivation_enabled: form.reactivation_enabled,
+        reminder_hour: form.reminder_hour,
       } as any)
       .eq("id", user.id);
     setSaving(false);
     if (error) { toast.error("保存に失敗しました"); return; }
     toast.success("設定を保存しました");
   };
+
+  const setupRichMenu = async () => {
+    setSettingMenu(true);
+    const { data, error } = await supabase.functions.invoke("line-setup-rich-menu", { body: {} });
+    setSettingMenu(false);
+    if (error || !(data as any)?.success) {
+      toast.error((data as any)?.message || error?.message || "リッチメニュー設定に失敗しました");
+      return;
+    }
+    toast.success("✅ リッチメニュー（予約/特典/お問合せ）を設定しました。LINEを開いて確認してください。");
+  };
+
+  const runReactivation = async () => {
+    setRunningReactivation(true);
+    const { data, error } = await supabase.functions.invoke("create-reactivation-jobs", { body: {} });
+    setRunningReactivation(false);
+    if (error) { toast.error("実行に失敗しました"); return; }
+    const n = (data as any)?.created ?? 0;
+    toast.success(n > 0 ? `${n}名の離脱客に復活ステップを登録しました` : "対象の離脱客は今のところいません ✨");
+  };
+
+  const copyWebhook = async () => {
+    await navigator.clipboard.writeText(WEBHOOK_URL);
+    toast.success("Webhook URLをコピーしました");
+  };
+
 
   const sendLineTest = async () => {
     if (!form.line_channel_access_token.trim()) {
