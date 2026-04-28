@@ -41,3 +41,9 @@ verify_jwt = false
 
 [functions.line-broadcast]
 verify_jwt = true
+
+[functions.ai-template-assistant]
+verify_jwt = true
+
+[functions.preview-template-override]
+verify_jwt = true
