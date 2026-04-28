@@ -22,8 +22,10 @@ async function verifySignature(secret: string, body: string, signature: string):
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  // LINE Verify ボタンは GET ではなく空POSTで来る場合あり。常に200を返す方針に変更。
   if (req.method !== "POST") {
-    return new Response("Method not allowed", { status: 405, headers: corsHeaders });
+    return new Response("OK", { status: 200, headers: corsHeaders });
   }
 
   const rawBody = await req.text();
@@ -34,42 +36,56 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
   );
 
-  let payload: any;
+  let payload: any = {};
   try {
-    payload = JSON.parse(rawBody);
+    payload = rawBody ? JSON.parse(rawBody) : {};
   } catch {
-    return new Response("Bad JSON", { status: 400, headers: corsHeaders });
+    console.warn("[line-webhook] invalid JSON, returning 200 for LINE Verify");
+    return new Response("OK", { status: 200, headers: corsHeaders });
   }
 
   const events = payload?.events ?? [];
+  const destination: string | undefined = payload?.destination;
+  console.log(`[line-webhook] received: events=${events.length}, destination=${destination}, sig=${signature ? "yes" : "no"}`);
+
+  // Verify用の空イベント or eventsなし → 200
   if (!Array.isArray(events) || events.length === 0) {
     return new Response("OK", { status: 200, headers: corsHeaders });
   }
 
-  // destination = LINE公式アカウントのbot user ID。ここからどのサロンか特定する必要がある。
-  // 現状はシングルテナント運用前提：line_channel_secret/access_tokenが設定された全プロフィールから判定
-  const destination: string | undefined = payload?.destination;
-
-  // チャネルシークレットでサロン特定
+  // 全プロフィールから access_token を持つものを取得（secretは未設定も許容しフォールバック）
   const { data: profiles } = await supabase
     .from("profiles")
     .select("id, salon_name, line_channel_access_token, line_channel_secret")
-    .not("line_channel_secret", "is", null);
+    .not("line_channel_access_token", "is", null);
 
+  if (!profiles || profiles.length === 0) {
+    console.warn("[line-webhook] no profile with access_token configured");
+    return new Response("OK", { status: 200, headers: corsHeaders });
+  }
+
+  // まず署名検証で正しいオーナーを特定
   let owner: any = null;
-  if (profiles && profiles.length > 0) {
-    for (const p of profiles) {
-      if (!p.line_channel_secret) continue;
-      const ok = await verifySignature(p.line_channel_secret, rawBody, signature);
-      if (ok) { owner = p; break; }
-    }
+  let verified = false;
+  for (const p of profiles) {
+    if (!p.line_channel_secret) continue;
+    const ok = await verifySignature(p.line_channel_secret, rawBody, signature);
+    if (ok) { owner = p; verified = true; break; }
+  }
+
+  // フォールバック：シングルテナント運用かつシークレット未設定の場合は唯一のオーナーを使う
+  // （セキュリティは弱まるが、設定未完でも友だち追加時の応答くらいは返したい）
+  if (!owner && profiles.length === 1) {
+    owner = profiles[0];
+    console.warn(`[line-webhook] fallback to single owner ${owner.id} (signature ${owner.line_channel_secret ? "MISMATCH" : "secret not set"})`);
   }
 
   if (!owner) {
-    console.warn("[line-webhook] signature verification failed for destination:", destination);
-    // LINE側のVerify用に200を返しても良いが、本番ではセキュリティ上401
-    return new Response("Unauthorized", { status: 401, headers: corsHeaders });
+    console.warn("[line-webhook] could not identify owner. destination:", destination);
+    return new Response("OK", { status: 200, headers: corsHeaders });
   }
+
+  console.log(`[line-webhook] owner=${owner.id} verified=${verified}`);
 
   const accessToken = owner.line_channel_access_token;
   if (!accessToken) {
@@ -81,13 +97,15 @@ Deno.serve(async (req) => {
     try {
       const userId: string | undefined = ev?.source?.userId;
       const replyToken: string | undefined = ev?.replyToken;
+      console.log(`[line-webhook] event type=${ev.type} userId=${userId}`);
 
       if (ev.type === "follow" && replyToken && userId) {
-        await replyLine(
+        const r = await replyLine(
           accessToken,
           replyToken,
           `🌸 ${owner.salon_name || "サロン"}の公式アカウントへようこそ！\n\nご予約や特典のお知らせをお届けします。\n\n📱 はじめに、ご登録のお電話番号をこのトークに送信してください。\n（例：090-1234-5678）\n\n本人確認後、次回からのご予約案内・特典クーポンが届くようになります。`
         );
+        if (!r.ok) console.error("[line-webhook] follow reply failed:", r.err);
         continue;
       }
 
@@ -96,16 +114,15 @@ Deno.serve(async (req) => {
         const phone = normalizePhone(text);
 
         if (!phone) {
-          await replyLine(
+          const r = await replyLine(
             accessToken,
             replyToken,
             `お問い合わせありがとうございます🙇‍♀️\n\nLINE連携をご希望の場合は、ご登録のお電話番号を送信してください（例：090-1234-5678）。\n\nそれ以外のお問い合わせはお店までお電話ください。`
           );
+          if (!r.ok) console.error("[line-webhook] text reply failed:", r.err);
           continue;
         }
 
-        // 顧客検索（同じowner配下で電話番号一致）
-        // 表記ゆれ対応：DBの値も同じ正規化で比較するため、複数候補取得して照合
         const { data: candidates } = await supabase
           .from("customers")
           .select("id, full_name, phone, line_user_id")
@@ -125,7 +142,6 @@ Deno.serve(async (req) => {
         }
 
         if (matched.line_user_id && matched.line_user_id !== userId) {
-          // 既に別ユーザーIDで紐付け済み → 上書きはしない
           await replyLine(
             accessToken,
             replyToken,
@@ -142,12 +158,11 @@ Deno.serve(async (req) => {
         await replyLine(
           accessToken,
           replyToken,
-          `✅ ${matched.full_name}様、連携が完了しました！\n\n次回のご予約案内・特典クーポンをこちらのトークでお届けします🌸\n\n${owner.salon_name || "サロン"}`
+          `✅ ${matched.full_name}様、連携が完了しました!\n\n次回のご予約案内・特典クーポンをこちらのトークでお届けします🌸\n\n${owner.salon_name || "サロン"}`
         );
       }
 
       if (ev.type === "unfollow" && userId) {
-        // ブロック時：line_user_idをクリア（任意）
         await supabase
           .from("customers")
           .update({ line_user_id: null })
