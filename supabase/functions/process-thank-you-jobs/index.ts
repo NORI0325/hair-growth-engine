@@ -40,7 +40,7 @@ Deno.serve(async (req) => {
       .from("scheduled_jobs")
       .select("id, owner_id, customer_id, booking_id, job_type, payload")
       .eq("status", "pending")
-      .in("job_type", ["thank_you", "birthday", "review_request"])
+      .in("job_type", ["thank_you", "birthday", "review_request", "reminder", "reactivation"])
       .lte("scheduled_for", new Date().toISOString())
       .limit(200);
 
