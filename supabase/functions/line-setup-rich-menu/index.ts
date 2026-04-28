@@ -117,19 +117,21 @@ Deno.serve(async (req) => {
     const richMenuId = created.richMenuId;
     if (!richMenuId) throw new Error("richMenuId missing");
 
-    // 画像アップロード：プログラム生成のSVGをPNG化するのは重いので、シンプルな単色背景PNG（事前生成バイト列）
-    // 2500x843の1色PNGをcanvasなしで生成 → Denoでは不可。代わりに最小有効PNG（軽量）を作成。
-    // 解決策：placehold.co から動的に取得する。
-    const placeholderUrl = `https://placehold.co/2500x843/d4af37/000000.png?text=%E4%BA%88%E7%B4%84%20%7C%20%E7%89%B9%E5%85%B8%20%7C%20%E3%81%8A%E5%95%8F%E5%90%88%E3%81%9B`;
-    const imgRes = await fetch(placeholderUrl);
-    if (!imgRes.ok) throw new Error(`placeholder image fetch failed ${imgRes.status}`);
+    // リッチメニュー画像：Storageの公式デフォルト画像（2500x843, JPEG, ~94KB）を取得して送る
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+    const imageUrl = `${SUPABASE_URL}/storage/v1/object/public/line-assets/default-rich-menu.jpg`;
+    const imgRes = await fetch(imageUrl);
+    if (!imgRes.ok) {
+      const t = await imgRes.text();
+      throw new Error(`rich menu image fetch failed ${imgRes.status}: ${t.slice(0, 200)}`);
+    }
     const imgBytes = new Uint8Array(await imgRes.arrayBuffer());
 
     const upRes = await fetch(`${LINE_DATA_API}/richmenu/${richMenuId}/content`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
-        "Content-Type": "image/png",
+        "Content-Type": "image/jpeg",
       },
       body: imgBytes,
     });
