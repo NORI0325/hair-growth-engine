@@ -280,6 +280,7 @@ export type Database = {
           full_name: string
           id: string
           last_visit_date: string | null
+          line_user_id: string | null
           notes: string | null
           owner_id: string
           phone: string | null
@@ -294,6 +295,7 @@ export type Database = {
           full_name: string
           id?: string
           last_visit_date?: string | null
+          line_user_id?: string | null
           notes?: string | null
           owner_id: string
           phone?: string | null
@@ -308,6 +310,7 @@ export type Database = {
           full_name?: string
           id?: string
           last_visit_date?: string | null
+          line_user_id?: string | null
           notes?: string | null
           owner_id?: string
           phone?: string | null
@@ -322,7 +325,10 @@ export type Database = {
           close_time: string | null
           created_at: string
           full_name: string | null
+          google_review_url: string | null
           id: string
+          line_add_friend_url: string | null
+          line_channel_access_token: string | null
           open_time: string | null
           public_menus: string[] | null
           public_slug: string | null
@@ -333,7 +339,10 @@ export type Database = {
           close_time?: string | null
           created_at?: string
           full_name?: string | null
+          google_review_url?: string | null
           id: string
+          line_add_friend_url?: string | null
+          line_channel_access_token?: string | null
           open_time?: string | null
           public_menus?: string[] | null
           public_slug?: string | null
@@ -344,7 +353,10 @@ export type Database = {
           close_time?: string | null
           created_at?: string
           full_name?: string | null
+          google_review_url?: string | null
           id?: string
+          line_add_friend_url?: string | null
+          line_channel_access_token?: string | null
           open_time?: string | null
           public_menus?: string[] | null
           public_slug?: string | null
