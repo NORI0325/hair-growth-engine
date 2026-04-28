@@ -46,6 +46,7 @@ const Customers = () => {
   const [search, setSearch] = useState("");
   const [segmentFilter, setSegmentFilter] = useState<string>("all");
   const [addOpen, setAddOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<EditableCustomer | null>(null);
   const [sendingId, setSendingId] = useState<string | null>(null);
 
   const sendTestThankYou = async (c: Customer) => {
