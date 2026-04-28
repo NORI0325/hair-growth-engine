@@ -3,10 +3,11 @@ import { supabase } from "@/integrations/supabase/client";
 import AppLayout from "@/components/AppLayout";
 import PageHeader from "@/components/PageHeader";
 import AddCustomerDialog from "@/components/AddCustomerDialog";
+import EditCustomerDialog, { type EditableCustomer } from "@/components/EditCustomerDialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, Loader2, Plus, Mail } from "lucide-react";
+import { Search, Loader2, Plus, Mail, Pencil } from "lucide-react";
 import { toast } from "sonner";
 
 import { calculateVipTier, tierInfo, isBirthdayMonth } from "@/lib/vip";
@@ -20,6 +21,8 @@ interface Customer {
   last_visit_date: string | null;
   visit_count: number;
   total_spent: number;
+  line_user_id?: string | null;
+  notes?: string | null;
 }
 
 const segmentOf = (lastVisit: string | null): "active" | "at_risk" | "dormant" | "new" => {
@@ -43,6 +46,7 @@ const Customers = () => {
   const [search, setSearch] = useState("");
   const [segmentFilter, setSegmentFilter] = useState<string>("all");
   const [addOpen, setAddOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<EditableCustomer | null>(null);
   const [sendingId, setSendingId] = useState<string | null>(null);
 
   const sendTestThankYou = async (c: Customer) => {
@@ -89,7 +93,7 @@ const Customers = () => {
     setLoading(true);
     const { data, error } = await supabase
       .from("customers")
-      .select("id, full_name, email, phone, birthday, last_visit_date, visit_count, total_spent")
+      .select("id, full_name, email, phone, birthday, last_visit_date, visit_count, total_spent, line_user_id, notes")
       .order("last_visit_date", { ascending: false, nullsFirst: false })
       .limit(1000);
     if (!error && data) setCustomers(data);
@@ -127,6 +131,12 @@ const Customers = () => {
       </div>
 
       <AddCustomerDialog open={addOpen} onOpenChange={setAddOpen} onAdded={load} />
+      <EditCustomerDialog
+        customer={editTarget}
+        open={!!editTarget}
+        onOpenChange={(v) => { if (!v) setEditTarget(null); }}
+        onSaved={load}
+      />
 
       <div className="flex flex-col md:flex-row gap-4 mb-10">
         <div className="relative flex-1">
@@ -179,7 +189,15 @@ const Customers = () => {
               <div key={c.id} className={`grid grid-cols-12 gap-4 py-5 border-b border-border/60 hover:bg-secondary/30 transition-colors items-center ${t.bg}`}>
                 <div className="col-span-3">
                   <div className="font-serif text-sm flex items-center gap-2">
-                    {c.full_name}
+                    <button
+                      type="button"
+                      onClick={() => setEditTarget(c)}
+                      className="hover:text-gold transition-colors text-left inline-flex items-center gap-1.5 group"
+                      title="編集"
+                    >
+                      {c.full_name}
+                      <Pencil className="w-3 h-3 opacity-0 group-hover:opacity-60 stroke-[1.5]" />
+                    </button>
                     {birthdayThisMonth && <span title="今月誕生日" className="text-[10px] text-gold">🎂</span>}
                   </div>
                   <div className="text-[11px] text-muted-foreground">¥{c.total_spent.toLocaleString()}</div>
