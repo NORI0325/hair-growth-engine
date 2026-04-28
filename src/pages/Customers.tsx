@@ -93,7 +93,7 @@ const Customers = () => {
     setLoading(true);
     const { data, error } = await supabase
       .from("customers")
-      .select("id, full_name, email, phone, birthday, last_visit_date, visit_count, total_spent")
+      .select("id, full_name, email, phone, birthday, last_visit_date, visit_count, total_spent, line_user_id, notes")
       .order("last_visit_date", { ascending: false, nullsFirst: false })
       .limit(1000);
     if (!error && data) setCustomers(data);
