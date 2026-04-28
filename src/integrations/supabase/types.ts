@@ -52,6 +52,7 @@ export type Database = {
           created_at: string
           customer_id: string
           id: string
+          is_test: boolean
           menu: string
           notes: string | null
           owner_id: string
@@ -67,6 +68,7 @@ export type Database = {
           created_at?: string
           customer_id: string
           id?: string
+          is_test?: boolean
           menu: string
           notes?: string | null
           owner_id: string
@@ -82,6 +84,7 @@ export type Database = {
           created_at?: string
           customer_id?: string
           id?: string
+          is_test?: boolean
           menu?: string
           notes?: string | null
           owner_id?: string
@@ -279,6 +282,7 @@ export type Database = {
           email: string | null
           full_name: string
           id: string
+          is_test: boolean
           last_visit_date: string | null
           line_user_id: string | null
           notes: string | null
@@ -294,6 +298,7 @@ export type Database = {
           email?: string | null
           full_name: string
           id?: string
+          is_test?: boolean
           last_visit_date?: string | null
           line_user_id?: string | null
           notes?: string | null
@@ -309,6 +314,7 @@ export type Database = {
           email?: string | null
           full_name?: string
           id?: string
+          is_test?: boolean
           last_visit_date?: string | null
           line_user_id?: string | null
           notes?: string | null
@@ -421,6 +427,7 @@ export type Database = {
           public_menus: string[] | null
           public_slug: string | null
           salon_name: string | null
+          test_mode: boolean
           updated_at: string
         }
         Insert: {
@@ -436,6 +443,7 @@ export type Database = {
           public_menus?: string[] | null
           public_slug?: string | null
           salon_name?: string | null
+          test_mode?: boolean
           updated_at?: string
         }
         Update: {
@@ -451,6 +459,7 @@ export type Database = {
           public_menus?: string[] | null
           public_slug?: string | null
           salon_name?: string | null
+          test_mode?: boolean
           updated_at?: string
         }
         Relationships: []
@@ -560,6 +569,7 @@ export type Database = {
         Args: { message_id: number; queue_name: string }
         Returns: boolean
       }
+      delete_test_data: { Args: { _owner_id: string }; Returns: Json }
       enqueue_email: {
         Args: { payload: Json; queue_name: string }
         Returns: number
