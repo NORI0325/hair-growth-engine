@@ -26,3 +26,9 @@ verify_jwt = false
 
 [functions.notify-owner-booking]
 verify_jwt = false
+
+[functions.line-webhook]
+verify_jwt = false
+
+[functions.line-test-push]
+verify_jwt = true
