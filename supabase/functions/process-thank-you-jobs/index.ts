@@ -119,7 +119,7 @@ Deno.serve(async (req) => {
         let templateData: Record<string, any> = {};
         let body = "";
 
-
+        if (job.job_type === "thank_you") {
           templateName = "thank-you";
           templateData = { customerName: customer.full_name, salonName, bookingLink, menu: (job.payload as any)?.menu };
           body = `${customer.full_name}様\n本日はご来店ありがとうございました。\n次回ご予約で20%OFFクーポンをご用意しました。\n→ ${bookingLink}\n\n${salonName}`;
