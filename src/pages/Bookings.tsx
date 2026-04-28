@@ -13,6 +13,8 @@ interface Booking {
   menu: string;
   notes: string | null;
   status: string;
+  revenue: number | null;
+  campaign_id: string | null;
   customers: { full_name: string; phone: string | null } | null;
 }
 
@@ -31,7 +33,7 @@ const Bookings = () => {
     setLoading(true);
     const { data } = await supabase
       .from("bookings")
-      .select("id, booking_date, booking_time, menu, notes, status, customers(full_name, phone)")
+      .select("id, booking_date, booking_time, menu, notes, status, revenue, campaign_id, customers(full_name, phone)")
       .order("booking_date", { ascending: true })
       .order("booking_time", { ascending: true });
     if (data) setBookings(data as any);
@@ -40,11 +42,21 @@ const Bookings = () => {
 
   useEffect(() => { load(); }, []);
 
-  const updateStatus = async (id: string, status: "completed" | "cancelled" | "confirmed") => {
-    const { error } = await supabase.from("bookings").update({ status }).eq("id", id);
+  const updateStatus = async (id: string, status: "completed" | "cancelled" | "confirmed", revenue?: number) => {
+    const update: any = { status };
+    if (revenue != null) update.revenue = revenue;
+    const { error } = await supabase.from("bookings").update(update).eq("id", id);
     if (error) { toast.error("更新に失敗しました"); return; }
     toast.success("ステータスを更新しました");
     load();
+  };
+
+  const handleComplete = (b: Booking) => {
+    const input = window.prompt(`${b.customers?.full_name || "お客様"}様の売上金額を入力してください（¥）`, "0");
+    if (input === null) return;
+    const amount = parseInt(input.replace(/[^\d]/g, ""), 10);
+    if (isNaN(amount) || amount < 0) { toast.error("正しい金額を入力してください"); return; }
+    updateStatus(b.id, "completed", amount);
   };
 
   const grouped = bookings.reduce((acc, b) => {
@@ -104,6 +116,10 @@ const Bookings = () => {
                         <div className="col-span-3 text-sm font-serif text-muted-foreground">
                           {b.menu}
                           {b.notes && <div className="text-[11px] mt-1 italic">{b.notes}</div>}
+                          {b.status === "completed" && (b.revenue ?? 0) > 0 && (
+                            <div className="text-[11px] text-gold mt-1 font-serif-en">¥{(b.revenue ?? 0).toLocaleString()}</div>
+                          )}
+                          {b.campaign_id && <div className="text-[10px] mt-1 eyebrow text-gold">— from outreach</div>}
                         </div>
                         <div className="col-span-1">
                           <span className={`inline-flex items-center gap-2 text-[10px] tracking-luxury ${status.color}`}>
@@ -119,7 +135,7 @@ const Bookings = () => {
                           )}
                           {(b.status === "pending" || b.status === "confirmed") && (
                             <>
-                              <Button size="sm" variant="ghost" className="text-xs rounded-none h-8" onClick={() => updateStatus(b.id, "completed")}>
+                              <Button size="sm" variant="ghost" className="text-xs rounded-none h-8" title="来店完了（売上を入力）" onClick={() => handleComplete(b)}>
                                 <CheckCircle2 className="w-3.5 h-3.5 stroke-[1.5]" />
                               </Button>
                               <Button size="sm" variant="ghost" className="text-xs rounded-none h-8" onClick={() => updateStatus(b.id, "cancelled")}>

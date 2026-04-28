@@ -23,6 +23,10 @@ interface Campaign {
   send_email: boolean;
   send_sms: boolean;
   target_segment: string | null;
+  // 集計
+  clicks?: number;
+  bookings_count?: number;
+  revenue?: number;
 }
 
 const TEMPLATES = [
@@ -80,7 +84,35 @@ const Campaigns = () => {
       .from("campaigns")
       .select("id, title, email_subject, status, total_recipients, sent_at, send_email, send_sms, target_segment")
       .order("created_at", { ascending: false });
-    if (data) setCampaigns(data as Campaign[]);
+    if (!data) return;
+
+    const ids = data.map((c: any) => c.id);
+    if (ids.length === 0) { setCampaigns([]); return; }
+
+    // クリック数を campaign_sends から
+    const { data: sends } = await supabase
+      .from("campaign_sends")
+      .select("campaign_id, clicked_at, booked_at")
+      .in("campaign_id", ids);
+
+    // 配信経由の予約と売上を bookings から
+    const { data: bks } = await supabase
+      .from("bookings")
+      .select("campaign_id, revenue, status")
+      .in("campaign_id", ids);
+
+    const enriched = data.map((c: any) => {
+      const s = (sends || []).filter(x => x.campaign_id === c.id);
+      const b = (bks || []).filter(x => x.campaign_id === c.id);
+      return {
+        ...c,
+        clicks: s.filter(x => x.clicked_at).length,
+        bookings_count: b.length,
+        revenue: b.reduce((sum: number, x: any) => sum + (x.revenue || 0), 0),
+      };
+    });
+
+    setCampaigns(enriched as Campaign[]);
   };
 
   useEffect(() => { load(); }, []);
@@ -235,22 +267,45 @@ const Campaigns = () => {
         </div>
       ) : (
         <div className="border-t border-border">
+          <div className="grid grid-cols-12 gap-4 py-4 border-b border-border eyebrow text-[10px]">
+            <div className="col-span-4">Campaign</div>
+            <div className="col-span-1 text-right">Sent</div>
+            <div className="col-span-1 text-right">Clicks</div>
+            <div className="col-span-1 text-right">Bookings</div>
+            <div className="col-span-2 text-right">Revenue</div>
+            <div className="col-span-1 text-right">CVR</div>
+            <div className="col-span-2 text-right">Status</div>
+          </div>
           {campaigns.map(c => {
             const status = statusInfo(c.status);
+            const cvr = c.total_recipients > 0 && c.bookings_count != null
+              ? (c.bookings_count / c.total_recipients) * 100 : 0;
             return (
-              <div key={c.id} className="grid grid-cols-12 gap-6 py-8 border-b border-border/60 hover:bg-secondary/30 transition-colors items-center">
-                <div className="col-span-6">
-                  <div className="font-serif text-base mb-1">{c.title}</div>
-                  <div className="text-xs text-muted-foreground">{c.email_subject}</div>
+              <div key={c.id} className="grid grid-cols-12 gap-4 py-6 border-b border-border/60 hover:bg-secondary/30 transition-colors items-center">
+                <div className="col-span-4">
+                  <div className="font-serif text-sm mb-1">{c.title}</div>
+                  <div className="text-[11px] text-muted-foreground flex items-center gap-2">
+                    {c.send_email && <Mail className="w-3 h-3 stroke-[1.5]" />}
+                    {c.send_sms && <MessageSquare className="w-3 h-3 stroke-[1.5]" />}
+                    {c.sent_at && <span className="font-serif-en">{new Date(c.sent_at).toLocaleDateString("ja-JP")}</span>}
+                  </div>
                 </div>
-                <div className="col-span-2 text-xs">
-                  <div className="font-serif-en text-2xl">{c.total_recipients}</div>
-                  <div className="eyebrow text-[9px]">Recipients</div>
+                <div className="col-span-1 text-right">
+                  <div className="font-serif-en text-lg">{c.total_recipients}</div>
                 </div>
-                <div className="col-span-2 flex gap-3 text-xs text-muted-foreground">
-                  {c.send_email && <Mail className="w-3.5 h-3.5 stroke-[1.5]" />}
-                  {c.send_sms && <MessageSquare className="w-3.5 h-3.5 stroke-[1.5]" />}
-                  {c.sent_at && <span className="font-serif-en text-[11px]">{new Date(c.sent_at).toLocaleDateString("ja-JP")}</span>}
+                <div className="col-span-1 text-right">
+                  <div className="font-serif-en text-lg text-muted-foreground">{c.clicks ?? 0}</div>
+                </div>
+                <div className="col-span-1 text-right">
+                  <div className="font-serif-en text-lg text-gold">{c.bookings_count ?? 0}</div>
+                </div>
+                <div className="col-span-2 text-right">
+                  <div className="font-serif-en text-lg">¥{(c.revenue ?? 0).toLocaleString()}</div>
+                </div>
+                <div className="col-span-1 text-right">
+                  <div className={`font-serif-en text-sm ${cvr >= 5 ? "text-success" : "text-muted-foreground"}`}>
+                    {cvr.toFixed(1)}%
+                  </div>
                 </div>
                 <div className="col-span-2 text-right">
                   <span className={`inline-flex items-center gap-2 text-[10px] tracking-luxury ${status.color}`}>
