@@ -160,7 +160,28 @@ Deno.serve(async (req) => {
           body = `${customer.full_name}様\n\n前回のご来店から1ヶ月が経ちました。\n根元の伸び・カラーの色落ちが気になり始める時期です✨\n\n今ご予約いただくと、ご希望のお日にちが選びやすくなっております。\n→ ${bookingLink}\n\n${salonName}`;
         }
 
-        // === 配信チャネル決定ロジック（重複防止）===
+        // === オーナーカスタマイズ（上書き）適用 ===
+        const renderVars = (s: string) => s
+          .replace(/\{\{customer_name\}\}/g, customer.full_name)
+          .replace(/\{\{salon_name\}\}/g, salonName)
+          .replace(/\{\{menu\}\}/g, (job.payload as any)?.menu || "")
+          .replace(/\{\{booking_link\}\}/g, bookingLink)
+          .replace(/\{\{days_since\}\}/g, String((job.payload as any)?.days_since || ""));
+
+        if (override && (override.greeting || override.body)) {
+          const greeting = override.greeting ? renderVars(override.greeting) : `${customer.full_name}様`;
+          const customBody = override.body ? renderVars(override.body) : "";
+          const ctaLabel = override.cta_label || "ご予約はこちら";
+          const ctaUrl = override.cta_url || bookingLink;
+          const signature = override.signature || salonName;
+          body = `${greeting}\n\n${customBody}${couponText}\n\n→ ${ctaLabel}: ${ctaUrl}\n\n${signature}`;
+          // メール側にも上書き内容を渡す（テンプレ側で参照可能）
+          templateData = { ...templateData, override: { greeting, body: customBody, ctaLabel, ctaUrl, signature, couponText } };
+        } else if (couponText) {
+          body = body + couponText;
+          templateData = { ...templateData, couponText };
+        }
+
         // ルール：LINE連携済み → LINEのみ / 未連携 → メールのみ
         const hasLine = !!(lineToken && customer.line_user_id);
         let lineErr: string | undefined;
