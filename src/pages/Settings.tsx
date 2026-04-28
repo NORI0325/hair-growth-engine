@@ -77,6 +77,25 @@ const Settings = () => {
 
         <section className="space-y-5 pt-8 border-t border-border">
           <div className="flex items-center gap-3">
+            <Bell className="w-4 h-4 text-gold" />
+            <h2 className="display text-xl">予約通知メール</h2>
+          </div>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            新規予約・キャンセルが入った瞬間に、ここで指定したメールアドレスへ即時通知が届きます。
+            スマホのメールアプリで受信すれば、予約の見逃しを防げます。
+          </p>
+          <div>
+            <Label className="mb-2 block font-serif text-sm">通知の宛先 <span className="eyebrow text-[9px] text-muted-foreground ml-1">Notification Email</span></Label>
+            <Input type="email" value={form.owner_notification_email}
+              onChange={e => setForm({...form, owner_notification_email: e.target.value})}
+              placeholder="info@arunehair.com"
+              className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
+            <p className="text-[10px] text-muted-foreground mt-2">空欄の場合は通知されません</p>
+          </div>
+        </section>
+
+        <section className="space-y-5 pt-8 border-t border-border">
+          <div className="flex items-center gap-3">
             <Star className="w-4 h-4 text-gold" />
             <h2 className="display text-xl">Googleレビュー誘導</h2>
           </div>
