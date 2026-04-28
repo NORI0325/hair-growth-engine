@@ -91,7 +91,42 @@ const LineBroadcast = () => {
     });
   };
 
-  useEffect(() => { loadLogs(); loadCounts(); }, [user]);
+  useEffect(() => { loadLogs(); loadCounts(); loadTemplates(); }, [user]);
+
+  const aiAssist = async (action: string) => {
+    if (!message.trim()) { toast.error("本文を入力してください"); return; }
+    setAiBusy(true);
+    const { data, error } = await supabase.functions.invoke("ai-template-assistant", {
+      body: { text: message, action, channel: "line" },
+    });
+    setAiBusy(false);
+    if (error) { toast.error("AI処理失敗"); return; }
+    const result = (data as any)?.result;
+    if (result) { setMessage(result); toast.success("AIが書き換えました ✨"); }
+  };
+
+  const saveAsTemplate = async () => {
+    if (!user || !saveTitle.trim() || !message.trim()) return;
+    const { error } = await supabase.from("line_templates").insert({
+      owner_id: user.id, title: saveTitle, message,
+    });
+    if (error) { toast.error(error.message); return; }
+    toast.success("テンプレートに保存しました");
+    setSaveTitle(""); setShowSave(false); loadTemplates();
+  };
+
+  const useTemplate = async (t: any) => {
+    setMessage(t.message);
+    setShowLib(false);
+    await supabase.from("line_templates").update({ use_count: t.use_count + 1 }).eq("id", t.id);
+    loadTemplates();
+  };
+
+  const deleteTemplate = async (id: string) => {
+    if (!confirm("削除しますか？")) return;
+    await supabase.from("line_templates").delete().eq("id", id);
+    loadTemplates();
+  };
 
   const broadcast = async () => {
     if (!message.trim()) { toast.error("メッセージを入力してください"); return; }
