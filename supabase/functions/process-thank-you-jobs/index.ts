@@ -40,7 +40,7 @@ Deno.serve(async (req) => {
       .from("scheduled_jobs")
       .select("id, owner_id, customer_id, booking_id, job_type, payload")
       .eq("status", "pending")
-      .in("job_type", ["thank_you", "birthday", "review_request", "reminder", "reactivation"])
+      .in("job_type", ["thank_you", "birthday", "review_request", "reminder", "reactivation", "aftercare", "next_suggestion"])
       .lte("scheduled_for", new Date().toISOString())
       .limit(200);
 
@@ -113,7 +113,13 @@ Deno.serve(async (req) => {
         } else if (job.job_type === "reactivation") {
           const days = (job.payload as any)?.days_since || 90;
           body = `${customer.full_name}様\n\nお久しぶりです。前回ご来店から${days}日が経ちました。\nまた${salonName}でお会いできるのを楽しみにしております🌸\n\n【復活キャンペーン】次回ご予約で20%OFF\n→ ${bookingLink}`;
-          // 復活はテンプレ未作成。LINEのみ送信（メールは別途キャンペーン機能で）
+          templateName = "";
+        } else if (job.job_type === "aftercare") {
+          const menu = (job.payload as any)?.menu || "";
+          body = `${customer.full_name}様\n\n先日は${menu ? `${menu}で` : ""}ご来店ありがとうございました🌸\n\nそろそろ1週間。仕上がりはいかがでしょうか？\n\n💡 美しさを長持ちさせるコツ\n・洗髪後はタオルドライ→すぐドライヤー\n・週1〜2回のヘアマスクで保湿\n・紫外線対策に洗い流さないトリートメント\n\nお気軽にご相談ください。\n${salonName}`;
+          templateName = "";
+        } else if (job.job_type === "next_suggestion") {
+          body = `${customer.full_name}様\n\n前回のご来店から1ヶ月が経ちました。\n根元の伸び・カラーの色落ちが気になり始める時期です✨\n\n今ご予約いただくと、ご希望のお日にちが選びやすくなっております。\n→ ${bookingLink}\n\n${salonName}`;
           templateName = "";
         }
 
@@ -125,6 +131,16 @@ Deno.serve(async (req) => {
 
         if (hasLine) {
           const r = await sendLinePush(lineToken!, customer.line_user_id!, body);
+          // ログ記録
+          await supabase.from("line_message_log").insert({
+            owner_id: job.owner_id,
+            customer_id: customer.id,
+            job_type: job.job_type,
+            line_user_id: customer.line_user_id,
+            message: body,
+            status: r.ok ? "sent" : "failed",
+            error: r.ok ? null : r.err,
+          } as any);
           if (r.ok) {
             channelUsed = "line";
             console.log(`[LINE] sent to ${customer.line_user_id}`);
