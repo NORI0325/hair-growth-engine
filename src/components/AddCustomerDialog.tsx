@@ -103,6 +103,12 @@ const AddCustomerDialog = ({ open, onOpenChange, onAdded }: Props) => {
                 className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
             </div>
           </div>
+          <div>
+            <Label className="eyebrow mb-2 block">LINE User ID — for LINE delivery</Label>
+            <Input value={form.line_user_id} onChange={e => setForm({...form, line_user_id: e.target.value})}
+              placeholder="Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+              className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
+          </div>
           <Button type="submit" disabled={loading}
             className="w-full rounded-none py-6 text-xs tracking-luxury bg-primary hover:bg-primary-glow">
             {loading && <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />}
