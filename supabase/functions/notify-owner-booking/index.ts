@@ -6,17 +6,55 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { bookingId, eventType } = await req.json();
-    if (!bookingId || !["created", "updated", "cancelled"].includes(eventType)) {
-      return new Response(JSON.stringify({ error: "invalid_payload" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const body = await req.json();
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
+
+    // テスト送信モード：DBを参照せずダミーデータでメールだけ送る
+    if (body?.test === true) {
+      const recipient = body.recipientEmail;
+      if (!recipient) {
+        return new Response(JSON.stringify({ error: "no_recipient" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const { error } = await supabase.functions.invoke("send-transactional-email", {
+        body: {
+          templateName: "booking-alert-owner",
+          recipientEmail: recipient,
+          idempotencyKey: `owner-alert-test-${Date.now()}`,
+          templateData: {
+            eventType: "created",
+            customerName: "テスト 太郎",
+            customerPhone: "090-0000-0000",
+            bookingDate: new Date().toISOString().slice(0, 10),
+            bookingTime: "14:00",
+            menu: "カット＋カラー（テスト送信）",
+            notes: "これはテスト送信です。実際の予約は入っていません。",
+            salonName: body.salonName ?? undefined,
+          },
+        },
+      });
+      if (error) {
+        console.error("test send error:", error);
+        return new Response(JSON.stringify({ error: "send_failed" }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({ success: true, test: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const { bookingId, eventType } = body;
+    if (!bookingId || !["created", "updated", "cancelled"].includes(eventType)) {
+      return new Response(JSON.stringify({ error: "invalid_payload" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const { data: booking } = await supabase
       .from("bookings")
