@@ -103,8 +103,33 @@ Deno.serve(async (req) => {
           body = `${customer.full_name}様\nいつもご来店ありがとうございます。\nもしよろしければGoogleでサロンのご感想をいただけますと大変嬉しいです🙇‍♀️\n→ ${reviewUrl}\n\n${salonName}`;
         }
 
-        // メール送信（送信キュー経由）
-        if (customer.email && templateName) {
+        // === 配信チャネル決定ロジック（重複防止）===
+        // ルール：LINE連携済み → LINEのみ / 未連携 → メールのみ
+        const hasLine = !!(lineToken && customer.line_user_id);
+        let lineErr: string | undefined;
+        let channelUsed: "line" | "email" | "none" = "none";
+
+        if (hasLine) {
+          const r = await sendLinePush(lineToken!, customer.line_user_id!, body);
+          if (r.ok) {
+            channelUsed = "line";
+            console.log(`[LINE] sent to ${customer.line_user_id}`);
+          } else {
+            lineErr = r.err;
+            // LINE失敗時はメールにフォールバック
+            if (customer.email && templateName) {
+              await supabase.functions.invoke("send-transactional-email", {
+                body: {
+                  templateName,
+                  recipientEmail: customer.email,
+                  idempotencyKey: `${job.job_type}-${job.id}-fallback`,
+                  templateData,
+                },
+              });
+              channelUsed = "email";
+            }
+          }
+        } else if (customer.email && templateName) {
           await supabase.functions.invoke("send-transactional-email", {
             body: {
               templateName,
@@ -113,20 +138,13 @@ Deno.serve(async (req) => {
               templateData,
             },
           });
-        }
-
-        // LINE Push（設定済みの場合）
-        let lineErr: string | undefined;
-        if (lineToken && customer.line_user_id) {
-          const r = await sendLinePush(lineToken, customer.line_user_id, body);
-          if (!r.ok) lineErr = r.err;
-          else console.log(`[LINE] sent to ${customer.line_user_id}`);
+          channelUsed = "email";
         }
 
         await supabase.from("scheduled_jobs").update({
-          status: "sent",
+          status: channelUsed === "none" ? "skipped" : "sent",
           sent_at: new Date().toISOString(),
-          error: lineErr || null,
+          error: lineErr || (channelUsed === "none" ? "no_channel" : null),
         }).eq("id", job.id);
         success++;
       } catch (e) {

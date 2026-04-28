@@ -422,6 +422,7 @@ export type Database = {
           id: string
           line_add_friend_url: string | null
           line_channel_access_token: string | null
+          line_channel_secret: string | null
           open_time: string | null
           owner_notification_email: string | null
           public_menus: string[] | null
@@ -438,6 +439,7 @@ export type Database = {
           id: string
           line_add_friend_url?: string | null
           line_channel_access_token?: string | null
+          line_channel_secret?: string | null
           open_time?: string | null
           owner_notification_email?: string | null
           public_menus?: string[] | null
@@ -454,6 +456,7 @@ export type Database = {
           id?: string
           line_add_friend_url?: string | null
           line_channel_access_token?: string | null
+          line_channel_secret?: string | null
           open_time?: string | null
           owner_notification_email?: string | null
           public_menus?: string[] | null

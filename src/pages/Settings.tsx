@@ -19,12 +19,15 @@ const Settings = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [testingLine, setTestingLine] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [lineTestUserId, setLineTestUserId] = useState("");
   const [form, setForm] = useState({
     salon_name: "",
     google_review_url: "",
     line_add_friend_url: "",
     line_channel_access_token: "",
+    line_channel_secret: "",
     owner_notification_email: "",
     test_mode: false,
   });
@@ -34,7 +37,7 @@ const Settings = () => {
     (async () => {
       const { data } = await supabase
         .from("profiles")
-        .select("salon_name, google_review_url, line_add_friend_url, line_channel_access_token, owner_notification_email, test_mode")
+        .select("salon_name, google_review_url, line_add_friend_url, line_channel_access_token, line_channel_secret, owner_notification_email, test_mode")
         .eq("id", user.id)
         .maybeSingle();
       if (data) {
@@ -43,6 +46,7 @@ const Settings = () => {
           google_review_url: data.google_review_url || "",
           line_add_friend_url: data.line_add_friend_url || "",
           line_channel_access_token: data.line_channel_access_token || "",
+          line_channel_secret: (data as any).line_channel_secret || "",
           owner_notification_email: (data as any).owner_notification_email || "",
           test_mode: (data as any).test_mode || false,
         });
@@ -61,6 +65,7 @@ const Settings = () => {
         google_review_url: form.google_review_url.trim() || null,
         line_add_friend_url: form.line_add_friend_url.trim() || null,
         line_channel_access_token: form.line_channel_access_token.trim() || null,
+        line_channel_secret: form.line_channel_secret.trim() || null,
         owner_notification_email: form.owner_notification_email.trim() || null,
         test_mode: form.test_mode,
       } as any)
@@ -68,6 +73,28 @@ const Settings = () => {
     setSaving(false);
     if (error) { toast.error("保存に失敗しました"); return; }
     toast.success("設定を保存しました");
+  };
+
+  const sendLineTest = async () => {
+    if (!form.line_channel_access_token.trim()) {
+      toast.error("先にチャネルアクセストークンを保存してください");
+      return;
+    }
+    if (!lineTestUserId.trim()) {
+      toast.error("送信先のLINE UserIDを入力してください");
+      return;
+    }
+    setTestingLine(true);
+    const { data, error } = await supabase.functions.invoke("line-test-push", {
+      body: { lineUserId: lineTestUserId.trim() },
+    });
+    setTestingLine(false);
+    if (error || !(data as any)?.success) {
+      const msg = (data as any)?.message || error?.message || "送信に失敗しました";
+      toast.error(msg);
+      return;
+    }
+    toast.success("✅ LINEへテスト送信しました。トークを確認してください。");
   };
 
   const sendTestEmail = async () => {
@@ -207,9 +234,19 @@ const Settings = () => {
             <h2 className="display text-xl">LINE公式アカウント連携</h2>
           </div>
           <p className="text-xs text-muted-foreground leading-relaxed">
-            LINE Messaging APIのチャネルアクセストークンを設定すると、LINE IDが登録されたお客様にメール/SMSと同時にLINEでも通知できます。
+            LINE公式アカウントを連携すると、<strong>LINE登録済みのお客様にはLINEのみ</strong>、未登録のお客様にはメールのみが届く設計です（重複しません）。
             日本のサロン顧客の反応率が最も高い媒体です。
           </p>
+          <div className="bg-secondary/30 p-4 border border-border space-y-2 text-[11px] text-muted-foreground leading-relaxed">
+            <div className="font-serif text-foreground text-xs mb-1">📋 セットアップ手順</div>
+            <ol className="list-decimal list-inside space-y-1">
+              <li>LINE Developers コンソール → Messaging API設定</li>
+              <li>「チャネルアクセストークン（長期）」を発行 → 下に貼り付け</li>
+              <li>「チャネル基本設定」→「チャネルシークレット」をコピー → 下に貼り付け</li>
+              <li>Webhook URLに次を設定：<br/><code className="text-[10px] text-gold break-all">https://miyedioemkzhetphjzzg.supabase.co/functions/v1/line-webhook</code></li>
+              <li>「Webhookの利用」をオン、「応答メッセージ」「あいさつメッセージ」をオフ</li>
+            </ol>
+          </div>
           <div>
             <Label className="mb-2 block font-serif text-sm">LINE 友だち追加URL <span className="eyebrow text-[9px] text-muted-foreground ml-1">Add Friend</span></Label>
             <Input value={form.line_add_friend_url} onChange={e => setForm({...form, line_add_friend_url: e.target.value})}
@@ -222,9 +259,32 @@ const Settings = () => {
               onChange={e => setForm({...form, line_channel_access_token: e.target.value})}
               placeholder="長期トークン"
               className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
+          </div>
+          <div>
+            <Label className="mb-2 block font-serif text-sm">チャネルシークレット <span className="eyebrow text-[9px] text-muted-foreground ml-1">Channel Secret</span></Label>
+            <Input type="password" value={form.line_channel_secret}
+              onChange={e => setForm({...form, line_channel_secret: e.target.value})}
+              placeholder="Webhook署名検証に使用します"
+              className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
             <p className="text-[10px] text-muted-foreground mt-2">
-              LINE Developers コンソールのMessaging API設定から取得できます
+              友だち追加→電話番号返信での自動連携に必須です
             </p>
+          </div>
+
+          <div className="pt-4 border-t border-border/50 space-y-3">
+            <Label className="block font-serif text-sm">🧪 LINEテスト送信 <span className="eyebrow text-[9px] text-muted-foreground ml-1">Test Push</span></Label>
+            <p className="text-[10px] text-muted-foreground">
+              ご自身のLINE UserID（U で始まる33文字）を入力してテスト送信できます。<br/>
+              ※ LINE Developers コンソール「Messaging API設定」→「Webhook URL」下の「Bot basic ID」とは別物です。「Your user ID」と書かれた箇所、または公式アカウントを友だち追加後にWebhookで受信して確認してください。
+            </p>
+            <Input value={lineTestUserId} onChange={e => setLineTestUserId(e.target.value)}
+              placeholder="U1234567890abcdef..."
+              className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold font-mono text-xs" />
+            <Button type="button" onClick={sendLineTest} disabled={testingLine} variant="outline"
+              className="rounded-none border-gold/40 text-xs tracking-luxury hover:bg-gold/5">
+              {testingLine ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> : <Send className="w-3.5 h-3.5 mr-2" />}
+              LINEへテスト送信 <span className="ml-2 opacity-60 text-[10px]">TEST LINE</span>
+            </Button>
           </div>
         </section>
 
