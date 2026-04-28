@@ -15,6 +15,7 @@ interface Booking {
   status: string;
   revenue: number | null;
   campaign_id: string | null;
+  is_test: boolean;
   customers: { full_name: string; phone: string | null } | null;
 }
 
@@ -33,7 +34,7 @@ const Bookings = () => {
     setLoading(true);
     const { data } = await supabase
       .from("bookings")
-      .select("id, booking_date, booking_time, menu, notes, status, revenue, campaign_id, customers(full_name, phone)")
+      .select("id, booking_date, booking_time, menu, notes, status, revenue, campaign_id, is_test, customers(full_name, phone)")
       .order("booking_date", { ascending: true })
       .order("booking_time", { ascending: true });
     if (data) setBookings(data as any);
