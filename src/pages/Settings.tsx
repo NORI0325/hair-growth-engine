@@ -126,6 +126,62 @@ const Settings = () => {
               className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
             <p className="text-[10px] text-muted-foreground mt-2">空欄の場合は通知されません</p>
           </div>
+          <Button type="button" onClick={sendTestEmail} disabled={testing} variant="outline"
+            className="rounded-none border-gold/40 text-xs tracking-luxury hover:bg-gold/5">
+            {testing ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> : <Send className="w-3.5 h-3.5 mr-2" />}
+            テスト通知を送信 <span className="ml-2 opacity-60 text-[10px]">TEST EMAIL</span>
+          </Button>
+          <p className="text-[10px] text-muted-foreground">
+            ※ ダミーデータでメール文面のみ送信します。データベースには何も保存されません。
+          </p>
+        </section>
+
+        <section className="space-y-5 pt-8 border-t border-border">
+          <div className="flex items-center gap-3">
+            <FlaskConical className="w-4 h-4 text-gold" />
+            <h2 className="display text-xl">テストモード</h2>
+          </div>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            ONにすると、公開予約フォームから入った予約・顧客に「テスト」フラグが自動で付与され、<br />
+            <strong>ダッシュボードの数字（顧客数・売上・予約数）から完全に除外されます</strong>。<br />
+            予約フローの動作確認が終わったら必ずOFFに戻してください。
+          </p>
+          <div className="flex items-center justify-between p-5 border border-border bg-secondary/20">
+            <div>
+              <div className="font-serif text-sm">テストモード</div>
+              <div className="text-[10px] text-muted-foreground mt-1">
+                {form.test_mode ? "🧪 ON — テスト中の予約は集計から除外されます" : "● OFF — 通常運用中"}
+              </div>
+            </div>
+            <Switch checked={form.test_mode} onCheckedChange={v => setForm({...form, test_mode: v})} />
+          </div>
+
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button type="button" variant="outline"
+                className="rounded-none border-destructive/40 text-destructive text-xs tracking-luxury hover:bg-destructive/5">
+                <Trash2 className="w-3.5 h-3.5 mr-2" />
+                テストデータを一括削除 <span className="ml-2 opacity-60 text-[10px]">PURGE</span>
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>テストデータをすべて削除しますか？</AlertDialogTitle>
+                <AlertDialogDescription>
+                  「テスト」フラグの付いた予約・顧客データを完全に削除します。<br />
+                  この操作は取り消せません。本番のお客様データには影響しません。
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>キャンセル</AlertDialogCancel>
+                <AlertDialogAction onClick={deleteTestData} disabled={deleting}
+                  className="bg-destructive hover:bg-destructive/90">
+                  {deleting && <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />}
+                  削除する
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </section>
 
         <section className="space-y-5 pt-8 border-t border-border">
