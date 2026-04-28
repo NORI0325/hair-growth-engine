@@ -51,6 +51,8 @@ export type Database = {
           coupon_id: string | null
           created_at: string
           customer_id: string
+          external_reservation_id: string | null
+          external_source: string | null
           id: string
           is_test: boolean
           menu: string
@@ -69,6 +71,8 @@ export type Database = {
           coupon_id?: string | null
           created_at?: string
           customer_id: string
+          external_reservation_id?: string | null
+          external_source?: string | null
           id?: string
           is_test?: boolean
           menu: string
@@ -87,6 +91,8 @@ export type Database = {
           coupon_id?: string | null
           created_at?: string
           customer_id?: string
+          external_reservation_id?: string | null
+          external_source?: string | null
           id?: string
           is_test?: boolean
           menu?: string
@@ -419,6 +425,54 @@ export type Database = {
         }
         Relationships: []
       }
+      external_reservation_logs: {
+        Row: {
+          created_at: string
+          created_booking_id: string | null
+          error: string | null
+          id: string
+          matched_customer_id: string | null
+          owner_id: string | null
+          parsed_data: Json | null
+          raw_from: string | null
+          raw_subject: string | null
+          raw_text: string | null
+          raw_to: string | null
+          source: string
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          created_booking_id?: string | null
+          error?: string | null
+          id?: string
+          matched_customer_id?: string | null
+          owner_id?: string | null
+          parsed_data?: Json | null
+          raw_from?: string | null
+          raw_subject?: string | null
+          raw_text?: string | null
+          raw_to?: string | null
+          source: string
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          created_booking_id?: string | null
+          error?: string | null
+          id?: string
+          matched_customer_id?: string | null
+          owner_id?: string | null
+          parsed_data?: Json | null
+          raw_from?: string | null
+          raw_subject?: string | null
+          raw_text?: string | null
+          raw_to?: string | null
+          source?: string
+          status?: string
+        }
+        Relationships: []
+      }
       line_message_log: {
         Row: {
           broadcast_id: string | null
@@ -510,6 +564,7 @@ export type Database = {
           full_name: string | null
           google_review_url: string | null
           id: string
+          inbound_key: string | null
           line_add_friend_url: string | null
           line_channel_access_token: string | null
           line_channel_secret: string | null
@@ -530,6 +585,7 @@ export type Database = {
           full_name?: string | null
           google_review_url?: string | null
           id: string
+          inbound_key?: string | null
           line_add_friend_url?: string | null
           line_channel_access_token?: string | null
           line_channel_secret?: string | null
@@ -550,6 +606,7 @@ export type Database = {
           full_name?: string | null
           google_review_url?: string | null
           id?: string
+          inbound_key?: string | null
           line_add_friend_url?: string | null
           line_channel_access_token?: string | null
           line_channel_secret?: string | null
