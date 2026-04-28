@@ -15,6 +15,7 @@ import Bookings from "./pages/Bookings";
 import Booking from "./pages/Booking";
 import PublicBooking from "./pages/PublicBooking";
 import Share from "./pages/Share";
+import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
