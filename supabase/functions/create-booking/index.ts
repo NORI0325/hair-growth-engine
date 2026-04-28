@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
+import { sendLinePush } from "../_shared/line-push.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -75,6 +76,35 @@ Deno.serve(async (req) => {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // 予約完了時のLINE即時通知（顧客がLINE連携済みなら）
+    try {
+      const { data: cust } = await supabase
+        .from("customers")
+        .select("full_name, line_user_id")
+        .eq("id", customer.id)
+        .maybeSingle();
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("salon_name, line_channel_access_token")
+        .eq("id", customer.owner_id)
+        .maybeSingle();
+      if (cust?.line_user_id && prof?.line_channel_access_token) {
+        const text = `🌸 ご予約ありがとうございます\n\n${cust.full_name}様\n${prof.salon_name || "サロン"}でのご予約が確定しました。\n\n📅 ${date}\n🕐 ${time}\n💇 ${menu}\n\nお会いできるのを楽しみにお待ちしております。`;
+        await sendLinePush(prof.line_channel_access_token, cust.line_user_id, text);
+      }
+    } catch (e) {
+      console.error("LINE notification error (non-fatal):", e);
+    }
+
+    // オーナーへメール通知
+    try {
+      await supabase.functions.invoke("notify-owner-booking", {
+        body: { bookingId: booking.id, eventType: "created" },
+      });
+    } catch (e) {
+      console.error("owner notify error (non-fatal):", e);
     }
 
     return new Response(JSON.stringify({ success: true, booking_id: booking.id }), {
