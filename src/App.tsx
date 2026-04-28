@@ -16,6 +16,7 @@ import Booking from "./pages/Booking";
 import PublicBooking from "./pages/PublicBooking";
 import Share from "./pages/Share";
 import Settings from "./pages/Settings";
+import EmailLogs from "./pages/EmailLogs";
 import Unsubscribe from "./pages/Unsubscribe";
 import NotFound from "./pages/NotFound";
 
@@ -40,6 +41,7 @@ const App = () => (
             <Route path="/bookings" element={<ProtectedRoute><Bookings /></ProtectedRoute>} />
             <Route path="/share" element={<ProtectedRoute><Share /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+            <Route path="/email-logs" element={<ProtectedRoute><EmailLogs /></ProtectedRoute>} />
             <Route path="/unsubscribe" element={<Unsubscribe />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
