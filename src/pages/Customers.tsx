@@ -6,7 +6,8 @@ import AddCustomerDialog from "@/components/AddCustomerDialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, Loader2, Plus } from "lucide-react";
+import { Search, Loader2, Plus, Mail } from "lucide-react";
+import { toast } from "sonner";
 
 import { calculateVipTier, tierInfo, isBirthdayMonth } from "@/lib/vip";
 
@@ -42,6 +43,47 @@ const Customers = () => {
   const [search, setSearch] = useState("");
   const [segmentFilter, setSegmentFilter] = useState<string>("all");
   const [addOpen, setAddOpen] = useState(false);
+  const [sendingId, setSendingId] = useState<string | null>(null);
+
+  const sendTestThankYou = async (c: Customer) => {
+    if (!c.email) {
+      toast.error("メールアドレスが登録されていません");
+      return;
+    }
+    setSendingId(c.id);
+    try {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("salon_name")
+        .maybeSingle();
+      const { data: tokenRow } = await supabase
+        .from("booking_tokens")
+        .select("token")
+        .eq("customer_id", c.id)
+        .maybeSingle();
+      const origin = window.location.origin;
+      const bookingLink = tokenRow ? `${origin}/book/${tokenRow.token}` : `${origin}`;
+
+      const { error } = await supabase.functions.invoke("send-transactional-email", {
+        body: {
+          templateName: "thank-you",
+          recipientEmail: c.email,
+          idempotencyKey: `test-thankyou-${c.id}-${Date.now()}`,
+          templateData: {
+            customerName: c.full_name,
+            salonName: profile?.salon_name || "サロン",
+            bookingLink,
+          },
+        },
+      });
+      if (error) throw error;
+      toast.success(`${c.email} にお礼メールを送信しました（数十秒で届きます）`);
+    } catch (e: any) {
+      toast.error("送信に失敗しました: " + (e?.message || "unknown"));
+    } finally {
+      setSendingId(null);
+    }
+  };
 
   const load = async () => {
     setLoading(true);
@@ -124,7 +166,8 @@ const Customers = () => {
             <div className="col-span-2">最終来店</div>
             <div className="col-span-1 text-right">回数</div>
             <div className="col-span-1 text-right">ランク</div>
-            <div className="col-span-2 text-right">状態</div>
+            <div className="col-span-1 text-right">状態</div>
+            <div className="col-span-1 text-right">テスト</div>
           </div>
           {filtered.slice(0, 200).map(c => {
             const seg = segmentOf(c.last_visit_date);
@@ -150,11 +193,27 @@ const Customers = () => {
                 <div className="col-span-1 text-right">
                   <span className={`text-[11px] font-serif ${t.color}`}>{t.label}</span>
                 </div>
-                <div className="col-span-2 text-right">
+                <div className="col-span-1 text-right">
                   <span className={`inline-flex items-center gap-2 text-[11px] font-serif ${info.color}`}>
                     <span className="w-1 h-1 rounded-full bg-current" />
                     {info.label}
                   </span>
+                </div>
+                <div className="col-span-1 text-right">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={!c.email || sendingId === c.id}
+                    onClick={() => sendTestThankYou(c)}
+                    className="h-7 px-2 text-[10px] font-serif tracking-wider hover:text-gold rounded-none"
+                    title={c.email ? "お礼メールをテスト送信" : "メールアドレスが未登録"}
+                  >
+                    {sendingId === c.id ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <><Mail className="w-3 h-3 mr-1" />送信</>
+                    )}
+                  </Button>
                 </div>
               </div>
             );
