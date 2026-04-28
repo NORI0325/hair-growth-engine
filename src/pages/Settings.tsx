@@ -63,7 +63,7 @@ const Settings = () => {
 
   return (
     <AppLayout>
-      <PageHeader eyebrow="— Settings —" title="サロン設定" subtitle="Connect your salon to Google & LINE" />
+      <PageHeader eyebrow="— Settings —" title="サロン設定" description="Connect your salon to Google & LINE" />
 
       <div className="max-w-2xl space-y-12">
         <section className="space-y-5">
