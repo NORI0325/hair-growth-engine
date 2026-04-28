@@ -194,6 +194,7 @@ Deno.serve(async (req) => {
             owner_id: job.owner_id,
             customer_id: customer.id,
             job_type: job.job_type,
+            template_key: tmplKey,
             line_user_id: customer.line_user_id,
             message: body,
             status: r.ok ? "sent" : "failed",
