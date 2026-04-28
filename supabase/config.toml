@@ -47,3 +47,6 @@ verify_jwt = true
 
 [functions.preview-template-override]
 verify_jwt = true
+
+[functions.inbound-reservation-email]
+verify_jwt = false
