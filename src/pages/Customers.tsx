@@ -131,6 +131,12 @@ const Customers = () => {
       </div>
 
       <AddCustomerDialog open={addOpen} onOpenChange={setAddOpen} onAdded={load} />
+      <EditCustomerDialog
+        customer={editTarget}
+        open={!!editTarget}
+        onOpenChange={(v) => { if (!v) setEditTarget(null); }}
+        onSaved={load}
+      />
 
       <div className="flex flex-col md:flex-row gap-4 mb-10">
         <div className="relative flex-1">
