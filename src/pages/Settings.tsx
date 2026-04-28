@@ -6,7 +6,7 @@ import PageHeader from "@/components/PageHeader";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Loader2, Star, MessageCircle, Bell, FlaskConical, Send, Trash2, Sparkles, Clock, RefreshCw, Copy } from "lucide-react";
+import { Loader2, Star, MessageCircle, Bell, FlaskConical, Send, Trash2, Sparkles, Clock, RefreshCw, Copy, Mail, Inbox, CheckCircle2, XCircle, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -26,6 +26,8 @@ const Settings = () => {
   const [runningReactivation, setRunningReactivation] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [lineTestUserId, setLineTestUserId] = useState("");
+  const [inboundKey, setInboundKey] = useState<string>("");
+  const [recentImports, setRecentImports] = useState<any[]>([]);
   const [form, setForm] = useState({
     salon_name: "",
     google_review_url: "",
@@ -44,9 +46,20 @@ const Settings = () => {
     (async () => {
       const { data } = await supabase
         .from("profiles")
-        .select("salon_name, google_review_url, line_add_friend_url, line_channel_access_token, line_channel_secret, owner_notification_email, test_mode, reminder_enabled, reactivation_enabled, reminder_hour")
+        .select("salon_name, google_review_url, line_add_friend_url, line_channel_access_token, line_channel_secret, owner_notification_email, test_mode, reminder_enabled, reactivation_enabled, reminder_hour, inbound_key")
         .eq("id", user.id)
         .maybeSingle();
+      if (data) {
+        setInboundKey((data as any).inbound_key || "");
+        // 直近10件の取込履歴
+        const { data: logs } = await supabase
+          .from("external_reservation_logs")
+          .select("source, status, created_at, error, parsed_data")
+          .eq("owner_id", user.id)
+          .order("created_at", { ascending: false })
+          .limit(10);
+        if (logs) setRecentImports(logs);
+      }
       if (data) {
         const d = data as any;
         setForm({
@@ -426,6 +439,101 @@ const Settings = () => {
             <p className="text-[10px] text-muted-foreground">
               ※ チャネルアクセストークンの保存と、サロン公開URLが必要です。
             </p>
+          </div>
+        </section>
+
+        {/* 外部予約サイト連携（ホットペッパー / minimo / 楽天Beauty） */}
+        <section className="space-y-6 p-8 border border-border bg-card">
+          <div>
+            <p className="eyebrow mb-2 text-gold">— External Reservations —</p>
+            <h3 className="display text-lg flex items-center gap-2">
+              <Inbox className="w-4 h-4 text-gold" /> 外部予約サイト自動連携
+            </h3>
+            <p className="text-[10px] text-muted-foreground mt-2 leading-relaxed">
+              ホットペッパー / minimo / 楽天Beautyの予約通知メールを、店舗のメールから下記アドレスに「自動転送」設定するだけで、
+              予約・顧客がリアルタイムにこのアプリに自動登録されます。リマインダー・サンクス・LINE通知も自動発火します。
+            </p>
+          </div>
+
+          {[
+            { code: "hp", label: "ホットペッパービューティー", color: "text-orange-400" },
+            { code: "mn", label: "minimo（ミニモ）", color: "text-pink-400" },
+            { code: "rb", label: "楽天ビューティ", color: "text-red-400" },
+          ].map(site => {
+            const addr = inboundKey ? `${site.code}-${inboundKey}@inbound.arunehair.com` : "（保存後に発行されます）";
+            return (
+              <div key={site.code} className="border border-border/50 p-4 bg-secondary/10">
+                <div className={`font-serif text-sm ${site.color} mb-2`}>{site.label}</div>
+                <div className="flex items-center gap-2">
+                  <Input value={addr} readOnly
+                    className="rounded-none border-x-0 border-t-0 px-0 text-xs font-mono bg-transparent" />
+                  <Button type="button" variant="outline" size="sm"
+                    onClick={() => { navigator.clipboard.writeText(addr); toast.success("コピーしました"); }}
+                    disabled={!inboundKey}
+                    className="rounded-none border-gold/40 text-[10px] tracking-luxury">
+                    <Copy className="w-3 h-3 mr-1" /> COPY
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+
+          <details className="border border-border/40 p-4 bg-secondary/5">
+            <summary className="cursor-pointer font-serif text-sm flex items-center gap-2">
+              <Mail className="w-3.5 h-3.5 text-gold" /> 設定手順を見る（Gmailの場合）
+            </summary>
+            <ol className="mt-4 text-[11px] text-muted-foreground space-y-2 leading-relaxed list-decimal list-inside">
+              <li>店舗のGmailを開き、右上の歯車 → 「すべての設定を表示」</li>
+              <li>「メール転送と POP/IMAP」タブ → 「転送先アドレスを追加」</li>
+              <li>上記の専用アドレスを貼り付け → 確認メールに記載のコードを承認</li>
+              <li>「フィルタとブロック中のアドレス」→「新しいフィルタを作成」</li>
+              <li>「From」欄に各サイトのアドレスを入力（例: ホットペッパー→ <code>hotpepper-beauty@beauty.hotpepper.jp</code>）</li>
+              <li>「次のアドレスに転送する」を選択 → 専用アドレスを指定 → 完了</li>
+            </ol>
+            <p className="mt-3 text-[10px] text-amber-400/80">
+              ⚠️ Resend Inbound Webhookの設定が完了するまで取込は動きません（Lovable側で設定要）
+            </p>
+          </details>
+
+          <div className="pt-4 border-t border-border/30">
+            <div className="font-serif text-sm mb-3 flex items-center gap-2">
+              <Clock className="w-3.5 h-3.5 text-gold" /> 直近の取込履歴（最大10件）
+            </div>
+            {recentImports.length === 0 ? (
+              <p className="text-[10px] text-muted-foreground italic">まだ取込履歴はありません</p>
+            ) : (
+              <div className="space-y-1.5">
+                {recentImports.map((log, i) => {
+                  const Icon = log.status === "created" ? CheckCircle2
+                    : log.status === "duplicate" ? AlertCircle
+                    : log.status === "skipped" ? AlertCircle
+                    : XCircle;
+                  const color = log.status === "created" ? "text-emerald-400"
+                    : log.status === "failed" ? "text-red-400"
+                    : "text-amber-400";
+                  return (
+                    <div key={i} className="flex items-start gap-2 text-[11px] py-1.5 border-b border-border/20">
+                      <Icon className={`w-3 h-3 mt-0.5 ${color} flex-shrink-0`} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground">{log.source}</span>
+                          <span className={color}>{log.status}</span>
+                          <span className="text-muted-foreground/60 text-[9px] ml-auto">
+                            {new Date(log.created_at).toLocaleString("ja-JP", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                          </span>
+                        </div>
+                        {log.parsed_data?.customer_name && (
+                          <div className="text-muted-foreground/80 truncate">
+                            {log.parsed_data.customer_name} / {log.parsed_data.booking_date} {log.parsed_data.booking_time} / {log.parsed_data.menu}
+                          </div>
+                        )}
+                        {log.error && <div className="text-red-400/80 text-[10px] truncate">{log.error}</div>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </section>
 

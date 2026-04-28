@@ -1,0 +1,317 @@
+// Resend Inbound Email Webhook受信エンドポイント
+// 外部予約サイト（ホットペッパー / minimo / 楽天Beauty）の通知メールを
+// AI解析して customers / bookings に自動登録する
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { corsHeaders } from "../_shared/cors.ts";
+import { sendLinePush } from "../_shared/line-push.ts";
+
+const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+// 受信先アドレスからソースとinbound_keyを判定
+// 例: hp-sb-a8f3k2@inbound.arunehair.com → source=hotpepper, key=sb-a8f3k2
+function parseInboundAddress(toAddress: string): { source: string; inboundKey: string } | null {
+  const local = toAddress.split("@")[0]?.toLowerCase().trim();
+  if (!local) return null;
+  // プレフィックス: hp / mn / rb
+  const m = local.match(/^(hp|mn|rb)-(.+)$/);
+  if (!m) return null;
+  const sourceMap: Record<string, string> = { hp: "hotpepper", mn: "minimo", rb: "rakuten_beauty" };
+  return { source: sourceMap[m[1]], inboundKey: m[2] };
+}
+
+// 件名+本文からソースを補強推定（受信ドメインで判別できない場合の保険）
+function inferSourceFromContent(subject: string, text: string, fallback: string): string {
+  const haystack = `${subject}\n${text}`.toLowerCase();
+  if (haystack.includes("ホットペッパー") || haystack.includes("hotpepper") || haystack.includes("hot pepper")) return "hotpepper";
+  if (haystack.includes("minimo") || haystack.includes("ミニモ")) return "minimo";
+  if (haystack.includes("楽天ビューティ") || haystack.includes("rakuten beauty")) return "rakuten_beauty";
+  return fallback;
+}
+
+async function aiExtractReservation(source: string, subject: string, text: string) {
+  const systemPrompt = `あなたは美容室の予約通知メールから情報を構造化抽出するエキスパートです。
+受信元: ${source}
+返却するJSONのスキーマに厳密に従ってください。値が不明な場合はnullを返してください。`;
+
+  const userPrompt = `以下の予約通知メールから情報を抽出してください。
+
+【件名】
+${subject}
+
+【本文】
+${text.slice(0, 8000)}`;
+
+  const tools = [{
+    type: "function",
+    function: {
+      name: "extract_reservation",
+      description: "予約情報を構造化して返す",
+      parameters: {
+        type: "object",
+        properties: {
+          is_reservation: { type: "boolean", description: "これが新規予約通知か（キャンセル・問い合わせはfalse）" },
+          event_type: { type: "string", enum: ["created", "cancelled", "changed", "other"], description: "イベント種別" },
+          customer_name: { type: "string", description: "顧客氏名（漢字）" },
+          customer_kana: { type: "string", description: "顧客カナ" },
+          customer_phone: { type: "string", description: "電話番号（ハイフンなしの数字のみ）" },
+          customer_email: { type: "string", description: "顧客メール" },
+          booking_date: { type: "string", description: "予約日 YYYY-MM-DD" },
+          booking_time: { type: "string", description: "予約時刻 HH:MM" },
+          menu: { type: "string", description: "メニュー名" },
+          revenue: { type: "number", description: "予約金額（税込円）" },
+          external_reservation_id: { type: "string", description: "サイト固有の予約番号" },
+          notes: { type: "string", description: "備考・要望" },
+        },
+        required: ["is_reservation", "event_type"],
+        additionalProperties: false,
+      },
+    },
+  }];
+
+  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${LOVABLE_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "google/gemini-2.5-flash",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      tools,
+      tool_choice: { type: "function", function: { name: "extract_reservation" } },
+    }),
+  });
+
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(`AI gateway error ${res.status}: ${t}`);
+  }
+  const data = await res.json();
+  const args = data.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
+  if (!args) throw new Error("AI did not return structured output");
+  return JSON.parse(args);
+}
+
+function normalizePhone(phone: string | null | undefined): string | null {
+  if (!phone) return null;
+  const digits = phone.replace(/[^\d]/g, "");
+  if (digits.length < 8) return null;
+  return digits;
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  if (req.method !== "POST") {
+    return new Response(JSON.stringify({ error: "method not allowed" }), {
+      status: 405,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
+
+  let payload: any;
+  try {
+    payload = await req.json();
+  } catch {
+    return new Response(JSON.stringify({ error: "invalid json" }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  // Resend Inbound Webhook payload 形式に対応
+  // 参考: https://resend.com/docs/dashboard/webhooks/inbound
+  const data = payload.data || payload;
+  const toRaw: string = data.to?.[0] || data.to || data.envelope?.to?.[0] || "";
+  const to = typeof toRaw === "string" ? toRaw : toRaw?.email || "";
+  const fromRaw = data.from || "";
+  const from = typeof fromRaw === "string" ? fromRaw : fromRaw?.email || "";
+  const subject: string = data.subject || "";
+  const text: string = data.text || data.html?.replace(/<[^>]+>/g, "") || "";
+
+  const parsed = parseInboundAddress(to);
+  if (!parsed) {
+    await supabase.from("external_reservation_logs").insert({
+      source: "unknown", raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000),
+      status: "failed", error: "address_not_recognized",
+    });
+    return new Response(JSON.stringify({ ok: false, reason: "address_not_recognized" }), {
+      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  // owner特定
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id, salon_name, line_channel_access_token")
+    .eq("inbound_key", parsed.inboundKey)
+    .maybeSingle();
+
+  if (!profile) {
+    await supabase.from("external_reservation_logs").insert({
+      source: parsed.source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000),
+      status: "failed", error: "owner_not_found",
+    });
+    return new Response(JSON.stringify({ ok: false, reason: "owner_not_found" }), {
+      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const ownerId = profile.id as string;
+  const source = inferSourceFromContent(subject, text, parsed.source);
+
+  // AI解析
+  let extracted: any;
+  try {
+    extracted = await aiExtractReservation(source, subject, text);
+  } catch (e: any) {
+    await supabase.from("external_reservation_logs").insert({
+      owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000),
+      status: "failed", error: `ai_error: ${e.message}`,
+    });
+    return new Response(JSON.stringify({ ok: false, reason: "ai_failed" }), {
+      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  // 予約以外はログだけ残す
+  if (!extracted.is_reservation || extracted.event_type !== "created") {
+    await supabase.from("external_reservation_logs").insert({
+      owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000),
+      parsed_data: extracted, status: "skipped", error: `event=${extracted.event_type}`,
+    });
+    return new Response(JSON.stringify({ ok: true, skipped: true }), {
+      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const phone = normalizePhone(extracted.customer_phone);
+  const fullName = (extracted.customer_name || "お客様").toString().slice(0, 100);
+
+  // 既存顧客マッチング（電話番号優先 → 氏名）
+  let customerId: string | null = null;
+  if (phone) {
+    const { data: byPhone } = await supabase
+      .from("customers")
+      .select("id")
+      .eq("owner_id", ownerId)
+      .eq("phone", phone)
+      .maybeSingle();
+    if (byPhone) customerId = byPhone.id;
+  }
+  if (!customerId && fullName) {
+    const { data: byName } = await supabase
+      .from("customers")
+      .select("id")
+      .eq("owner_id", ownerId)
+      .eq("full_name", fullName)
+      .limit(1)
+      .maybeSingle();
+    if (byName) customerId = byName.id;
+  }
+
+  // 新規顧客作成
+  if (!customerId) {
+    const { data: newCust, error: custErr } = await supabase
+      .from("customers")
+      .insert({
+        owner_id: ownerId,
+        full_name: fullName,
+        phone: phone,
+        email: extracted.customer_email || null,
+        notes: `[${source}より自動取込]`,
+      })
+      .select("id")
+      .single();
+    if (custErr) {
+      await supabase.from("external_reservation_logs").insert({
+        owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000),
+        parsed_data: extracted, status: "failed", error: `customer_insert: ${custErr.message}`,
+      });
+      return new Response(JSON.stringify({ ok: false, reason: "customer_insert_failed" }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    customerId = newCust.id;
+  }
+
+  // 重複チェック → 予約作成
+  const externalId = extracted.external_reservation_id || `${source}-${extracted.booking_date}-${extracted.booking_time}-${phone || fullName}`;
+
+  const { data: existing } = await supabase
+    .from("bookings")
+    .select("id")
+    .eq("owner_id", ownerId)
+    .eq("external_source", source)
+    .eq("external_reservation_id", externalId)
+    .maybeSingle();
+
+  if (existing) {
+    await supabase.from("external_reservation_logs").insert({
+      owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000),
+      parsed_data: extracted, status: "duplicate", matched_customer_id: customerId, created_booking_id: existing.id,
+    });
+    return new Response(JSON.stringify({ ok: true, duplicate: true }), {
+      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  // 時刻フォーマット補正
+  const bookingTime = extracted.booking_time && /^\d{2}:\d{2}$/.test(extracted.booking_time)
+    ? extracted.booking_time + ":00"
+    : "10:00:00";
+
+  const { data: booking, error: bookErr } = await supabase
+    .from("bookings")
+    .insert({
+      owner_id: ownerId,
+      customer_id: customerId,
+      booking_date: extracted.booking_date,
+      booking_time: bookingTime,
+      menu: (extracted.menu || "メニュー未指定").toString().slice(0, 200),
+      notes: extracted.notes ? String(extracted.notes).slice(0, 500) : null,
+      status: "pending",
+      revenue: extracted.revenue || 0,
+      external_source: source,
+      external_reservation_id: externalId,
+    })
+    .select("id")
+    .single();
+
+  if (bookErr) {
+    await supabase.from("external_reservation_logs").insert({
+      owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000),
+      parsed_data: extracted, status: "failed", matched_customer_id: customerId,
+      error: `booking_insert: ${bookErr.message}`,
+    });
+    return new Response(JSON.stringify({ ok: false, reason: "booking_insert_failed" }), {
+      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  // ログ記録
+  await supabase.from("external_reservation_logs").insert({
+    owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000),
+    parsed_data: extracted, status: "created",
+    matched_customer_id: customerId, created_booking_id: booking.id,
+  });
+
+  // オーナー通知（メール）
+  try {
+    await supabase.functions.invoke("notify-owner-booking", {
+      body: { bookingId: booking.id, eventType: "created" },
+    });
+  } catch (e) {
+    console.error("owner notify error (non-fatal):", e);
+  }
+
+  return new Response(JSON.stringify({ ok: true, booking_id: booking.id, customer_id: customerId }), {
+    status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+});
