@@ -1,7 +1,30 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
 
-// 期限が来た自動配信ジョブ（thank_you / birthday）を処理する
+// LINE Messaging API: Push Message
+async function sendLinePush(token: string, userId: string, text: string): Promise<{ ok: boolean; err?: string }> {
+  try {
+    const res = await fetch("https://api.line.me/v2/bot/message/push", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        to: userId,
+        messages: [{ type: "text", text: text.slice(0, 4900) }],
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      return { ok: false, err: `LINE ${res.status}: ${body.slice(0, 200)}` };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, err: e instanceof Error ? e.message : "unknown" };
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -17,7 +40,7 @@ Deno.serve(async (req) => {
       .from("scheduled_jobs")
       .select("id, owner_id, customer_id, booking_id, job_type, payload")
       .eq("status", "pending")
-      .in("job_type", ["thank_you", "birthday"])
+      .in("job_type", ["thank_you", "birthday", "review_request"])
       .lte("scheduled_for", new Date().toISOString())
       .limit(200);
 
@@ -33,12 +56,12 @@ Deno.serve(async (req) => {
       try {
         const { data: customer } = await supabase
           .from("customers")
-          .select("id, full_name, email, phone")
+          .select("id, full_name, email, phone, line_user_id")
           .eq("id", job.customer_id)
           .maybeSingle();
         const { data: profile } = await supabase
           .from("profiles")
-          .select("salon_name")
+          .select("salon_name, google_review_url, line_channel_access_token")
           .eq("id", job.owner_id)
           .maybeSingle();
         const { data: tokenRow } = await supabase
@@ -55,18 +78,44 @@ Deno.serve(async (req) => {
 
         const salonName = profile?.salon_name || "サロン";
         const bookingLink = tokenRow?.token ? `${APP_ORIGIN}/book/${tokenRow.token}` : "";
+        const lineToken = profile?.line_channel_access_token;
+
+        let body = "";
+        let subject = "";
 
         if (job.job_type === "thank_you") {
-          console.log(`[THANK-YOU] To: ${customer.email}, Salon: ${salonName}`);
-          console.log(`本文: ${customer.full_name}様、本日はご来店ありがとうございました。次回ご予約で20%OFFクーポンをご用意しました → ${bookingLink}`);
+          subject = `${salonName}より お礼とお得なご案内`;
+          body = `${customer.full_name}様\n本日はご来店ありがとうございました。\n次回ご予約で20%OFFクーポンをご用意しました。\n→ ${bookingLink}\n\n${salonName}`;
         } else if (job.job_type === "birthday") {
-          console.log(`[BIRTHDAY] To: ${customer.email}, Salon: ${salonName}`);
-          console.log(`本文: ${customer.full_name}様、お誕生月おめでとうございます。30%OFFのバースデークーポンをご用意しました → ${bookingLink}`);
+          subject = `${salonName}より お誕生月おめでとうございます`;
+          body = `${customer.full_name}様\nお誕生月おめでとうございます🎂\n30%OFFのバースデークーポンをお贈りします。\n→ ${bookingLink}\n\n${salonName}`;
+        } else if (job.job_type === "review_request") {
+          const reviewUrl = profile?.google_review_url;
+          if (!reviewUrl) {
+            await supabase.from("scheduled_jobs").update({ status: "skipped", error: "no_review_url" }).eq("id", job.id);
+            continue;
+          }
+          subject = `${salonName}より ご感想のお願い`;
+          body = `${customer.full_name}様\nいつもご来店ありがとうございます。\nもしよろしければGoogleでサロンのご感想をいただけますと大変嬉しいです🙇‍♀️\n→ ${reviewUrl}\n\n${salonName}`;
+        }
+
+        // Email（モック：本番はLovable Emails等）
+        if (customer.email) {
+          console.log(`[EMAIL] To: ${customer.email}\nSubject: ${subject}\n${body}`);
+        }
+
+        // LINE Push（設定済みの場合）
+        let lineErr: string | undefined;
+        if (lineToken && customer.line_user_id) {
+          const r = await sendLinePush(lineToken, customer.line_user_id, body);
+          if (!r.ok) lineErr = r.err;
+          else console.log(`[LINE] sent to ${customer.line_user_id}`);
         }
 
         await supabase.from("scheduled_jobs").update({
           status: "sent",
           sent_at: new Date().toISOString(),
+          error: lineErr || null,
         }).eq("id", job.id);
         success++;
       } catch (e) {
