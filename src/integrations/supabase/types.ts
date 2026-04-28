@@ -413,6 +413,42 @@ export type Database = {
         }
         Relationships: []
       }
+      line_message_log: {
+        Row: {
+          created_at: string
+          customer_id: string | null
+          error: string | null
+          id: string
+          job_type: string
+          line_user_id: string | null
+          message: string
+          owner_id: string
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          customer_id?: string | null
+          error?: string | null
+          id?: string
+          job_type: string
+          line_user_id?: string | null
+          message: string
+          owner_id: string
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          customer_id?: string | null
+          error?: string | null
+          id?: string
+          job_type?: string
+          line_user_id?: string | null
+          message?: string
+          owner_id?: string
+          status?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           close_time: string | null
