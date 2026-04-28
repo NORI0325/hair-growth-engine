@@ -26,6 +26,8 @@ const Settings = () => {
   const [runningReactivation, setRunningReactivation] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [lineTestUserId, setLineTestUserId] = useState("");
+  const [inboundKey, setInboundKey] = useState<string>("");
+  const [recentImports, setRecentImports] = useState<any[]>([]);
   const [form, setForm] = useState({
     salon_name: "",
     google_review_url: "",
@@ -44,9 +46,20 @@ const Settings = () => {
     (async () => {
       const { data } = await supabase
         .from("profiles")
-        .select("salon_name, google_review_url, line_add_friend_url, line_channel_access_token, line_channel_secret, owner_notification_email, test_mode, reminder_enabled, reactivation_enabled, reminder_hour")
+        .select("salon_name, google_review_url, line_add_friend_url, line_channel_access_token, line_channel_secret, owner_notification_email, test_mode, reminder_enabled, reactivation_enabled, reminder_hour, inbound_key")
         .eq("id", user.id)
         .maybeSingle();
+      if (data) {
+        setInboundKey((data as any).inbound_key || "");
+        // 直近10件の取込履歴
+        const { data: logs } = await supabase
+          .from("external_reservation_logs")
+          .select("source, status, created_at, error, parsed_data")
+          .eq("owner_id", user.id)
+          .order("created_at", { ascending: false })
+          .limit(10);
+        if (logs) setRecentImports(logs);
+      }
       if (data) {
         const d = data as any;
         setForm({
