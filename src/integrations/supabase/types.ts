@@ -57,6 +57,8 @@ export type Database = {
           notes: string | null
           owner_id: string
           revenue: number | null
+          source_job_id: string | null
+          source_template: string | null
           status: Database["public"]["Enums"]["booking_status"]
           updated_at: string
         }
@@ -73,6 +75,8 @@ export type Database = {
           notes?: string | null
           owner_id: string
           revenue?: number | null
+          source_job_id?: string | null
+          source_template?: string | null
           status?: Database["public"]["Enums"]["booking_status"]
           updated_at?: string
         }
@@ -89,6 +93,8 @@ export type Database = {
           notes?: string | null
           owner_id?: string
           revenue?: number | null
+          source_job_id?: string | null
+          source_template?: string | null
           status?: Database["public"]["Enums"]["booking_status"]
           updated_at?: string
         }
@@ -415,6 +421,7 @@ export type Database = {
       }
       line_message_log: {
         Row: {
+          broadcast_id: string | null
           created_at: string
           customer_id: string | null
           error: string | null
@@ -424,8 +431,10 @@ export type Database = {
           message: string
           owner_id: string
           status: string
+          template_key: string | null
         }
         Insert: {
+          broadcast_id?: string | null
           created_at?: string
           customer_id?: string | null
           error?: string | null
@@ -435,8 +444,10 @@ export type Database = {
           message: string
           owner_id: string
           status?: string
+          template_key?: string | null
         }
         Update: {
+          broadcast_id?: string | null
           created_at?: string
           customer_id?: string | null
           error?: string | null
@@ -446,6 +457,49 @@ export type Database = {
           message?: string
           owner_id?: string
           status?: string
+          template_key?: string | null
+        }
+        Relationships: []
+      }
+      line_templates: {
+        Row: {
+          category: string | null
+          created_at: string
+          cta_label: string | null
+          cta_url: string | null
+          id: string
+          image_url: string | null
+          message: string
+          owner_id: string
+          title: string
+          updated_at: string
+          use_count: number
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string
+          cta_label?: string | null
+          cta_url?: string | null
+          id?: string
+          image_url?: string | null
+          message: string
+          owner_id: string
+          title: string
+          updated_at?: string
+          use_count?: number
+        }
+        Update: {
+          category?: string | null
+          created_at?: string
+          cta_label?: string | null
+          cta_url?: string | null
+          id?: string
+          image_url?: string | null
+          message?: string
+          owner_id?: string
+          title?: string
+          updated_at?: string
+          use_count?: number
         }
         Relationships: []
       }
@@ -575,6 +629,57 @@ export type Database = {
           id?: string
           metadata?: Json | null
           reason?: string
+        }
+        Relationships: []
+      }
+      template_overrides: {
+        Row: {
+          body: string | null
+          channel: string
+          coupon_id: string | null
+          created_at: string
+          cta_label: string | null
+          cta_url: string | null
+          enabled: boolean
+          greeting: string | null
+          id: string
+          owner_id: string
+          signature: string | null
+          subject: string | null
+          template_key: string
+          updated_at: string
+        }
+        Insert: {
+          body?: string | null
+          channel: string
+          coupon_id?: string | null
+          created_at?: string
+          cta_label?: string | null
+          cta_url?: string | null
+          enabled?: boolean
+          greeting?: string | null
+          id?: string
+          owner_id: string
+          signature?: string | null
+          subject?: string | null
+          template_key: string
+          updated_at?: string
+        }
+        Update: {
+          body?: string | null
+          channel?: string
+          coupon_id?: string | null
+          created_at?: string
+          cta_label?: string | null
+          cta_url?: string | null
+          enabled?: boolean
+          greeting?: string | null
+          id?: string
+          owner_id?: string
+          signature?: string | null
+          subject?: string | null
+          template_key?: string
+          updated_at?: string
         }
         Relationships: []
       }
