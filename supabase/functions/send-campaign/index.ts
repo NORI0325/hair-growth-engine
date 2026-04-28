@@ -41,6 +41,24 @@ const sendSMS = async (to: string, body: string): Promise<{ ok: boolean; error?:
   }
 };
 
+// LINE Push送信
+const sendLine = async (token: string, userId: string, text: string): Promise<{ ok: boolean; error?: string }> => {
+  try {
+    const res = await fetch("https://api.line.me/v2/bot/message/push", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ to: userId, messages: [{ type: "text", text: text.slice(0, 4900) }] }),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      return { ok: false, error: `LINE ${res.status}: ${body.slice(0, 200)}` };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "unknown" };
+  }
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -83,7 +101,7 @@ Deno.serve(async (req) => {
     }
 
     // セグメントに該当する顧客を取得
-    let q = supabase.from("customers").select("id, full_name, email, phone, last_visit_date").eq("owner_id", user.id);
+    let q = supabase.from("customers").select("id, full_name, email, phone, last_visit_date, line_user_id").eq("owner_id", user.id);
 
     const today = new Date();
     if (campaign.target_segment === "dormant") {
@@ -106,6 +124,14 @@ Deno.serve(async (req) => {
 
     // ステータス更新
     await supabase.from("campaigns").update({ status: "sending", total_recipients: customers.length }).eq("id", campaign_id);
+
+    // サロンのLINEトークン取得
+    const { data: ownerProfile } = await supabase
+      .from("profiles")
+      .select("line_channel_access_token")
+      .eq("id", user.id)
+      .maybeSingle();
+    const lineToken = ownerProfile?.line_channel_access_token;
 
     // 各顧客にbooking_tokenを取得して配信
     const { data: tokens } = await supabase
@@ -156,8 +182,15 @@ Deno.serve(async (req) => {
           send.sms_error = result.error;
           smsFailed++;
         }
-        // レート制限対策
         await new Promise(r => setTimeout(r, 100));
+      }
+
+      // LINE Push（顧客にLINE ID登録 + サロンにトークン登録があれば）
+      if (lineToken && c.line_user_id) {
+        const lineBody = renderTemplate(campaign.sms_body || campaign.email_body || "", vars);
+        const r = await sendLine(lineToken, c.line_user_id, lineBody);
+        if (!r.ok) send.sms_error = (send.sms_error ? send.sms_error + " | " : "") + r.error;
+        await new Promise(r => setTimeout(r, 50));
       }
 
       sends.push(send);

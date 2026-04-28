@@ -15,6 +15,7 @@ import Bookings from "./pages/Bookings";
 import Booking from "./pages/Booking";
 import PublicBooking from "./pages/PublicBooking";
 import Share from "./pages/Share";
+import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -37,6 +38,7 @@ const App = () => (
             <Route path="/campaigns" element={<ProtectedRoute><Campaigns /></ProtectedRoute>} />
             <Route path="/bookings" element={<ProtectedRoute><Bookings /></ProtectedRoute>} />
             <Route path="/share" element={<ProtectedRoute><Share /></ProtectedRoute>} />
+            <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>

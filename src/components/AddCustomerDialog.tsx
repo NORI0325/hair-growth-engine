@@ -17,6 +17,7 @@ const schema = z.object({
   last_visit_date: z.string().optional(),
   visit_count: z.coerce.number().int().min(0).max(10000).optional(),
   total_spent: z.coerce.number().int().min(0).max(100000000).optional(),
+  line_user_id: z.string().trim().max(100).optional(),
 });
 
 interface Props {
@@ -28,7 +29,7 @@ interface Props {
 const AddCustomerDialog = ({ open, onOpenChange, onAdded }: Props) => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState({ full_name: "", phone: "", email: "", birthday: "", last_visit_date: "", visit_count: "0", total_spent: "0" });
+  const [form, setForm] = useState({ full_name: "", phone: "", email: "", birthday: "", last_visit_date: "", visit_count: "0", total_spent: "0", line_user_id: "" });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,11 +46,12 @@ const AddCustomerDialog = ({ open, onOpenChange, onAdded }: Props) => {
       last_visit_date: parsed.data.last_visit_date || null,
       visit_count: parsed.data.visit_count ?? 0,
       total_spent: parsed.data.total_spent ?? 0,
+      line_user_id: parsed.data.line_user_id || null,
     });
     setLoading(false);
     if (error) { toast.error("登録に失敗しました"); return; }
     toast.success("顧客を追加しました");
-    setForm({ full_name: "", phone: "", email: "", birthday: "", last_visit_date: "", visit_count: "0", total_spent: "0" });
+    setForm({ full_name: "", phone: "", email: "", birthday: "", last_visit_date: "", visit_count: "0", total_spent: "0", line_user_id: "" });
     onOpenChange(false);
     onAdded();
   };
@@ -100,6 +102,12 @@ const AddCustomerDialog = ({ open, onOpenChange, onAdded }: Props) => {
               <Input type="number" min={0} value={form.total_spent} onChange={e => setForm({...form, total_spent: e.target.value})}
                 className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
             </div>
+          </div>
+          <div>
+            <Label className="eyebrow mb-2 block">LINE User ID — for LINE delivery</Label>
+            <Input value={form.line_user_id} onChange={e => setForm({...form, line_user_id: e.target.value})}
+              placeholder="Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+              className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
           </div>
           <Button type="submit" disabled={loading}
             className="w-full rounded-none py-6 text-xs tracking-luxury bg-primary hover:bg-primary-glow">

@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import {
-  LayoutDashboard, Users, Upload, Megaphone, Calendar, LogOut, Share2,
+  LayoutDashboard, Users, Upload, Megaphone, Calendar, LogOut, Share2, Settings as SettingsIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -14,6 +14,7 @@ const navItems = [
   { to: "/campaigns", label: "配信", en: "Outreach", icon: Megaphone },
   { to: "/bookings", label: "予約", en: "Bookings", icon: Calendar },
   { to: "/share", label: "公開URL", en: "Share", icon: Share2 },
+  { to: "/settings", label: "設定", en: "Settings", icon: SettingsIcon },
 ];
 
 const AppLayout = ({ children }: { children: ReactNode }) => {
