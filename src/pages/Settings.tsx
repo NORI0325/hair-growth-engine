@@ -352,7 +352,84 @@ const Settings = () => {
           </div>
         </section>
 
-        <Button onClick={save} disabled={saving}
+        <section className="space-y-5 pt-8 border-t border-border">
+          <div className="flex items-center gap-3">
+            <Sparkles className="w-4 h-4 text-gold" />
+            <h2 className="display text-xl">LINE自動配信</h2>
+          </div>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            日本一のサロンが必ずやっている「来店前日リマインド」「離脱客の復活」を自動化します。
+            LINE登録済みのお客様にのみ送信されます（メールには送らないので、うっとうしさゼロ）。
+          </p>
+
+          <div className="flex items-center justify-between p-5 border border-border bg-secondary/20">
+            <div className="flex items-start gap-3">
+              <Clock className="w-4 h-4 text-gold mt-0.5" />
+              <div>
+                <div className="font-serif text-sm">来店前日リマインド</div>
+                <div className="text-[10px] text-muted-foreground mt-1">
+                  予約日の前日{form.reminder_hour}時に「明日お待ちしています」を自動配信。無断キャンセル激減。
+                </div>
+              </div>
+            </div>
+            <Switch checked={form.reminder_enabled}
+              onCheckedChange={v => setForm({...form, reminder_enabled: v})} />
+          </div>
+          {form.reminder_enabled && (
+            <div className="pl-8">
+              <Label className="block font-serif text-xs mb-2">配信時刻</Label>
+              <select value={form.reminder_hour}
+                onChange={e => setForm({...form, reminder_hour: parseInt(e.target.value)})}
+                className="bg-background border border-border px-3 py-1.5 text-xs rounded-none focus:outline-none focus:border-gold">
+                {[10,11,12,13,14,15,16,17,18,19,20,21].map(h => (
+                  <option key={h} value={h}>{h}:00</option>
+                ))}
+              </select>
+              <p className="text-[10px] text-muted-foreground mt-2">推奨：18〜20時（仕事帰りで一番開封されやすい時間帯）</p>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between p-5 border border-border bg-secondary/20">
+            <div className="flex items-start gap-3">
+              <RefreshCw className="w-4 h-4 text-gold mt-0.5" />
+              <div>
+                <div className="font-serif text-sm">離脱客の自動復活ステップ</div>
+                <div className="text-[10px] text-muted-foreground mt-1">
+                  最終来店から90〜120日経ったお客様に「20%OFF復活クーポン」を自動配信。
+                </div>
+              </div>
+            </div>
+            <Switch checked={form.reactivation_enabled}
+              onCheckedChange={v => setForm({...form, reactivation_enabled: v})} />
+          </div>
+
+          <Button type="button" onClick={runReactivation} disabled={runningReactivation} variant="outline"
+            className="rounded-none border-gold/40 text-xs tracking-luxury hover:bg-gold/5">
+            {runningReactivation ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5 mr-2" />}
+            離脱客を今すぐ抽出して送信予約 <span className="ml-2 opacity-60 text-[10px]">RUN NOW</span>
+          </Button>
+          <p className="text-[10px] text-muted-foreground">
+            ※ 通常は毎日自動で実行されます（保存後に有効化）。今すぐ動作確認したいときに使ってください。
+          </p>
+
+          <div className="pt-6 border-t border-border/50 space-y-3">
+            <Label className="block font-serif text-sm">📱 リッチメニュー一発設定 <span className="eyebrow text-[9px] text-muted-foreground ml-1">Rich Menu</span></Label>
+            <p className="text-[10px] text-muted-foreground leading-relaxed">
+              LINEトーク画面の下に常設される「予約 / 特典 / お問合せ」3ボタンメニューを自動セットアップします。
+              友だち追加した瞬間から、お客様がワンタップで予約できる導線が完成します。
+            </p>
+            <Button type="button" onClick={setupRichMenu} disabled={settingMenu} variant="outline"
+              className="rounded-none border-gold/40 text-xs tracking-luxury hover:bg-gold/5">
+              {settingMenu ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> : <Sparkles className="w-3.5 h-3.5 mr-2" />}
+              リッチメニューを設定する <span className="ml-2 opacity-60 text-[10px]">SETUP</span>
+            </Button>
+            <p className="text-[10px] text-muted-foreground">
+              ※ チャネルアクセストークンの保存と、サロン公開URLが必要です。
+            </p>
+          </div>
+        </section>
+
+
           className="rounded-none px-12 py-6 text-xs tracking-luxury bg-primary hover:bg-primary-glow">
           {saving && <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />}
           設定を保存する <span className="ml-2 opacity-60 text-[10px]">SAVE</span>
