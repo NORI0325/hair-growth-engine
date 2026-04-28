@@ -417,6 +417,7 @@ export type Database = {
           line_add_friend_url: string | null
           line_channel_access_token: string | null
           open_time: string | null
+          owner_notification_email: string | null
           public_menus: string[] | null
           public_slug: string | null
           salon_name: string | null
@@ -431,6 +432,7 @@ export type Database = {
           line_add_friend_url?: string | null
           line_channel_access_token?: string | null
           open_time?: string | null
+          owner_notification_email?: string | null
           public_menus?: string[] | null
           public_slug?: string | null
           salon_name?: string | null
@@ -445,6 +447,7 @@ export type Database = {
           line_add_friend_url?: string | null
           line_channel_access_token?: string | null
           open_time?: string | null
+          owner_notification_email?: string | null
           public_menus?: string[] | null
           public_slug?: string | null
           salon_name?: string | null
