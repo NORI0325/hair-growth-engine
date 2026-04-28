@@ -114,27 +114,27 @@ const PublicBooking = () => {
 
         <div className="space-y-7 animate-fade-up animate-delay-100">
           <div>
-            <p className="eyebrow mb-3">No.01 — Your Name</p>
+            <p className="eyebrow mb-3">No.01 — お名前 / Your Name</p>
             <Input value={form.full_name} onChange={e => setForm({...form, full_name: e.target.value})}
               placeholder="山田 花子" className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
           </div>
           <div>
-            <p className="eyebrow mb-3">No.02 — Phone</p>
+            <p className="eyebrow mb-3">No.02 — 電話番号 / Phone</p>
             <Input type="tel" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})}
               placeholder="09012345678" className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
           </div>
           <div>
-            <p className="eyebrow mb-3">No.03 — Email (optional)</p>
+            <p className="eyebrow mb-3">No.03 — メール / Email（任意）</p>
             <Input type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})}
               className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
           </div>
           <div>
-            <p className="eyebrow mb-3">No.04 — Date</p>
+            <p className="eyebrow mb-3">No.04 — ご希望日 / Date</p>
             <Input type="date" min={minDate} value={form.date} onChange={e => setForm({...form, date: e.target.value})}
               className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
           </div>
           <div>
-            <p className="eyebrow mb-3">No.05 — Time</p>
+            <p className="eyebrow mb-3">No.05 — ご希望時間 / Time</p>
             <div className="grid grid-cols-5 gap-px bg-border">
               {TIMES.map(t => (
                 <button key={t} type="button" onClick={() => setForm({...form, time: t})}
@@ -145,7 +145,7 @@ const PublicBooking = () => {
             </div>
           </div>
           <div>
-            <p className="eyebrow mb-3">No.06 — Menu</p>
+            <p className="eyebrow mb-3">No.06 — メニュー / Menu</p>
             <div className="grid grid-cols-2 gap-px bg-border">
               {salon.menus.map(m => (
                 <button key={m} type="button" onClick={() => setForm({...form, menu: m})}
@@ -156,7 +156,7 @@ const PublicBooking = () => {
             </div>
           </div>
           <div>
-            <Label className="eyebrow mb-3 block">Notes (optional)</Label>
+            <Label className="eyebrow mb-3 block">ご要望 / Notes（任意）</Label>
             <Textarea rows={2} value={form.notes} onChange={e => setForm({...form, notes: e.target.value})}
               className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold resize-none" />
           </div>
@@ -164,7 +164,7 @@ const PublicBooking = () => {
           <Button onClick={handleSubmit} disabled={submitting}
             className="w-full rounded-none py-7 text-xs tracking-luxury bg-primary hover:bg-primary-glow shadow-elegant" size="lg">
             {submitting && <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />}
-            CONFIRM RESERVATION
+            この内容で予約する <span className="ml-2 opacity-60 text-[10px]">CONFIRM</span>
           </Button>
         </div>
       </div>

@@ -61,10 +61,10 @@ const TEMPLATES = [
 ];
 
 const statusInfo = (s: string) => {
-  if (s === "sent") return { label: "Sent", color: "text-success" };
-  if (s === "sending") return { label: "Sending", color: "text-warning" };
-  if (s === "failed") return { label: "Failed", color: "text-destructive" };
-  return { label: "Draft", color: "text-muted-foreground" };
+  if (s === "sent") return { label: "配信済", color: "text-success" };
+  if (s === "sending") return { label: "配信中", color: "text-warning" };
+  if (s === "failed") return { label: "失敗", color: "text-destructive" };
+  return { label: "下書き", color: "text-muted-foreground" };
 };
 
 const Campaigns = () => {
@@ -169,7 +169,7 @@ const Campaigns = () => {
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
               <Button size="lg" className="rounded-none px-8 py-6 text-xs tracking-luxury bg-primary hover:bg-primary-glow">
-                + COMPOSE
+                + 新規作成 <span className="ml-2 opacity-60 text-[10px]">COMPOSE</span>
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto rounded-none">
@@ -180,7 +180,7 @@ const Campaigns = () => {
               <div className="hairline my-4" />
               <div className="space-y-6">
                 <div>
-                  <Label className="eyebrow mb-3 block">Templates</Label>
+                  <Label className="mb-3 block font-serif text-sm">テンプレート <span className="eyebrow text-[9px] text-muted-foreground ml-1">Templates</span></Label>
                   <div className="grid grid-cols-2 gap-2">
                     {TEMPLATES.map((t, i) => (
                       <Button key={i} variant="outline" size="sm" onClick={() => applyTemplate(i)}
@@ -192,13 +192,13 @@ const Campaigns = () => {
                 </div>
 
                 <div>
-                  <Label htmlFor="title" className="eyebrow mb-2 block">Title</Label>
+                  <Label htmlFor="title" className="mb-2 block font-serif text-sm">配信タイトル <span className="eyebrow text-[9px] text-muted-foreground ml-1">Title — 管理用</span></Label>
                   <Input id="title" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })}
                     className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
                 </div>
 
                 <div>
-                  <Label className="eyebrow mb-2 block">Target Segment</Label>
+                  <Label className="mb-2 block font-serif text-sm">配信対象 <span className="eyebrow text-[9px] text-muted-foreground ml-1">Segment</span></Label>
                   <Select value={form.target_segment} onValueChange={(v: any) => setForm({ ...form, target_segment: v })}>
                     <SelectTrigger className="rounded-none border-x-0 border-t-0 focus:ring-0"><SelectValue /></SelectTrigger>
                     <SelectContent>
@@ -221,12 +221,12 @@ const Campaigns = () => {
                 {form.send_email && (
                   <>
                     <div>
-                      <Label htmlFor="subject" className="eyebrow mb-2 block">Subject</Label>
+                      <Label htmlFor="subject" className="mb-2 block font-serif text-sm">件名 <span className="eyebrow text-[9px] text-muted-foreground ml-1">Subject</span></Label>
                       <Input id="subject" value={form.email_subject} onChange={e => setForm({ ...form, email_subject: e.target.value })}
                         className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
                     </div>
                     <div>
-                      <Label htmlFor="body" className="eyebrow mb-2 block">Body — {`{{name}}`} {`{{booking_link}}`}</Label>
+                      <Label htmlFor="body" className="mb-2 block font-serif text-sm">本文 <span className="eyebrow text-[9px] text-muted-foreground ml-1">差込タグ：{`{{name}}`} {`{{booking_link}}`}</span></Label>
                       <Textarea id="body" rows={8} value={form.email_body} onChange={e => setForm({ ...form, email_body: e.target.value })}
                         className="rounded-none focus-visible:ring-0 focus-visible:border-gold font-serif" />
                     </div>
@@ -243,15 +243,15 @@ const Campaigns = () => {
 
                 {form.send_sms && (
                   <div>
-                    <Label htmlFor="sms" className="eyebrow mb-2 block">SMS Body (160 chars)</Label>
+                    <Label htmlFor="sms" className="mb-2 block font-serif text-sm">SMS本文 <span className="eyebrow text-[9px] text-muted-foreground ml-1">160文字以内推奨</span></Label>
                     <Textarea id="sms" rows={3} value={form.sms_body} onChange={e => setForm({ ...form, sms_body: e.target.value })}
                       className="rounded-none focus-visible:ring-0 focus-visible:border-gold font-serif" />
                   </div>
                 )}
 
                 <Button onClick={handleSend} disabled={sending} className="w-full rounded-none py-6 text-xs tracking-luxury bg-primary hover:bg-primary-glow" size="lg">
-                  {sending ? <><Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />SENDING...</>
-                    : <><Send className="w-3.5 h-3.5 mr-2 stroke-[1.5]" />SEND NOW</>}
+                  {sending ? <><Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />配信中...</>
+                    : <><Send className="w-3.5 h-3.5 mr-2 stroke-[1.5]" />今すぐ配信する <span className="ml-2 opacity-60 text-[10px]">SEND</span></>}
                 </Button>
               </div>
             </DialogContent>
@@ -267,14 +267,14 @@ const Campaigns = () => {
         </div>
       ) : (
         <div className="border-t border-border">
-          <div className="grid grid-cols-12 gap-4 py-4 border-b border-border eyebrow text-[10px]">
-            <div className="col-span-4">Campaign</div>
-            <div className="col-span-1 text-right">Sent</div>
-            <div className="col-span-1 text-right">Clicks</div>
-            <div className="col-span-1 text-right">Bookings</div>
-            <div className="col-span-2 text-right">Revenue</div>
+          <div className="grid grid-cols-12 gap-4 py-4 border-b border-border text-[11px] font-serif text-muted-foreground">
+            <div className="col-span-4">配信名</div>
+            <div className="col-span-1 text-right">配信数</div>
+            <div className="col-span-1 text-right">クリック</div>
+            <div className="col-span-1 text-right">予約</div>
+            <div className="col-span-2 text-right">売上</div>
             <div className="col-span-1 text-right">CVR</div>
-            <div className="col-span-2 text-right">Status</div>
+            <div className="col-span-2 text-right">状態</div>
           </div>
           {campaigns.map(c => {
             const status = statusInfo(c.status);
@@ -308,9 +308,9 @@ const Campaigns = () => {
                   </div>
                 </div>
                 <div className="col-span-2 text-right">
-                  <span className={`inline-flex items-center gap-2 text-[10px] tracking-luxury ${status.color}`}>
+                  <span className={`inline-flex items-center gap-2 text-[11px] font-serif ${status.color}`}>
                     <span className="w-1 h-1 rounded-full bg-current" />
-                    {status.label.toUpperCase()}
+                    {status.label}
                   </span>
                 </div>
               </div>

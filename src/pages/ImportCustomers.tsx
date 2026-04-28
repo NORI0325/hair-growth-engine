@@ -121,10 +121,10 @@ const ImportCustomers = () => {
             <Upload className="w-6 h-6 mx-auto mb-4 text-muted-foreground stroke-[1.5]" />
             <Label htmlFor="csv-upload" className="cursor-pointer">
               <span className="font-serif text-base text-gold gold-underline">ファイルを選択</span>
-              <span className="text-muted-foreground text-sm"> または、ここにドロップ</span>
+              <span className="text-muted-foreground text-sm"> または、ここにドロップしてください</span>
               <Input id="csv-upload" type="file" accept=".csv,text/csv" className="hidden" onChange={handleFileChange} />
             </Label>
-            <p className="eyebrow text-[10px] mt-3">CSV · UTF-8</p>
+            <p className="text-[11px] text-muted-foreground mt-3">CSV形式・UTF-8</p>
           </div>
 
           {file && (
@@ -132,14 +132,14 @@ const ImportCustomers = () => {
               <FileText className="w-4 h-4 text-gold stroke-[1.5]" />
               <div className="flex-1">
                 <div className="font-serif text-sm">{file.name}</div>
-                <div className="eyebrow text-[10px] mt-1">{parsed.length} Records</div>
+                <div className="text-[11px] text-muted-foreground mt-1">{parsed.length} 件のデータ</div>
               </div>
             </div>
           )}
 
           {parsed.length > 0 && (
             <div>
-              <p className="eyebrow mb-4">— Preview (First 5) —</p>
+              <p className="eyebrow mb-4">— Preview / プレビュー（先頭5件）—</p>
               <div className="border-t border-border">
                 {parsed.slice(0, 5).map((r, i) => (
                   <div key={i} className="py-4 border-b border-border/60">
@@ -153,16 +153,16 @@ const ImportCustomers = () => {
 
               <Button onClick={handleImport} disabled={importing} className="w-full mt-8 rounded-none py-6 text-xs tracking-luxury bg-primary hover:bg-primary-glow shadow-elegant" size="lg">
                 {importing ? (
-                  <><Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />{imported} / {parsed.length} IMPORTING...</>
+                  <><Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />{imported} / {parsed.length} 件 取込中...</>
                 ) : (
-                  <>IMPORT {parsed.length} GUESTS</>
+                  <>{parsed.length}件 のお客様を取り込む <span className="ml-2 opacity-60 text-[10px]">IMPORT</span></>
                 )}
               </Button>
 
               {errors.length > 0 && (
                 <div className="mt-6 p-4 border border-destructive/40">
-                  <div className="flex items-center gap-2 mb-2 text-destructive text-xs eyebrow">
-                    <AlertCircle className="w-3.5 h-3.5" />Errors
+                  <div className="flex items-center gap-2 mb-2 text-destructive text-xs font-serif">
+                    <AlertCircle className="w-3.5 h-3.5" />エラー
                   </div>
                   {errors.map((e, i) => <div key={i} className="text-xs text-destructive">{e}</div>)}
                 </div>
@@ -173,7 +173,7 @@ const ImportCustomers = () => {
 
         {/* Side: column reference */}
         <div className="lg:col-span-1">
-          <p className="eyebrow mb-4">— Column Mapping —</p>
+          <p className="eyebrow mb-4">— 対応する列名 / Column Mapping —</p>
           <div className="border-t border-border">
             {[
               { jp: "氏名 / name", req: true },
@@ -185,7 +185,7 @@ const ImportCustomers = () => {
             ].map((col, i) => (
               <div key={i} className="py-3 border-b border-border/60 flex justify-between items-center">
                 <span className="text-xs font-serif">{col.jp}</span>
-                {col.req && <span className="eyebrow text-[9px] text-destructive">REQUIRED</span>}
+                {col.req && <span className="text-[10px] font-serif text-destructive">必須</span>}
               </div>
             ))}
           </div>

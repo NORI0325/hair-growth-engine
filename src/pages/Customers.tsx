@@ -80,7 +80,7 @@ const Customers = () => {
         />
         <Button onClick={() => setAddOpen(true)}
           className="rounded-none px-5 py-5 text-xs tracking-luxury bg-primary hover:bg-primary-glow shrink-0 mt-2">
-          <Plus className="w-3.5 h-3.5 mr-2 stroke-[1.5]" /> ADD GUEST
+          <Plus className="w-3.5 h-3.5 mr-2 stroke-[1.5]" /> お客様を追加 <span className="ml-2 opacity-60 text-[10px]">ADD</span>
         </Button>
       </div>
 
@@ -118,13 +118,13 @@ const Customers = () => {
         </div>
       ) : (
         <div className="border-t border-border">
-          <div className="grid grid-cols-12 gap-4 py-4 border-b border-border eyebrow text-[10px]">
-            <div className="col-span-3">Name</div>
-            <div className="col-span-3">Contact</div>
-            <div className="col-span-2">Last Visit</div>
-            <div className="col-span-1 text-right">Visits</div>
-            <div className="col-span-1 text-right">Tier</div>
-            <div className="col-span-2 text-right">Segment</div>
+          <div className="grid grid-cols-12 gap-4 py-4 border-b border-border text-[11px] font-serif text-muted-foreground">
+            <div className="col-span-3">お名前</div>
+            <div className="col-span-3">連絡先</div>
+            <div className="col-span-2">最終来店</div>
+            <div className="col-span-1 text-right">回数</div>
+            <div className="col-span-1 text-right">ランク</div>
+            <div className="col-span-2 text-right">状態</div>
           </div>
           {filtered.slice(0, 200).map(c => {
             const seg = segmentOf(c.last_visit_date);
@@ -148,12 +148,12 @@ const Customers = () => {
                 <div className="col-span-2 text-xs font-serif-en">{c.last_visit_date || "—"}</div>
                 <div className="col-span-1 text-right font-serif">{c.visit_count}</div>
                 <div className="col-span-1 text-right">
-                  <span className={`text-[10px] tracking-luxury ${t.color}`}>{t.en.toUpperCase()}</span>
+                  <span className={`text-[11px] font-serif ${t.color}`}>{t.label}</span>
                 </div>
                 <div className="col-span-2 text-right">
-                  <span className={`inline-flex items-center gap-2 text-[10px] tracking-luxury ${info.color}`}>
+                  <span className={`inline-flex items-center gap-2 text-[11px] font-serif ${info.color}`}>
                     <span className="w-1 h-1 rounded-full bg-current" />
-                    {info.en.toUpperCase()}
+                    {info.label}
                   </span>
                 </div>
               </div>

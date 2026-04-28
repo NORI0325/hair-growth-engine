@@ -60,7 +60,7 @@ const Share = () => {
       <div className="grid lg:grid-cols-2 gap-12 mt-10">
         <div className="space-y-8">
           <div>
-            <p className="eyebrow mb-3">— Public Reservation URL —</p>
+            <p className="eyebrow mb-3">— 公開予約URL / Public Reservation —</p>
             <div className="flex items-stretch border border-border">
               <div className="flex-1 px-5 py-4 font-serif-en text-sm break-all bg-secondary/30">{url}</div>
               <Button onClick={copy} variant="ghost" className="rounded-none border-l border-border px-5">
@@ -74,7 +74,7 @@ const Share = () => {
           </div>
 
           <div className="border-t border-border pt-8">
-            <p className="eyebrow mb-4">— How To Use —</p>
+            <p className="eyebrow mb-4">— 活用方法 / How To Use —</p>
             <ul className="space-y-4 text-sm font-serif text-muted-foreground leading-relaxed">
               <li className="flex gap-4">
                 <span className="font-serif-en text-gold">01</span>
@@ -93,7 +93,7 @@ const Share = () => {
         </div>
 
         <div className="border border-border p-12 flex flex-col items-center justify-center bg-secondary/30">
-          <p className="eyebrow mb-6 text-gold">— Scan to Reserve —</p>
+          <p className="eyebrow mb-6 text-gold">— スキャンで予約 / Scan to Reserve —</p>
           <div className="font-serif text-base mb-6">{salonName}</div>
           {qrUrl && <img src={qrUrl} alt="予約用QRコード" className="w-64 h-64 bg-white p-3" />}
           <p className="text-xs text-muted-foreground mt-6 tracking-wider">店頭・名刺・チラシ用</p>

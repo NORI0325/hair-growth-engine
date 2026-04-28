@@ -98,27 +98,27 @@ const Auth = () => {
 
           <Tabs defaultValue="login" className="w-full">
             <TabsList className="grid w-full grid-cols-2 mb-8 bg-transparent border-b border-border rounded-none h-auto p-0">
-              <TabsTrigger value="login" className="rounded-none border-b-2 border-transparent data-[state=active]:border-gold data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-xs tracking-luxury py-3">SIGN IN</TabsTrigger>
-              <TabsTrigger value="signup" className="rounded-none border-b-2 border-transparent data-[state=active]:border-gold data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-xs tracking-luxury py-3">SIGN UP</TabsTrigger>
+              <TabsTrigger value="login" className="rounded-none border-b-2 border-transparent data-[state=active]:border-gold data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-xs tracking-luxury py-3">ログイン</TabsTrigger>
+              <TabsTrigger value="signup" className="rounded-none border-b-2 border-transparent data-[state=active]:border-gold data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-xs tracking-luxury py-3">新規登録</TabsTrigger>
             </TabsList>
 
             <TabsContent value="login">
               <form onSubmit={handleLogin} className="space-y-6">
                 <div>
-                  <Label htmlFor="login-email" className="eyebrow mb-2 block">Email</Label>
+                  <Label htmlFor="login-email" className="mb-2 block font-serif text-sm">メールアドレス <span className="eyebrow text-[9px] text-muted-foreground ml-1">Email</span></Label>
                   <Input id="login-email" type="email" value={loginForm.email}
                     onChange={(e) => setLoginForm({ ...loginForm, email: e.target.value })}
                     required autoComplete="email" className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
                 </div>
                 <div>
-                  <Label htmlFor="login-password" className="eyebrow mb-2 block">Password</Label>
+                  <Label htmlFor="login-password" className="mb-2 block font-serif text-sm">パスワード <span className="eyebrow text-[9px] text-muted-foreground ml-1">Password</span></Label>
                   <Input id="login-password" type="password" value={loginForm.password}
                     onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
                     required autoComplete="current-password" className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
                 </div>
                 <Button type="submit" className="w-full rounded-none py-6 text-xs tracking-luxury bg-primary hover:bg-primary-glow" disabled={loading}>
                   {loading && <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />}
-                  SIGN IN
+                  ログイン <span className="ml-2 opacity-60 text-[10px]">SIGN IN</span>
                 </Button>
               </form>
             </TabsContent>
@@ -126,32 +126,32 @@ const Auth = () => {
             <TabsContent value="signup">
               <form onSubmit={handleSignup} className="space-y-6">
                 <div>
-                  <Label htmlFor="signup-salon" className="eyebrow mb-2 block">Salon Name</Label>
+                  <Label htmlFor="signup-salon" className="mb-2 block font-serif text-sm">サロン名 <span className="eyebrow text-[9px] text-muted-foreground ml-1">Salon Name</span></Label>
                   <Input id="signup-salon" value={signupForm.salonName}
                     onChange={(e) => setSignupForm({ ...signupForm, salonName: e.target.value })}
-                    placeholder="Hair Salon Bloom" required className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
+                    placeholder="例：Hair Salon Bloom" required className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
                 </div>
                 <div>
-                  <Label htmlFor="signup-name" className="eyebrow mb-2 block">Your Name</Label>
+                  <Label htmlFor="signup-name" className="mb-2 block font-serif text-sm">お名前 <span className="eyebrow text-[9px] text-muted-foreground ml-1">Your Name</span></Label>
                   <Input id="signup-name" value={signupForm.fullName}
                     onChange={(e) => setSignupForm({ ...signupForm, fullName: e.target.value })}
                     required autoComplete="name" className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
                 </div>
                 <div>
-                  <Label htmlFor="signup-email" className="eyebrow mb-2 block">Email</Label>
+                  <Label htmlFor="signup-email" className="mb-2 block font-serif text-sm">メールアドレス <span className="eyebrow text-[9px] text-muted-foreground ml-1">Email</span></Label>
                   <Input id="signup-email" type="email" value={signupForm.email}
                     onChange={(e) => setSignupForm({ ...signupForm, email: e.target.value })}
                     required autoComplete="email" className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
                 </div>
                 <div>
-                  <Label htmlFor="signup-password" className="eyebrow mb-2 block">Password</Label>
+                  <Label htmlFor="signup-password" className="mb-2 block font-serif text-sm">パスワード <span className="eyebrow text-[9px] text-muted-foreground ml-1">Password — 6文字以上</span></Label>
                   <Input id="signup-password" type="password" value={signupForm.password}
                     onChange={(e) => setSignupForm({ ...signupForm, password: e.target.value })}
                     required autoComplete="new-password" minLength={6} className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
                 </div>
                 <Button type="submit" className="w-full rounded-none py-6 text-xs tracking-luxury bg-primary hover:bg-primary-glow" disabled={loading}>
                   {loading && <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />}
-                  CREATE ACCOUNT
+                  アカウント作成 <span className="ml-2 opacity-60 text-[10px]">CREATE</span>
                 </Button>
               </form>
             </TabsContent>
