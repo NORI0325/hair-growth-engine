@@ -8,11 +8,14 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Search, Loader2, Plus } from "lucide-react";
 
+import { calculateVipTier, tierInfo, isBirthdayMonth } from "@/lib/vip";
+
 interface Customer {
   id: string;
   full_name: string;
   email: string | null;
   phone: string | null;
+  birthday: string | null;
   last_visit_date: string | null;
   visit_count: number;
   total_spent: number;
@@ -44,7 +47,7 @@ const Customers = () => {
     setLoading(true);
     const { data, error } = await supabase
       .from("customers")
-      .select("id, full_name, email, phone, last_visit_date, visit_count, total_spent")
+      .select("id, full_name, email, phone, birthday, last_visit_date, visit_count, total_spent")
       .order("last_visit_date", { ascending: false, nullsFirst: false })
       .limit(1000);
     if (!error && data) setCustomers(data);
