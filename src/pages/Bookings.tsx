@@ -48,6 +48,11 @@ const Bookings = () => {
     const { error } = await supabase.from("bookings").update(update).eq("id", id);
     if (error) { toast.error("更新に失敗しました"); return; }
     toast.success("ステータスを更新しました");
+    if (status === "cancelled") {
+      supabase.functions.invoke("notify-owner-booking", {
+        body: { bookingId: id, eventType: "cancelled" },
+      }).catch(() => {});
+    }
     load();
   };
 
