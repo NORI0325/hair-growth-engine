@@ -23,6 +23,10 @@ interface Campaign {
   send_email: boolean;
   send_sms: boolean;
   target_segment: string | null;
+  // 集計
+  clicks?: number;
+  bookings_count?: number;
+  revenue?: number;
 }
 
 const TEMPLATES = [
@@ -80,7 +84,35 @@ const Campaigns = () => {
       .from("campaigns")
       .select("id, title, email_subject, status, total_recipients, sent_at, send_email, send_sms, target_segment")
       .order("created_at", { ascending: false });
-    if (data) setCampaigns(data as Campaign[]);
+    if (!data) return;
+
+    const ids = data.map((c: any) => c.id);
+    if (ids.length === 0) { setCampaigns([]); return; }
+
+    // クリック数を campaign_sends から
+    const { data: sends } = await supabase
+      .from("campaign_sends")
+      .select("campaign_id, clicked_at, booked_at")
+      .in("campaign_id", ids);
+
+    // 配信経由の予約と売上を bookings から
+    const { data: bks } = await supabase
+      .from("bookings")
+      .select("campaign_id, revenue, status")
+      .in("campaign_id", ids);
+
+    const enriched = data.map((c: any) => {
+      const s = (sends || []).filter(x => x.campaign_id === c.id);
+      const b = (bks || []).filter(x => x.campaign_id === c.id);
+      return {
+        ...c,
+        clicks: s.filter(x => x.clicked_at).length,
+        bookings_count: b.length,
+        revenue: b.reduce((sum: number, x: any) => sum + (x.revenue || 0), 0),
+      };
+    });
+
+    setCampaigns(enriched as Campaign[]);
   };
 
   useEffect(() => { load(); }, []);
