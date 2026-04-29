@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, Plus, Trash2, GripVertical } from "lucide-react";
+import { Loader2, Plus, Trash2, GripVertical, ImagePlus, X } from "lucide-react";
 import { toast } from "sonner";
 
 interface MenuItem {
@@ -18,6 +18,8 @@ interface MenuItem {
   price: number;
   sort_order: number;
   active: boolean;
+  image_url: string | null;
+  description: string | null;
 }
 
 const MenuItems = () => {
@@ -75,6 +77,33 @@ const MenuItems = () => {
     load();
   };
 
+  const uploadImage = async (id: string, file: File) => {
+    if (!user) return;
+    if (file.size > 5 * 1024 * 1024) { toast.error("画像は5MB以下にしてください"); return; }
+    const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+    const path = `${user.id}/${id}-${Date.now()}.${ext}`;
+    const { error: upErr } = await supabase.storage.from("menu-images").upload(path, file, {
+      cacheControl: "3600", upsert: false, contentType: file.type,
+    });
+    if (upErr) { toast.error("画像アップロード失敗: " + upErr.message); return; }
+    const { data: pub } = supabase.storage.from("menu-images").getPublicUrl(path);
+    update(id, { image_url: pub.publicUrl });
+    toast.success("画像をアップロードしました");
+  };
+
+  const removeImage = async (id: string, imageUrl: string | null) => {
+    if (!user || !imageUrl) return;
+    // URLからパス部分を抽出
+    const marker = "/menu-images/";
+    const idx = imageUrl.indexOf(marker);
+    if (idx >= 0) {
+      const path = imageUrl.slice(idx + marker.length);
+      await supabase.storage.from("menu-images").remove([path]);
+    }
+    update(id, { image_url: null });
+    toast.success("画像を削除しました");
+  };
+
   return (
     <AppLayout>
       <PageHeader
@@ -129,8 +158,34 @@ const MenuItems = () => {
         <div className="border border-border divide-y divide-border">
           {items.map(item => (
             <div key={item.id} className="grid grid-cols-1 md:grid-cols-12 gap-4 p-4 items-center hover:bg-secondary/30 transition-colors">
-              <div className="md:col-span-1 text-muted-foreground hidden md:flex">
-                <GripVertical className="w-4 h-4" />
+              <div className="md:col-span-1">
+                {item.image_url ? (
+                  <div className="relative group w-14 h-14 border border-border overflow-hidden">
+                    <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => removeImage(item.id, item.image_url)}
+                      className="absolute inset-0 bg-foreground/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
+                      title="画像を削除"
+                    >
+                      <X className="w-4 h-4 text-background" />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="cursor-pointer w-14 h-14 border border-dashed border-border flex items-center justify-center hover:border-gold hover:bg-secondary/30 transition-all">
+                    <ImagePlus className="w-4 h-4 text-muted-foreground" />
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) uploadImage(item.id, f);
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
+                )}
               </div>
               <div className="md:col-span-3">
                 <Input value={item.name} onChange={e => update(item.id, { name: e.target.value })}
@@ -170,6 +225,7 @@ const MenuItems = () => {
       <div className="mt-8 p-6 border border-gold/30 bg-secondary/20">
         <p className="eyebrow mb-3 text-gold">— Tips —</p>
         <ul className="text-xs text-muted-foreground space-y-2 leading-relaxed">
+          <li>• <strong>メニュー画像</strong>：仕上がり写真をアップロードすると、お客様の予約画面で視覚的に魅力的に表示されます（5MB以下推奨）。</li>
           <li>• <strong>バッファ時間</strong>：施術後の片付け・カウンセリングなど。次のお客様までの余裕時間として確保されます。</li>
           <li>• <strong>無効化</strong>：スイッチをオフにすると、お客様の予約画面に表示されなくなります（既存データは残ります）。</li>
           <li>• <strong>並び順</strong>：上から順に予約画面に表示されます。</li>

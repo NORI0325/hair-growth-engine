@@ -16,6 +16,7 @@ interface MenuItem {
   name: string;
   duration_minutes: number;
   price: number;
+  image_url: string | null;
 }
 
 interface StaffMember {
@@ -58,7 +59,7 @@ const Booking = () => {
           const [menusRes, staffRes] = await Promise.all([
             supabase
               .from("menu_items")
-              .select("id, name, duration_minutes, price")
+              .select("id, name, duration_minutes, price, image_url")
               .eq("owner_id", data.owner_id)
               .eq("active", true)
               .order("sort_order", { ascending: true }),
@@ -304,14 +305,23 @@ const Booking = () => {
                   const active = selectedMenus.includes(item.name);
                   return (
                     <button key={item.id} type="button" onClick={() => toggleMenu(item.name)}
-                      className={`w-full flex items-center justify-between px-4 py-4 text-left transition-all ${active ? "bg-primary text-primary-foreground" : "bg-card hover:bg-secondary"}`}>
-                      <div className="flex items-center gap-3">
-                        <div className={`w-4 h-4 border flex items-center justify-center ${active ? "border-primary-foreground bg-primary-foreground" : "border-border"}`}>
-                          {active && <Check className="w-3 h-3 text-primary" />}
+                      className={`w-full flex items-stretch text-left transition-all ${active ? "bg-primary text-primary-foreground" : "bg-card hover:bg-secondary"}`}>
+                      {item.image_url ? (
+                        <div className="w-20 h-20 flex-shrink-0 overflow-hidden bg-muted">
+                          <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" loading="lazy" />
                         </div>
-                        <span className="font-serif text-sm">{item.name}</span>
+                      ) : null}
+                      <div className="flex-1 flex items-center justify-between px-4 py-4 gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className={`w-4 h-4 border flex-shrink-0 flex items-center justify-center ${active ? "border-primary-foreground bg-primary-foreground" : "border-border"}`}>
+                            {active && <Check className="w-3 h-3 text-primary" />}
+                          </div>
+                          <span className="font-serif text-sm truncate">{item.name}</span>
+                        </div>
+                        <div className="text-xs opacity-80 font-serif flex-shrink-0 text-right">
+                          {item.duration_minutes}分<br/>¥{item.price.toLocaleString()}
+                        </div>
                       </div>
-                      <div className="text-xs opacity-80 font-serif">{item.duration_minutes}分 / ¥{item.price.toLocaleString()}</div>
                     </button>
                   );
                 })}
