@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Send, MessageCircle, Phone } from "lucide-react";
+import { Loader2, Send, MessageCircle, Phone, Sparkles, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 
 interface Template {
