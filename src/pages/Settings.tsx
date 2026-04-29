@@ -129,6 +129,9 @@ const Settings = () => {
         booking_max_days_ahead: form.booking_max_days_ahead,
         allow_customer_cancel: form.allow_customer_cancel,
         cancel_deadline_hours: form.cancel_deadline_hours,
+        auto_reply_enabled: form.auto_reply_enabled,
+        auto_reply_use_ai: form.auto_reply_use_ai,
+        auto_reply_message: form.auto_reply_message.trim() || null,
       } as any)
       .eq("id", user.id);
     setSaving(false);
