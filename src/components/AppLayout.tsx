@@ -18,6 +18,7 @@ const navItems = [
   { to: "/performance", label: "効果測定", en: "Performance", icon: TrendingUp },
   { to: "/bookings", label: "予約", en: "Bookings", icon: Calendar },
   { to: "/menu-items", label: "メニュー管理", en: "Menus", icon: Scissors },
+  { to: "/staff", label: "スタッフ", en: "Staff", icon: UserCog },
   { to: "/email-logs", label: "メール履歴", en: "Email Logs", icon: Mail },
   { to: "/share", label: "公開URL", en: "Share", icon: Share2 },
   { to: "/settings", label: "設定", en: "Settings", icon: SettingsIcon },
