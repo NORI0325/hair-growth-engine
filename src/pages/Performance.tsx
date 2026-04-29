@@ -52,38 +52,6 @@ const Performance = () => {
       // LINE統計
       supabase
         .from("line_message_log")
-        .select("job_type, status")
-        .eq("owner_id", user.id)
-        .gte("created_at", since),
-      // 予約 by source_template
-      supabase
-        .from("bookings")
-        .select("source_template, revenue")
-        .eq("owner_id", user.id)
-        .not("source_template", "is", null)
-        .gte("created_at", since),
-    ]).then(([emailRes, lineRes, bookingsRes]) => {
-      // dedup email
-      const seen = new Set<string>();
-      const emap: Record<string, { sent: number; failed: number }> = {};
-      (emailRes.data || []).forEach((r: any) => {
-        if (!r.message_id || seen.has(r.message_id)) return;
-        seen.add(r.message_id);
-        const k = r.template_name;
-        if (!emap[k]) emap[k] = { sent: 0, failed: 0 };
-        if (r.status === "sent") emap[k].sent++;
-        else if (["failed", "dlq", "bounced"].includes(r.status)) emap[k].failed++;
-      });
-    Promise.all([
-      // メール統計（dedup by message_id, latest）
-      supabase
-        .from("email_send_log")
-        .select("message_id, template_name, status, created_at")
-        .gte("created_at", since)
-        .order("created_at", { ascending: false }),
-      // LINE統計
-      supabase
-        .from("line_message_log")
         .select("job_type, template_key, status")
         .eq("owner_id", user.id)
         .gte("created_at", since),
