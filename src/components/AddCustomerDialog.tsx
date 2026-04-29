@@ -71,12 +71,12 @@ const AddCustomerDialog = ({ open, onOpenChange, onAdded }: Props) => {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label className="mb-2 block font-serif text-sm">電話番号 <span className="eyebrow text-[9px] text-muted-foreground ml-1">Phone</span></Label>
+              <Label className="mb-2 block font-serif text-sm">電話番号 <span className="eyebrow text-[9px] text-muted-foreground ml-1">Phone（任意）</span></Label>
               <Input type="tel" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})}
                 className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
             </div>
             <div>
-              <Label className="mb-2 block font-serif text-sm">メール <span className="eyebrow text-[9px] text-muted-foreground ml-1">Email</span></Label>
+              <Label className="mb-2 block font-serif text-sm">メール <span className="eyebrow text-[9px] text-muted-foreground ml-1">Email（任意）</span></Label>
               <Input type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})}
                 className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
             </div>
