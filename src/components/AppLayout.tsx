@@ -65,7 +65,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
         </div>
 
         <nav className="flex-1 px-4 py-8 space-y-1">
-          {navItems.map(({ to, label, en, icon: Icon }) => (
+          {navItems.map(({ to, label, en, icon: Icon, badgeKey }: any) => (
             <NavLink
               key={to}
               to={to}
@@ -79,10 +79,15 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
               }
             >
               <Icon className="w-3.5 h-3.5 stroke-[1.5]" />
-              <div className="flex flex-col">
+              <div className="flex flex-col flex-1">
                 <span className="font-serif text-[13px] tracking-wider">{label}</span>
                 <span className="eyebrow text-[9px] text-sidebar-foreground/40">{en}</span>
               </div>
+              {badgeKey === "inbox" && unreadInbox > 0 && (
+                <span className="ml-auto text-[10px] font-mono px-1.5 py-0.5 bg-gold text-background rounded-sm min-w-[20px] text-center">
+                  {unreadInbox > 99 ? "99+" : unreadInbox}
+                </span>
+              )}
             </NavLink>
           ))}
         </nav>
