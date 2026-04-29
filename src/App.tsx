@@ -13,6 +13,7 @@ import ImportCustomers from "./pages/ImportCustomers";
 import Campaigns from "./pages/Campaigns";
 import Bookings from "./pages/Bookings";
 import Booking from "./pages/Booking";
+import MyBookings from "./pages/MyBookings";
 import PublicBooking from "./pages/PublicBooking";
 import Share from "./pages/Share";
 import Settings from "./pages/Settings";
@@ -40,6 +41,7 @@ const App = () => (
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/book/:token" element={<Booking />} />
+            <Route path="/my-bookings/:token" element={<MyBookings />} />
             <Route path="/salon/:slug" element={<PublicBooking />} />
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/customers" element={<ProtectedRoute><Customers /></ProtectedRoute>} />

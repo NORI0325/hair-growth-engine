@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, CheckCircle2, Check } from "lucide-react";
+import { Loader2, CheckCircle2, Check, CalendarDays } from "lucide-react";
 import { toast } from "sonner";
 
 const FALLBACK_MENUS = ["カット", "カット＋カラー", "カット＋パーマ", "縮毛矯正", "ヘッドスパ", "その他"];
@@ -39,11 +39,13 @@ const Booking = () => {
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
   const [selectedMenus, setSelectedMenus] = useState<string[]>([]);
-  const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null); // null = 指名なし
+  const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
   const [completed, setCompleted] = useState(false);
   const [availableSlots, setAvailableSlots] = useState<string[] | null>(null);
   const [loadingSlots, setLoadingSlots] = useState(false);
+  const [leadHours, setLeadHours] = useState(24);
+  const [maxDaysAhead, setMaxDaysAhead] = useState(60);
 
   useEffect(() => {
     const load = async () => {
@@ -53,6 +55,8 @@ const Booking = () => {
         setCustomer(data.customer);
         setSalonName(data.salon_name || "Salon Boost");
         setSalonSlug(data.public_slug || null);
+        setLeadHours(data.booking_lead_time_hours ?? 24);
+        setMaxDaysAhead(data.booking_max_days_ahead ?? 60);
 
         // メニュー & スタッフ取得
         if (data.owner_id) {
@@ -82,9 +86,16 @@ const Booking = () => {
     load();
   }, [token]);
 
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const minDate = tomorrow.toISOString().split("T")[0];
+  // 予約可能日: リードタイム経過後の日付から / 上限日まで
+  const earliestDate = useMemo(() => {
+    const d = new Date(Date.now() + leadHours * 3600_000);
+    return d.toISOString().split("T")[0];
+  }, [leadHours]);
+  const maxDate = useMemo(() => {
+    const d = new Date(Date.now() + maxDaysAhead * 86400_000);
+    return d.toISOString().split("T")[0];
+  }, [maxDaysAhead]);
+  const minDate = earliestDate;
 
   const { totalDuration, totalPrice } = useMemo(() => {
     let d = 0, p = 0;
@@ -191,6 +202,12 @@ const Booking = () => {
             <div className="flex justify-between"><span className="font-serif text-muted-foreground">メニュー</span><span className="font-serif text-right">{selectedMenus.join(" + ")}</span></div>
             <div className="flex justify-between"><span className="font-serif text-muted-foreground">サロン</span><span className="font-serif">{salonName}</span></div>
           </div>
+          <div className="mt-10">
+            <Link to={`/my-bookings/${token}`}
+              className="inline-flex items-center gap-2 text-[11px] eyebrow text-gold border-b border-gold/40 pb-1 hover:opacity-70">
+              <CalendarDays className="w-3 h-3" /> ご予約の確認・変更はこちら
+            </Link>
+          </div>
         </div>
       </div>
     );
@@ -201,9 +218,16 @@ const Booking = () => {
   return (
     <div className="min-h-screen bg-background py-12 px-6">
       <div className="max-w-md mx-auto">
-        <div className="text-center mb-12 animate-fade-up">
+        <div className="text-center mb-8 animate-fade-up">
           <div className="font-serif-en text-3xl tracking-luxury text-gold mb-2">SB</div>
           <h1 className="display text-xl">{salonName}</h1>
+        </div>
+
+        <div className="text-center mb-10">
+          <Link to={`/my-bookings/${token}`}
+            className="inline-flex items-center gap-2 text-[11px] eyebrow text-gold border-b border-gold/40 pb-1 hover:opacity-70">
+            <CalendarDays className="w-3 h-3" /> ご予約の確認・変更
+          </Link>
         </div>
 
         <div className="border border-gold/40 mb-12 p-10 text-center bg-secondary/30 animate-fade-up animate-delay-100 relative">
@@ -220,8 +244,13 @@ const Booking = () => {
 
         <div className="space-y-8 animate-fade-up animate-delay-200">
           <div>
-            <p className="eyebrow mb-3">No.01 — ご希望日 / Date</p>
-            <Input id="date" type="date" min={minDate} value={date} onChange={e => setDate(e.target.value)}
+            <p className="eyebrow mb-3">
+              No.01 — ご希望日 / Date
+              <span className="text-muted-foreground normal-case ml-2 text-[10px]">
+                （最短 {leadHours}時間後 〜 {maxDaysAhead}日先まで）
+              </span>
+            </p>
+            <Input id="date" type="date" min={minDate} max={maxDate} value={date} onChange={e => setDate(e.target.value)}
               className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
           </div>
 

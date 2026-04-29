@@ -74,6 +74,28 @@ Deno.serve(async (req) => {
     }
     const menuSummary = menus.join(" + ").slice(0, 200);
 
+    // 予約ルール取得（リードタイム検証）
+    const { data: ownerProf } = await supabase
+      .from("profiles")
+      .select("booking_lead_time_hours, booking_max_days_ahead")
+      .eq("id", customer.owner_id)
+      .maybeSingle();
+    const leadHours = (ownerProf as any)?.booking_lead_time_hours ?? 24;
+    const maxDays = (ownerProf as any)?.booking_max_days_ahead ?? 60;
+    const reqStartCheck = new Date(`${date}T${time}:00+09:00`);
+    const earliest = new Date(Date.now() + leadHours * 3600_000);
+    const latest = new Date(Date.now() + maxDays * 86400_000);
+    if (reqStartCheck < earliest) {
+      return new Response(JSON.stringify({ error: "too_soon", message: `ご予約は${leadHours}時間前までに承っております。お急ぎの場合はお電話ください。` }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (reqStartCheck > latest) {
+      return new Response(JSON.stringify({ error: "too_far", message: `${maxDays}日先までのご予約のみ承っております。` }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // 指名スタッフの妥当性チェック
     let assignedStaffId: string | null = null;
     if (staff_id && typeof staff_id === "string") {
@@ -193,8 +215,8 @@ Deno.serve(async (req) => {
         .maybeSingle();
       if (cust?.line_user_id && prof?.line_channel_access_token) {
         const APP_ORIGIN = Deno.env.get("APP_ORIGIN") || "https://hair-growth-engine.lovable.app";
-        const bookingLink = `${APP_ORIGIN}/book/${token}`;
-        const text = `🌸 ご予約ありがとうございます\n\n${cust.full_name}様\n${prof.salon_name || "サロン"}でのご予約が確定しました。\n\n📅 ${date}\n🕐 ${time}\n💇 ${menu}\n\nお会いできるのを楽しみにお待ちしております。\n\n変更・キャンセルはこちら：\n→ ${bookingLink}`;
+        const myBookingsLink = `${APP_ORIGIN}/my-bookings/${token}`;
+        const text = `🌸 ご予約ありがとうございます\n\n${cust.full_name}様\n${prof.salon_name || "サロン"}でのご予約が確定しました。\n\n📅 ${date}\n🕐 ${time}\n💇 ${menu}\n\nお会いできるのを楽しみにお待ちしております。\n\nご予約の確認・キャンセルはこちら：\n→ ${myBookingsLink}`;
         await sendLinePush(prof.line_channel_access_token, cust.line_user_id, text);
       }
     } catch (e) {

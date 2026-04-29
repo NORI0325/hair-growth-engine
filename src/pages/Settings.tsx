@@ -39,6 +39,10 @@ const Settings = () => {
     reminder_enabled: true,
     reactivation_enabled: true,
     reminder_hour: 19,
+    booking_lead_time_hours: 24,
+    booking_max_days_ahead: 60,
+    allow_customer_cancel: true,
+    cancel_deadline_hours: 3,
   });
 
   useEffect(() => {
@@ -46,7 +50,7 @@ const Settings = () => {
     (async () => {
       const { data } = await supabase
         .from("profiles")
-        .select("salon_name, google_review_url, line_add_friend_url, line_channel_access_token, line_channel_secret, owner_notification_email, test_mode, reminder_enabled, reactivation_enabled, reminder_hour, inbound_key")
+        .select("salon_name, google_review_url, line_add_friend_url, line_channel_access_token, line_channel_secret, owner_notification_email, test_mode, reminder_enabled, reactivation_enabled, reminder_hour, inbound_key, booking_lead_time_hours, booking_max_days_ahead, allow_customer_cancel, cancel_deadline_hours")
         .eq("id", user.id)
         .maybeSingle();
       if (data) {
@@ -73,6 +77,10 @@ const Settings = () => {
           reminder_enabled: d.reminder_enabled ?? true,
           reactivation_enabled: d.reactivation_enabled ?? true,
           reminder_hour: d.reminder_hour ?? 19,
+          booking_lead_time_hours: d.booking_lead_time_hours ?? 24,
+          booking_max_days_ahead: d.booking_max_days_ahead ?? 60,
+          allow_customer_cancel: d.allow_customer_cancel ?? true,
+          cancel_deadline_hours: d.cancel_deadline_hours ?? 3,
         });
       }
       setLoading(false);
@@ -111,6 +119,10 @@ const Settings = () => {
         reminder_enabled: form.reminder_enabled,
         reactivation_enabled: form.reactivation_enabled,
         reminder_hour: form.reminder_hour,
+        booking_lead_time_hours: form.booking_lead_time_hours,
+        booking_max_days_ahead: form.booking_max_days_ahead,
+        allow_customer_cancel: form.allow_customer_cancel,
+        cancel_deadline_hours: form.cancel_deadline_hours,
       } as any)
       .eq("id", user.id);
     setSaving(false);
@@ -205,6 +217,76 @@ const Settings = () => {
             className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
         </section>
 
+        <section className="space-y-5 pt-8 border-t border-border">
+          <div className="flex items-center gap-3">
+            <Clock className="w-4 h-4 text-gold" />
+            <h2 className="display text-xl">予約受付ルール</h2>
+          </div>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            <strong>当日予約・直前予約・先の予約</strong>をお客様にどこまで許可するかを設定します。
+            短すぎる場合は準備が間に合わず、長すぎる場合は機会損失になります。日本のサロン平均は<strong>3〜24時間前</strong>です。
+          </p>
+          <div className="grid grid-cols-2 gap-5">
+            <div>
+              <Label className="mb-2 block font-serif text-sm">最短リードタイム <span className="eyebrow text-[9px] text-muted-foreground ml-1">Lead Time</span></Label>
+              <div className="flex items-center gap-2">
+                <Input type="number" min={0} max={168} value={form.booking_lead_time_hours}
+                  onChange={e => setForm({...form, booking_lead_time_hours: Math.max(0, parseInt(e.target.value) || 0)})}
+                  className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
+                <span className="text-xs font-serif text-muted-foreground">時間前まで受付</span>
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-2">
+                {form.booking_lead_time_hours === 0 ? "当日直前まで予約可能" :
+                 form.booking_lead_time_hours < 24 ? `当日 ${24 - form.booking_lead_time_hours}時前まで予約可能` :
+                 `${Math.floor(form.booking_lead_time_hours / 24)}日前まで予約可能`}
+              </p>
+            </div>
+            <div>
+              <Label className="mb-2 block font-serif text-sm">予約可能な先日数 <span className="eyebrow text-[9px] text-muted-foreground ml-1">Max Days</span></Label>
+              <div className="flex items-center gap-2">
+                <Input type="number" min={7} max={365} value={form.booking_max_days_ahead}
+                  onChange={e => setForm({...form, booking_max_days_ahead: Math.max(7, parseInt(e.target.value) || 60)})}
+                  className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
+                <span className="text-xs font-serif text-muted-foreground">日先まで</span>
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-2">推奨: 30〜90日</p>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between p-5 border border-border bg-secondary/20 mt-4">
+            <div>
+              <div className="font-serif text-sm">お客様によるオンラインキャンセル</div>
+              <div className="text-[10px] text-muted-foreground mt-1">
+                {form.allow_customer_cancel
+                  ? `✅ 許可中 — 予約${form.cancel_deadline_hours}時間前まで`
+                  : "❌ 不可 — お電話のみ受付"}
+              </div>
+            </div>
+            <Switch checked={form.allow_customer_cancel}
+              onCheckedChange={v => setForm({...form, allow_customer_cancel: v})} />
+          </div>
+
+          {form.allow_customer_cancel && (
+            <div>
+              <Label className="mb-2 block font-serif text-sm">キャンセル受付期限 <span className="eyebrow text-[9px] text-muted-foreground ml-1">Cancel Deadline</span></Label>
+              <div className="flex items-center gap-2">
+                <Input type="number" min={0} max={72} value={form.cancel_deadline_hours}
+                  onChange={e => setForm({...form, cancel_deadline_hours: Math.max(0, parseInt(e.target.value) || 0)})}
+                  className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
+                <span className="text-xs font-serif text-muted-foreground">時間前まで</span>
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-2">
+                これより直前は「お電話でご連絡ください」と表示されます
+              </p>
+            </div>
+          )}
+
+          <Button onClick={save} disabled={saving} variant="outline"
+            className="rounded-none border-gold/40 text-xs tracking-luxury hover:bg-gold/5">
+            {saving ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> : null}
+            予約ルールを保存 <span className="ml-2 opacity-60 text-[10px]">SAVE</span>
+          </Button>
+        </section>
         <section className="space-y-5 pt-8 border-t border-border">
           <div className="flex items-center gap-3">
             <Bell className="w-4 h-4 text-gold" />
