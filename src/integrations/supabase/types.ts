@@ -585,6 +585,60 @@ export type Database = {
         }
         Relationships: []
       }
+      line_inbound_messages: {
+        Row: {
+          ai_error: string | null
+          ai_processed: boolean
+          created_at: string
+          customer_id: string | null
+          display_name: string | null
+          handled: boolean
+          handled_at: string | null
+          id: string
+          intent: string | null
+          line_user_id: string
+          message_text: string
+          owner_id: string
+          suggested_action: string | null
+          summary: string | null
+          urgency: string
+        }
+        Insert: {
+          ai_error?: string | null
+          ai_processed?: boolean
+          created_at?: string
+          customer_id?: string | null
+          display_name?: string | null
+          handled?: boolean
+          handled_at?: string | null
+          id?: string
+          intent?: string | null
+          line_user_id: string
+          message_text: string
+          owner_id: string
+          suggested_action?: string | null
+          summary?: string | null
+          urgency?: string
+        }
+        Update: {
+          ai_error?: string | null
+          ai_processed?: boolean
+          created_at?: string
+          customer_id?: string | null
+          display_name?: string | null
+          handled?: boolean
+          handled_at?: string | null
+          id?: string
+          intent?: string | null
+          line_user_id?: string
+          message_text?: string
+          owner_id?: string
+          suggested_action?: string | null
+          summary?: string | null
+          urgency?: string
+        }
+        Relationships: []
+      }
       line_message_log: {
         Row: {
           broadcast_id: string | null
