@@ -98,17 +98,18 @@ const Booking = () => {
     setSelectedMenus(prev => prev.includes(name) ? prev.filter(m => m !== name) : [...prev, name]);
   };
 
-  // 空き枠の取得（日付 or メニュー変更時）
+  // 空き枠の取得（日付・メニュー・スタッフ変更時）
   useEffect(() => {
     const fetchSlots = async () => {
       if (!date || !salonSlug) { setAvailableSlots(null); return; }
       const duration = totalDuration > 0 ? totalDuration : 60;
       setLoadingSlots(true);
-      setTime(""); // 日付/メニュー変わったら時間リセット
-      const { data, error } = await supabase.rpc("get_available_slots", {
+      setTime("");
+      const { data, error } = await supabase.rpc("get_available_slots_by_staff", {
         _salon_slug: salonSlug,
         _date: date,
         _duration_minutes: duration,
+        _staff_id: selectedStaffId,
       });
       setLoadingSlots(false);
       if (error) { console.error(error); setAvailableSlots([]); return; }
@@ -116,7 +117,7 @@ const Booking = () => {
       setAvailableSlots(slots);
     };
     fetchSlots();
-  }, [date, totalDuration, salonSlug]);
+  }, [date, totalDuration, salonSlug, selectedStaffId]);
 
   const handleBook = async () => {
     if (!date || !time || selectedMenus.length === 0) {
