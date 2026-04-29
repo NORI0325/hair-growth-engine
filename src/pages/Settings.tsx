@@ -39,6 +39,10 @@ const Settings = () => {
     reminder_enabled: true,
     reactivation_enabled: true,
     reminder_hour: 19,
+    booking_lead_time_hours: 24,
+    booking_max_days_ahead: 60,
+    allow_customer_cancel: true,
+    cancel_deadline_hours: 3,
   });
 
   useEffect(() => {
@@ -46,7 +50,7 @@ const Settings = () => {
     (async () => {
       const { data } = await supabase
         .from("profiles")
-        .select("salon_name, google_review_url, line_add_friend_url, line_channel_access_token, line_channel_secret, owner_notification_email, test_mode, reminder_enabled, reactivation_enabled, reminder_hour, inbound_key")
+        .select("salon_name, google_review_url, line_add_friend_url, line_channel_access_token, line_channel_secret, owner_notification_email, test_mode, reminder_enabled, reactivation_enabled, reminder_hour, inbound_key, booking_lead_time_hours, booking_max_days_ahead, allow_customer_cancel, cancel_deadline_hours")
         .eq("id", user.id)
         .maybeSingle();
       if (data) {
@@ -73,6 +77,10 @@ const Settings = () => {
           reminder_enabled: d.reminder_enabled ?? true,
           reactivation_enabled: d.reactivation_enabled ?? true,
           reminder_hour: d.reminder_hour ?? 19,
+          booking_lead_time_hours: d.booking_lead_time_hours ?? 24,
+          booking_max_days_ahead: d.booking_max_days_ahead ?? 60,
+          allow_customer_cancel: d.allow_customer_cancel ?? true,
+          cancel_deadline_hours: d.cancel_deadline_hours ?? 3,
         });
       }
       setLoading(false);
