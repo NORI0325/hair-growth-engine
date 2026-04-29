@@ -103,6 +103,34 @@ const PublicBooking = () => {
     setSelectedMenus(prev => prev.includes(name) ? prev.filter(m => m !== name) : [...prev, name]);
   };
 
+  // 日付・所要時間・スタッフ有無が変わったら空き枠を再取得
+  useEffect(() => {
+    const fetchSlots = async () => {
+      if (!slug || !form.date || !hasStaff) { setAvailableSlots({}); return; }
+      const duration = totalDuration > 0 ? totalDuration : 60;
+      setSlotsLoading(true);
+      const { data, error } = await supabase.rpc("get_available_slots" as any, {
+        _salon_slug: slug,
+        _date: form.date,
+        _duration_minutes: duration,
+      });
+      setSlotsLoading(false);
+      if (error || !data) { setAvailableSlots({}); return; }
+      const map: Record<string, number> = {};
+      for (const row of data as any[]) {
+        const t = String(row.slot_time).slice(0, 5);
+        map[t] = row.available_staff_count;
+      }
+      setAvailableSlots(map);
+      // 選択中の時刻が空きでなくなったらクリア
+      if (form.time && map[form.time] === undefined) {
+        setForm(f => ({ ...f, time: "" }));
+      }
+    };
+    fetchSlots();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug, form.date, totalDuration, hasStaff]);
+
   const handleSubmit = async () => {
     const parsed = schema.safeParse(form);
     if (!parsed.success) { toast.error(parsed.error.errors[0].message); return; }
