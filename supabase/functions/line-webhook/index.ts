@@ -164,11 +164,27 @@ Deno.serve(async (req) => {
 
         const phone = normalizePhone(text);
 
+        // 既存顧客にline_user_idが既に紐付いているか
+        const { data: linkedCustomer } = await supabase
+          .from("customers")
+          .select("id")
+          .eq("owner_id", owner.id)
+          .eq("line_user_id", userId)
+          .maybeSingle();
+
         if (!phone) {
+          // 電話番号として認識できないテキスト → pendingに最終メッセージとして保存
+          if (!linkedCustomer) {
+            await supabase.from("line_pending_friends").upsert({
+              owner_id: owner.id,
+              line_user_id: userId,
+              last_message: text.slice(0, 200),
+            }, { onConflict: "owner_id,line_user_id" });
+          }
           const r = await replyLine(
             accessToken,
             replyToken,
-            `お問い合わせありがとうございます🙇‍♀️\n\nLINE連携をご希望の場合は、ご登録のお電話番号を送信してください（例：090-1234-5678）。\n\nそれ以外のお問い合わせはお店までお電話ください。`
+            `メッセージありがとうございます🙇‍♀️\n\nお電話番号でのLINE連携をご希望の場合は、番号を送信してください（例：090-1234-5678）。\n\nお名前のみでもスタッフが確認のうえ連携いたしますので、お気軽にメッセージをお送りください🌸`
           );
           if (!r.ok) console.error("[line-webhook] text reply failed:", r.err);
           continue;
@@ -184,10 +200,17 @@ Deno.serve(async (req) => {
         const matched = (candidates || []).find(c => normalizePhone(c.phone || "") === phone);
 
         if (!matched) {
+          // pendingに番号も記録（オーナーが見て手動連携できるよう）
+          await supabase.from("line_pending_friends").upsert({
+            owner_id: owner.id,
+            line_user_id: userId,
+            last_message: text.slice(0, 200),
+          }, { onConflict: "owner_id,line_user_id" });
+
           await replyLine(
             accessToken,
             replyToken,
-            `お電話番号が見つかりませんでした🙏\n\nご登録時の番号と異なる可能性があります。お手数ですがお店までご連絡ください。`
+            `お電話番号が見つかりませんでした🙏\n\nお手数ですがお名前もメッセージでお送りいただけますと、スタッフが確認のうえ連携いたします。`
           );
           continue;
         }
@@ -205,6 +228,13 @@ Deno.serve(async (req) => {
           .from("customers")
           .update({ line_user_id: userId })
           .eq("id", matched.id);
+
+        // 連携が成立したのでpending削除
+        await supabase
+          .from("line_pending_friends")
+          .delete()
+          .eq("owner_id", owner.id)
+          .eq("line_user_id", userId);
 
         await replyLine(
           accessToken,
