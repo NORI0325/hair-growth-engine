@@ -1097,6 +1097,18 @@ export type Database = {
           slot_time: string
         }[]
       }
+      get_available_slots_by_staff: {
+        Args: {
+          _date: string
+          _duration_minutes: number
+          _salon_slug: string
+          _staff_id?: string
+        }
+        Returns: {
+          available_staff_ids: string[]
+          slot_time: string
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
