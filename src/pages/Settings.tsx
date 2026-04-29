@@ -43,6 +43,9 @@ const Settings = () => {
     booking_max_days_ahead: 60,
     allow_customer_cancel: true,
     cancel_deadline_hours: 3,
+    auto_reply_enabled: false,
+    auto_reply_use_ai: true,
+    auto_reply_message: "",
   });
 
   useEffect(() => {
