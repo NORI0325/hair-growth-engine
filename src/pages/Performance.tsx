@@ -216,6 +216,70 @@ const Performance = () => {
         </Card>
       </div>
 
+      <Card className="mb-8">
+        <CardHeader>
+          <CardTitle className="text-sm flex items-center gap-2"><Gift className="w-4 h-4" /> 特典タイプ別 効果測定</CardTitle>
+          <p className="text-xs text-muted-foreground mt-1">割引 vs ギフト vs 体験 — どの特典が一番"売上"に貢献したか？</p>
+        </CardHeader>
+        <CardContent>
+          {loading ? <div className="text-sm text-muted-foreground">読み込み中...</div> :
+            incentiveByKind.length === 0 ? (
+              <div className="text-sm text-muted-foreground py-6 text-center">
+                テンプレートに特典をひも付けると、ここに集計が表示されます。<br />
+                <span className="text-xs">（テンプレート編集画面で「特典」を選択してください）</span>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="border-b text-xs text-muted-foreground">
+                    <tr>
+                      <th className="text-left py-2">特典タイプ</th>
+                      <th className="text-right">登録数</th>
+                      <th className="text-right">送信</th>
+                      <th className="text-right">予約</th>
+                      <th className="text-right">転換率</th>
+                      <th className="text-right">売上</th>
+                      <th className="text-right">原価</th>
+                      <th className="text-right">ROI</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {incentiveByKind.map((k) => (
+                      <tr key={k.kind} className="border-b">
+                        <td className="py-2">{INCENTIVE_KIND_LABELS[k.kind] || k.kind}</td>
+                        <td className="text-right text-muted-foreground">{k.count}</td>
+                        <td className="text-right">{k.sent}</td>
+                        <td className="text-right">{k.bookings}</td>
+                        <td className="text-right">
+                          <Badge variant={k.cvr >= 10 ? "default" : "outline"}>{k.cvr.toFixed(1)}%</Badge>
+                        </td>
+                        <td className="text-right font-medium">¥{k.revenue.toLocaleString()}</td>
+                        <td className="text-right text-muted-foreground">¥{k.cost.toLocaleString()}</td>
+                        <td className="text-right">
+                          {k.cost > 0 ? (
+                            <Badge variant={k.roi >= 100 ? "default" : k.roi >= 0 ? "outline" : "destructive"}>
+                              {k.roi >= 999 ? "∞" : `${k.roi.toFixed(0)}%`}
+                            </Badge>
+                          ) : k.revenue > 0 ? (
+                            <Badge variant="default">無料特典</Badge>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="text-[11px] text-muted-foreground mt-3 leading-relaxed">
+                  ※ ROI = (売上 − 推定原価×予約数) ÷ 推定原価。原価¥0の特典は「無料特典」と表示されます。<br />
+                  ※ 送信数は、その特典が紐づくテンプレートで実際に配信された数（メール＋LINE）です。
+                </p>
+              </div>
+            )
+          }
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader><CardTitle className="text-sm flex items-center gap-2"><TrendingUp className="w-4 h-4" /> テンプレート別パフォーマンス</CardTitle></CardHeader>
         <CardContent>
