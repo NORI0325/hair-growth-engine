@@ -6,7 +6,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, MessageCircle, Check, AlertTriangle, Sparkles, Phone } from "lucide-react";
+import { Loader2, MessageCircle, Check, AlertTriangle, Sparkles, Phone, Trash2 } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { CustomerMessageDialog } from "@/components/CustomerMessageDialog";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -82,6 +83,13 @@ export default function Inbox() {
       .eq("id", id);
     if (error) { toast.error("更新に失敗しました"); return; }
     toast.success(handled ? "対応済みにしました" : "未対応に戻しました");
+  };
+
+  const removeMessage = async (id: string) => {
+    const { error } = await supabase.from("line_inbound_messages").delete().eq("id", id);
+    if (error) { toast.error("削除に失敗しました: " + error.message); return; }
+    toast.success("メッセージを削除しました");
+    setMessages((prev) => prev.filter((m) => m.id !== id));
   };
 
   const openReply = (m: InboundMsg) => {
@@ -226,6 +234,35 @@ export default function Inbox() {
                       <Check className="w-3.5 h-3.5 mr-1.5" />
                       {m.handled ? "未対応に戻す" : "対応済みにする"}
                     </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="rounded-none text-muted-foreground hover:text-destructive"
+                          title="メッセージを削除"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent className="rounded-none">
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>このメッセージを削除しますか？</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            受信トレイから完全に削除されます。この操作は取り消せません。
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel className="rounded-none">キャンセル</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => removeMessage(m.id)}
+                            className="rounded-none bg-destructive hover:bg-destructive/90"
+                          >
+                            削除する
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                 </div>
               </Card>

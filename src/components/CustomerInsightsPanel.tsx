@@ -22,23 +22,54 @@ const TONE_LABEL: Record<string, string> = {
   casual: "気さく・フランク",
 };
 
+// AIレスポンスを安全な形に正規化（欠損フィールドでクラッシュしないように）
+const normalize = (raw: any): Insights => ({
+  summary: typeof raw?.summary === "string" ? raw.summary : "（要約はまだありません）",
+  recommendations: Array.isArray(raw?.recommendations) ? raw.recommendations.filter((x: any) => typeof x === "string") : [],
+  risks: Array.isArray(raw?.risks) ? raw.risks.filter((x: any) => typeof x === "string") : [],
+  next_visit_suggestion: typeof raw?.next_visit_suggestion === "string" ? raw.next_visit_suggestion : "—",
+  preferred_tone: typeof raw?.preferred_tone === "string" ? raw.preferred_tone : "polite",
+  generated_at: typeof raw?.generated_at === "string" ? raw.generated_at : new Date().toISOString(),
+  cached: !!raw?.cached,
+});
+
+const safeFormatDate = (iso: string): string => {
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "—";
+    return format(d, "MM/dd HH:mm");
+  } catch {
+    return "—";
+  }
+};
+
 export const CustomerInsightsPanel = ({ customerId }: { customerId: string }) => {
   const [data, setData] = useState<Insights | null>(null);
   const [loading, setLoading] = useState(false);
+  const [errored, setErrored] = useState(false);
 
   const generate = async (force = false) => {
     setLoading(true);
-    const { data: res, error } = await supabase.functions.invoke("ai-customer-insights", {
-      body: { customer_id: customerId, force },
-    });
-    setLoading(false);
-    if (error || (res as any)?.error) {
-      const msg = (res as any)?.message || (res as any)?.error || error?.message || "AI分析に失敗しました";
-      toast.error(msg);
-      return;
+    setErrored(false);
+    try {
+      const { data: res, error } = await supabase.functions.invoke("ai-customer-insights", {
+        body: { customer_id: customerId, force },
+      });
+      if (error || (res as any)?.error) {
+        const msg = (res as any)?.message || (res as any)?.error || error?.message || "AI分析に失敗しました";
+        toast.error(msg);
+        setErrored(true);
+        return;
+      }
+      setData(normalize(res));
+      if (force) toast.success("最新の分析を生成しました");
+    } catch (e: any) {
+      console.error("[CustomerInsightsPanel] generate failed", e);
+      toast.error("AI分析でエラーが発生しました");
+      setErrored(true);
+    } finally {
+      setLoading(false);
     }
-    setData(res as Insights);
-    if (force) toast.success("最新の分析を生成しました");
   };
 
   useEffect(() => {
@@ -57,11 +88,14 @@ export const CustomerInsightsPanel = ({ customerId }: { customerId: string }) =>
 
   if (!data) {
     return (
-      <div className="border border-gold/30 bg-gradient-to-br from-secondary/20 to-transparent p-6 text-center">
-        <Sparkles className="w-6 h-6 mx-auto text-gold mb-2" />
+      <div className="border border-gold/30 bg-gradient-to-br from-secondary/20 to-transparent p-6 text-center space-y-2">
+        <Sparkles className="w-6 h-6 mx-auto text-gold mb-1" />
         <Button onClick={() => generate(false)} variant="outline" className="rounded-none border-gold/40">
-          AIインサイトを生成
+          {errored ? "AIインサイトを再試行" : "AIインサイトを生成"}
         </Button>
+        {errored && (
+          <p className="text-[10px] text-muted-foreground">分析に失敗しました。時間をおいて再度お試しください。</p>
+        )}
       </div>
     );
   }
@@ -80,12 +114,10 @@ export const CustomerInsightsPanel = ({ customerId }: { customerId: string }) =>
         </Button>
       </div>
 
-      {/* 人物像 */}
       <div className="text-sm font-serif italic text-foreground/90 border-l-2 border-gold pl-3">
         💭 {data.summary}
       </div>
 
-      {/* 推奨アクション */}
       {data.recommendations.length > 0 && (
         <div>
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1">
@@ -102,7 +134,6 @@ export const CustomerInsightsPanel = ({ customerId }: { customerId: string }) =>
         </div>
       )}
 
-      {/* 注意事項 */}
       {data.risks.length > 0 && (
         <div className="bg-amber-500/5 border border-amber-500/20 px-3 py-2.5">
           <div className="text-[10px] uppercase tracking-wider text-amber-700 mb-1.5 flex items-center gap-1">
@@ -116,7 +147,6 @@ export const CustomerInsightsPanel = ({ customerId }: { customerId: string }) =>
         </div>
       )}
 
-      {/* 次回提案 + トーン */}
       <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border/50">
         <div>
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground flex items-center gap-1 mb-1">
@@ -133,7 +163,7 @@ export const CustomerInsightsPanel = ({ customerId }: { customerId: string }) =>
       </div>
 
       <div className="text-[9px] text-muted-foreground text-right">
-        {data.cached ? "キャッシュ" : "新規生成"} · {format(new Date(data.generated_at), "MM/dd HH:mm")}
+        {data.cached ? "キャッシュ" : "新規生成"} · {safeFormatDate(data.generated_at)}
       </div>
     </div>
   );

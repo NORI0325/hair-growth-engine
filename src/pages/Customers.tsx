@@ -5,6 +5,7 @@ import PageHeader from "@/components/PageHeader";
 import AddCustomerDialog from "@/components/AddCustomerDialog";
 import EditCustomerDialog, { type EditableCustomer } from "@/components/EditCustomerDialog";
 import PendingLineFriends from "@/components/PendingLineFriends";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -132,12 +133,14 @@ const Customers = () => {
       </div>
 
       <AddCustomerDialog open={addOpen} onOpenChange={setAddOpen} onAdded={load} />
-      <EditCustomerDialog
-        customer={editTarget}
-        open={!!editTarget}
-        onOpenChange={(v) => { if (!v) setEditTarget(null); }}
-        onSaved={load}
-      />
+      <ErrorBoundary fallbackTitle="顧客情報の読み込みに失敗しました">
+        <EditCustomerDialog
+          customer={editTarget}
+          open={!!editTarget}
+          onOpenChange={(v) => { if (!v) setEditTarget(null); }}
+          onSaved={load}
+        />
+      </ErrorBoundary>
 
       <PendingLineFriends onConverted={load} />
 

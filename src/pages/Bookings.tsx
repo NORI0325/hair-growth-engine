@@ -4,7 +4,8 @@ import { useAuth } from "@/hooks/useAuth";
 import AppLayout from "@/components/AppLayout";
 import PageHeader from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
-import { Loader2, CheckCircle2, XCircle, MessageCircle } from "lucide-react";
+import { Loader2, CheckCircle2, XCircle, MessageCircle, Trash2 } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CustomerMessageDialog } from "@/components/CustomerMessageDialog";
@@ -93,6 +94,13 @@ const Bookings = () => {
     const amount = parseInt(input.replace(/[^\d]/g, ""), 10);
     if (isNaN(amount) || amount < 0) { toast.error("正しい金額を入力してください"); return; }
     updateStatus(b.id, "completed", amount);
+  };
+
+  const removeBooking = async (id: string) => {
+    const { error } = await supabase.from("bookings").delete().eq("id", id);
+    if (error) { toast.error("削除に失敗しました：" + error.message); return; }
+    toast.success("予約を削除しました");
+    setBookings((prev) => prev.filter((b) => b.id !== id));
   };
 
   const grouped = bookings.reduce((acc, b) => {
@@ -219,6 +227,28 @@ const Bookings = () => {
                               </Button>
                             </>
                           )}
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button size="sm" variant="ghost" className="text-xs rounded-none h-8 text-muted-foreground hover:text-destructive" title="予約を削除">
+                                <Trash2 className="w-3.5 h-3.5 stroke-[1.5]" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent className="rounded-none">
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>この予約を削除しますか？</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  {b.customers?.full_name || "お客様"} 様 / {b.booking_date} {b.booking_time?.slice(0, 5)} / {b.menu}
+                                  <br />予約データを完全に削除します。この操作は取り消せません。
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel className="rounded-none">キャンセル</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => removeBooking(b.id)} className="rounded-none bg-destructive hover:bg-destructive/90">
+                                  削除する
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
                         </div>
                       </div>
                     );
