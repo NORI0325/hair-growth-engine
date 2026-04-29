@@ -32,21 +32,34 @@ const statusInfo = (s: string) => {
 };
 
 const Bookings = () => {
+  const { user } = useAuth();
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from("bookings")
-      .select("id, booking_date, booking_time, menu, notes, status, revenue, campaign_id, is_test, customers(full_name, phone)")
-      .order("booking_date", { ascending: true })
-      .order("booking_time", { ascending: true });
-    if (data) setBookings(data as any);
+    const [b, s] = await Promise.all([
+      supabase
+        .from("bookings")
+        .select("id, booking_date, booking_time, menu, notes, status, revenue, campaign_id, is_test, staff_id, customers(full_name, phone)")
+        .order("booking_date", { ascending: true })
+        .order("booking_time", { ascending: true }),
+      user ? supabase.from("staff").select("id, name, display_color").eq("owner_id", user.id).eq("active", true).order("sort_order") : Promise.resolve({ data: [] }),
+    ]);
+    if (b.data) setBookings(b.data as any);
+    setStaff((s.data as Staff[]) || []);
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [user]);
+
+  const assignStaff = async (id: string, staffId: string | null) => {
+    const { error } = await supabase.from("bookings").update({ staff_id: staffId }).eq("id", id);
+    if (error) { toast.error("担当変更に失敗: " + error.message); return; }
+    toast.success("担当スタッフを更新しました");
+    load();
+  };
 
   const updateStatus = async (id: string, status: "completed" | "cancelled" | "confirmed", revenue?: number) => {
     const update: any = { status };
