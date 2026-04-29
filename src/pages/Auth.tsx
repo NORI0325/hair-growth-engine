@@ -6,7 +6,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 
@@ -15,18 +14,12 @@ const loginSchema = z.object({
   password: z.string().min(6, "パスワードは6文字以上で入力してください"),
 });
 
-const signupSchema = loginSchema.extend({
-  salonName: z.string().min(1, "サロン名を入力してください").max(100),
-  fullName: z.string().min(1, "お名前を入力してください").max(100),
-});
-
 const Auth = () => {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
   const [loading, setLoading] = useState(false);
 
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
-  const [signupForm, setSignupForm] = useState({ email: "", password: "", salonName: "", fullName: "" });
 
   useEffect(() => {
     if (!authLoading && user) navigate("/dashboard", { replace: true });
@@ -45,27 +38,6 @@ const Auth = () => {
     }
     toast.success("ようこそ");
     navigate("/dashboard");
-  };
-
-  const handleSignup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const parsed = signupSchema.safeParse(signupForm);
-    if (!parsed.success) { toast.error(parsed.error.errors[0].message); return; }
-    setLoading(true);
-    const { error } = await supabase.auth.signUp({
-      email: parsed.data.email,
-      password: parsed.data.password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/dashboard`,
-        data: { full_name: parsed.data.fullName, salon_name: parsed.data.salonName },
-      },
-    });
-    setLoading(false);
-    if (error) {
-      toast.error(error.message.includes("already registered") ? "このメールアドレスは既に登録されています" : error.message);
-      return;
-    }
-    toast.success("アカウントを作成しました。メールをご確認ください。");
   };
 
   return (
