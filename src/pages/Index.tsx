@@ -1,66 +1,219 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { useEffect, useState } from "react";
+import hero1 from "@/assets/hero-1.jpg";
+import hero2 from "@/assets/hero-2.jpg";
+import hero3 from "@/assets/hero-3.jpg";
+
+const HERO_SLIDES = [
+  {
+    image: hero1,
+    eyebrow: "Chapter 01 — Reconnect",
+    headline: ["眠っているお客様を、", "もう一度、", "灯す。"],
+    accent: "灯す。",
+  },
+  {
+    image: hero2,
+    eyebrow: "Chapter 02 — One Tap",
+    headline: ["指先ひとつで、", "再会までの距離を", "ゼロに。"],
+    accent: "ゼロに。",
+  },
+  {
+    image: hero3,
+    eyebrow: "Chapter 03 — Boost",
+    headline: ["売上を加速させる、", "サロンのための", "ブーストシステム。"],
+    accent: "ブーストシステム。",
+  },
+];
 
 const Index = () => {
+  const [activeSlide, setActiveSlide] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setActiveSlide((prev) => (prev + 1) % HERO_SLIDES.length);
+    }, 5500);
+    return () => clearInterval(id);
+  }, []);
+
+  const current = HERO_SLIDES[activeSlide];
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* ヘッダー */}
-      <header className="border-b border-border/60">
+      <header className="absolute top-0 left-0 right-0 z-50">
         <div className="container mx-auto px-8 py-6 flex justify-between items-center">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 text-primary-foreground">
             <div className="font-serif-en text-2xl tracking-luxury">SB</div>
-            <div className="hairline-vertical h-6" />
+            <div className="w-px h-6 bg-primary-foreground/30" />
             <div>
               <div className="font-serif text-sm tracking-wider">Salon Boost</div>
-              <div className="eyebrow text-[10px]">Est. 2026</div>
+              <div className="eyebrow text-[10px] text-primary-foreground/60">Est. 2026</div>
             </div>
           </div>
-          <nav className="hidden md:flex items-center gap-10 text-sm">
+          <nav className="hidden md:flex items-center gap-10 text-sm text-primary-foreground/90">
             <a href="#philosophy" className="gold-underline">Philosophy</a>
             <a href="#features" className="gold-underline">Features</a>
             <a href="#flow" className="gold-underline">Flow</a>
           </nav>
           <Link to="/auth">
-            <Button variant="ghost" className="text-sm tracking-wider">
+            <Button variant="ghost" className="text-sm tracking-wider text-primary-foreground hover:text-gold hover:bg-transparent">
               SIGN IN
             </Button>
           </Link>
         </div>
       </header>
 
-      {/* ヒーロー */}
-      <section
-        className="relative overflow-hidden"
-        style={{ background: "var(--gradient-hero)" }}
-      >
-        <div className="container mx-auto px-8 py-32 md:py-40">
-          <div className="max-w-4xl mx-auto text-center">
-            <p className="eyebrow mb-8 animate-fade-up">— A New Chapter for Every Salon —</p>
-            <h1 className="display text-5xl md:text-7xl mb-10 animate-fade-up animate-delay-100">
-              眠っているお客様を、<br />
-              <span className="text-gold font-serif-en italic">最も美しい形で</span><br />
-              呼び戻す。
-            </h1>
-            <div className="hairline w-24 mx-auto my-10 animate-fade-up animate-delay-200" />
-            <p className="text-base md:text-lg text-muted-foreground leading-loose max-w-2xl mx-auto mb-14 animate-fade-up animate-delay-200">
-              一度信頼を寄せてくださったお客様こそ、美容室にとって最も尊い資産。<br />
-              一人ひとりに寄り添う一通のメッセージと、ワンタップで完了する予約体験。<br />
-              それは、もう一度「あの場所へ行きたい」と思わせる小さな魔法。
+      {/* ヒーロー: フルスクリーン画像スライドショー */}
+      <section className="relative h-screen min-h-[720px] overflow-hidden bg-primary">
+        {/* 画像レイヤー */}
+        <div className="absolute inset-0">
+          {HERO_SLIDES.map((slide, idx) => (
+            <div
+              key={idx}
+              className="absolute inset-0 transition-opacity duration-[1800ms] ease-in-out"
+              style={{ opacity: idx === activeSlide ? 1 : 0 }}
+            >
+              <img
+                src={slide.image}
+                alt=""
+                className="w-full h-full object-cover"
+                style={{
+                  animation: idx === activeSlide ? "ken-burns 8s ease-out forwards" : "none",
+                }}
+              />
+              {/* オーバーレイ */}
+              <div className="absolute inset-0 bg-gradient-to-r from-primary/90 via-primary/60 to-primary/30" />
+              <div className="absolute inset-0 bg-gradient-to-t from-primary via-primary/20 to-transparent" />
+            </div>
+          ))}
+        </div>
+
+        {/* ノイズ/グレイン質感 */}
+        <div
+          className="absolute inset-0 opacity-[0.08] mix-blend-overlay pointer-events-none"
+          style={{
+            backgroundImage:
+              "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")",
+          }}
+        />
+
+        {/* 縦の罫線（サイバーエージェント風グリッド） */}
+        <div className="absolute inset-0 grid grid-cols-12 pointer-events-none opacity-20">
+          {Array.from({ length: 13 }).map((_, i) => (
+            <div key={i} className="border-l border-primary-foreground/20 h-full" />
+          ))}
+        </div>
+
+        {/* コンテンツ */}
+        <div className="relative z-10 h-full container mx-auto px-8 flex flex-col justify-end pb-32 md:pb-40">
+          <div className="max-w-5xl text-primary-foreground">
+            {/* スライド番号 */}
+            <div className="flex items-center gap-4 mb-6 animate-fade-in">
+              <span className="font-serif-en text-gold text-sm tracking-luxury">
+                {String(activeSlide + 1).padStart(2, "0")}
+              </span>
+              <div className="w-12 h-px bg-gold animate-glow-pulse" />
+              <span className="font-serif-en text-primary-foreground/60 text-sm tracking-luxury">
+                {String(HERO_SLIDES.length).padStart(2, "0")}
+              </span>
+            </div>
+
+            {/* Eyebrow */}
+            <p
+              key={`eb-${activeSlide}`}
+              className="eyebrow text-gold mb-6 animate-fade-up"
+            >
+              — {current.eyebrow} —
             </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center animate-fade-up animate-delay-300">
+
+            {/* メインコピー */}
+            <h1
+              key={`h-${activeSlide}`}
+              className="display text-5xl md:text-7xl lg:text-8xl leading-[1.1] mb-10 animate-fade-up animate-delay-100"
+            >
+              {current.headline.map((line, i) => (
+                <span key={i} className="block">
+                  {line === current.accent ? (
+                    <span className="font-serif-en italic text-gold">{line}</span>
+                  ) : (
+                    line
+                  )}
+                </span>
+              ))}
+            </h1>
+
+            <div className="flex flex-col sm:flex-row gap-6 items-start sm:items-center animate-fade-up animate-delay-300">
               <Link to="/auth">
-                <Button size="lg" className="px-12 py-6 text-sm tracking-luxury rounded-none bg-primary hover:bg-primary-glow text-primary-foreground shadow-elegant">
-                  BEGIN YOUR JOURNEY
+                <Button
+                  size="lg"
+                  className="px-12 py-7 text-sm tracking-luxury rounded-none bg-gold hover:bg-gold-light text-primary shadow-gold border-0"
+                >
+                  BOOST YOUR SALON →
                 </Button>
               </Link>
-              <a href="#philosophy" className="text-sm tracking-wider text-muted-foreground gold-underline">
-                詳しく見る ↓
+              <a
+                href="#philosophy"
+                className="text-sm tracking-luxury text-primary-foreground/80 gold-underline"
+              >
+                SCROLL TO DISCOVER ↓
               </a>
             </div>
           </div>
+
+          {/* スライドインジケーター */}
+          <div className="absolute bottom-12 right-8 hidden md:flex flex-col gap-3">
+            {HERO_SLIDES.map((_, idx) => (
+              <button
+                key={idx}
+                onClick={() => setActiveSlide(idx)}
+                className="group flex items-center gap-3"
+                aria-label={`Slide ${idx + 1}`}
+              >
+                <span
+                  className={`font-serif-en text-xs tracking-luxury transition-all ${
+                    idx === activeSlide ? "text-gold" : "text-primary-foreground/40"
+                  }`}
+                >
+                  {String(idx + 1).padStart(2, "0")}
+                </span>
+                <span
+                  className={`block h-px transition-all duration-500 ${
+                    idx === activeSlide
+                      ? "w-16 bg-gold"
+                      : "w-8 bg-primary-foreground/30 group-hover:bg-primary-foreground/60"
+                  }`}
+                />
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 下部マーキー（流れるテキスト） */}
+        <div className="absolute bottom-0 left-0 right-0 border-t border-primary-foreground/10 bg-primary/80 backdrop-blur-sm py-4 overflow-hidden">
+          <div className="flex animate-marquee whitespace-nowrap">
+            {Array.from({ length: 2 }).map((_, dup) => (
+              <div key={dup} className="flex items-center shrink-0">
+                {[
+                  "REACTIVATE DORMANT GUESTS",
+                  "ONE-TAP BOOKING",
+                  "AI-POWERED MESSAGING",
+                  "REVENUE BOOST",
+                  "LINE × EMAIL × SMS",
+                  "FOR EVERY SALON",
+                ].map((txt, i) => (
+                  <span key={`${dup}-${i}`} className="flex items-center">
+                    <span className="font-serif-en text-xs tracking-luxury text-primary-foreground/60 mx-8">
+                      {txt}
+                    </span>
+                    <span className="text-gold">✦</span>
+                  </span>
+                ))}
+              </div>
+            ))}
+          </div>
         </div>
       </section>
-
 
       {/* Philosophy */}
       <section id="philosophy" className="py-32 border-t border-border/60">
@@ -140,7 +293,7 @@ const Index = () => {
               { step: "01", title: "資産を、整える。", desc: "お持ちのお客様リストを取り込み、休眠・離脱予備軍・優良客に静かに分類します。" },
               { step: "02", title: "言葉を、届ける。", desc: "「お久しぶりです」その一言を、最も適切なタイミングで、最も心に届く形で送ります。" },
               { step: "03", title: "再会を、迎える。", desc: "メッセージから流れるようにご予約。サロンには、懐かしい笑顔が戻ってきます。" },
-            ].map((s, i) => (
+            ].map((s) => (
               <div key={s.step} className="grid md:grid-cols-12 gap-8 items-center">
                 <div className="md:col-span-3">
                   <div className="font-serif-en text-7xl text-gold/60 italic">{s.step}</div>
@@ -163,8 +316,8 @@ const Index = () => {
         <div className="container mx-auto px-8 text-center max-w-3xl">
           <p className="eyebrow text-primary-foreground/60 mb-6">— Begin —</p>
           <h2 className="display text-4xl md:text-5xl mb-10">
-            あなたのサロンの次の章を、<br />
-            <span className="font-serif-en italic text-gold">今夜</span>はじめませんか。
+            眠れる資産を、<br />
+            <span className="font-serif-en italic text-gold">今夜</span>、目覚めさせよ。
           </h2>
           <div className="hairline w-24 mx-auto my-10 opacity-60" />
           <Link to="/auth">
