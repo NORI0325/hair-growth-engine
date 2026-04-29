@@ -109,7 +109,20 @@ const Booking = () => {
       body: { token, date, time, menus: selectedMenus, notes },
     });
     setBooking(false);
-    if (error || !data?.success) { toast.error("予約に失敗しました。もう一度お試しください。"); return; }
+    if (error || !data?.success) {
+      const msg = (data as any)?.message || "予約に失敗しました。もう一度お試しください。";
+      toast.error(msg);
+      // 満席なら空き枠を再取得
+      if ((data as any)?.error === "slot_taken" && salonSlug) {
+        const duration = totalDuration > 0 ? totalDuration : 60;
+        const { data: slots } = await supabase.rpc("get_available_slots", {
+          _salon_slug: salonSlug, _date: date, _duration_minutes: duration,
+        });
+        setAvailableSlots((slots || []).map((r: any) => String(r.slot_time).slice(0, 5)));
+        setTime("");
+      }
+      return;
+    }
     setCompleted(true);
   };
 
