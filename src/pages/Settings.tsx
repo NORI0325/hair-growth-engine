@@ -119,6 +119,10 @@ const Settings = () => {
         reminder_enabled: form.reminder_enabled,
         reactivation_enabled: form.reactivation_enabled,
         reminder_hour: form.reminder_hour,
+        booking_lead_time_hours: form.booking_lead_time_hours,
+        booking_max_days_ahead: form.booking_max_days_ahead,
+        allow_customer_cancel: form.allow_customer_cancel,
+        cancel_deadline_hours: form.cancel_deadline_hours,
       } as any)
       .eq("id", user.id);
     setSaving(false);
