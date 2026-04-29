@@ -74,6 +74,28 @@ Deno.serve(async (req) => {
     }
     const menuSummary = menus.join(" + ").slice(0, 200);
 
+    // 予約ルール取得（リードタイム検証）
+    const { data: ownerProf } = await supabase
+      .from("profiles")
+      .select("booking_lead_time_hours, booking_max_days_ahead")
+      .eq("id", customer.owner_id)
+      .maybeSingle();
+    const leadHours = (ownerProf as any)?.booking_lead_time_hours ?? 24;
+    const maxDays = (ownerProf as any)?.booking_max_days_ahead ?? 60;
+    const reqStartCheck = new Date(`${date}T${time}:00+09:00`);
+    const earliest = new Date(Date.now() + leadHours * 3600_000);
+    const latest = new Date(Date.now() + maxDays * 86400_000);
+    if (reqStartCheck < earliest) {
+      return new Response(JSON.stringify({ error: "too_soon", message: `ご予約は${leadHours}時間前までに承っております。お急ぎの場合はお電話ください。` }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (reqStartCheck > latest) {
+      return new Response(JSON.stringify({ error: "too_far", message: `${maxDays}日先までのご予約のみ承っております。` }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // 指名スタッフの妥当性チェック
     let assignedStaffId: string | null = null;
     if (staff_id && typeof staff_id === "string") {
