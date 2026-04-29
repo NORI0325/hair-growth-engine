@@ -56,12 +56,15 @@ export type Database = {
           id: string
           is_test: boolean
           menu: string
+          menus: string[] | null
           notes: string | null
           owner_id: string
           revenue: number | null
           source_job_id: string | null
           source_template: string | null
           status: Database["public"]["Enums"]["booking_status"]
+          total_duration_minutes: number | null
+          total_price: number | null
           updated_at: string
         }
         Insert: {
@@ -76,12 +79,15 @@ export type Database = {
           id?: string
           is_test?: boolean
           menu: string
+          menus?: string[] | null
           notes?: string | null
           owner_id: string
           revenue?: number | null
           source_job_id?: string | null
           source_template?: string | null
           status?: Database["public"]["Enums"]["booking_status"]
+          total_duration_minutes?: number | null
+          total_price?: number | null
           updated_at?: string
         }
         Update: {
@@ -96,12 +102,15 @@ export type Database = {
           id?: string
           is_test?: boolean
           menu?: string
+          menus?: string[] | null
           notes?: string | null
           owner_id?: string
           revenue?: number | null
           source_job_id?: string | null
           source_template?: string | null
           status?: Database["public"]["Enums"]["booking_status"]
+          total_duration_minutes?: number | null
+          total_price?: number | null
           updated_at?: string
         }
         Relationships: [
@@ -515,6 +524,36 @@ export type Database = {
         }
         Relationships: []
       }
+      line_pending_friends: {
+        Row: {
+          created_at: string
+          display_name: string | null
+          id: string
+          last_message: string | null
+          line_user_id: string
+          owner_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          last_message?: string | null
+          line_user_id: string
+          owner_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          last_message?: string | null
+          line_user_id?: string
+          owner_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       line_templates: {
         Row: {
           category: string | null
@@ -554,6 +593,45 @@ export type Database = {
           title?: string
           updated_at?: string
           use_count?: number
+        }
+        Relationships: []
+      }
+      menu_items: {
+        Row: {
+          active: boolean
+          buffer_minutes: number
+          created_at: string
+          duration_minutes: number
+          id: string
+          name: string
+          owner_id: string
+          price: number
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          buffer_minutes?: number
+          created_at?: string
+          duration_minutes?: number
+          id?: string
+          name: string
+          owner_id: string
+          price?: number
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          buffer_minutes?: number
+          created_at?: string
+          duration_minutes?: number
+          id?: string
+          name?: string
+          owner_id?: string
+          price?: number
+          sort_order?: number
+          updated_at?: string
         }
         Relationships: []
       }
