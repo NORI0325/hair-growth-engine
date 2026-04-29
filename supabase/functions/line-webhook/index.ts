@@ -214,6 +214,28 @@ Deno.serve(async (req) => {
               body: JSON.stringify({ inbound_id: inserted.id }),
             }).catch(e => console.error("[line-webhook] classify kick failed:", e));
           }
+
+          // === 営業時間外の自動応答（連携済み顧客のみ） ===
+          if (linkedCustomer && owner.auto_reply_enabled) {
+            const isOutsideHours = checkOutsideBusinessHours(owner.open_time, owner.close_time);
+            if (isOutsideHours) {
+              let replyMsg: string;
+              if (owner.auto_reply_use_ai) {
+                replyMsg = await generateAutoReplyAI(
+                  text,
+                  linkedCustomer.full_name,
+                  owner.salon_name || "サロン",
+                  owner.open_time,
+                  owner.close_time,
+                ) || (owner.auto_reply_message || defaultAutoReply(owner.salon_name, owner.open_time, owner.close_time));
+              } else {
+                replyMsg = owner.auto_reply_message || defaultAutoReply(owner.salon_name, owner.open_time, owner.close_time);
+              }
+              const r = await replyLine(accessToken, replyToken, replyMsg);
+              if (!r.ok) console.error("[line-webhook] auto-reply failed:", r.err);
+              continue; // 以降の電話番号フローはスキップ
+            }
+          }
         }
 
         if (!phone) {
