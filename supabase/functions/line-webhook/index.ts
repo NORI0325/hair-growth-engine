@@ -56,7 +56,7 @@ Deno.serve(async (req) => {
   // 全プロフィールから access_token を持つものを取得（secretは未設定も許容しフォールバック）
   const { data: profiles } = await supabase
     .from("profiles")
-    .select("id, salon_name, line_channel_access_token, line_channel_secret")
+    .select("id, salon_name, line_channel_access_token, line_channel_secret, open_time, close_time, auto_reply_enabled, auto_reply_message, auto_reply_use_ai")
     .not("line_channel_access_token", "is", null);
 
   if (!profiles || profiles.length === 0) {
