@@ -77,6 +77,33 @@ const MenuItems = () => {
     load();
   };
 
+  const uploadImage = async (id: string, file: File) => {
+    if (!user) return;
+    if (file.size > 5 * 1024 * 1024) { toast.error("画像は5MB以下にしてください"); return; }
+    const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+    const path = `${user.id}/${id}-${Date.now()}.${ext}`;
+    const { error: upErr } = await supabase.storage.from("menu-images").upload(path, file, {
+      cacheControl: "3600", upsert: false, contentType: file.type,
+    });
+    if (upErr) { toast.error("画像アップロード失敗: " + upErr.message); return; }
+    const { data: pub } = supabase.storage.from("menu-images").getPublicUrl(path);
+    update(id, { image_url: pub.publicUrl });
+    toast.success("画像をアップロードしました");
+  };
+
+  const removeImage = async (id: string, imageUrl: string | null) => {
+    if (!user || !imageUrl) return;
+    // URLからパス部分を抽出
+    const marker = "/menu-images/";
+    const idx = imageUrl.indexOf(marker);
+    if (idx >= 0) {
+      const path = imageUrl.slice(idx + marker.length);
+      await supabase.storage.from("menu-images").remove([path]);
+    }
+    update(id, { image_url: null });
+    toast.success("画像を削除しました");
+  };
+
   return (
     <AppLayout>
       <PageHeader
