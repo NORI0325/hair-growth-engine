@@ -6,7 +6,27 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { TEMPLATE_CATALOG } from "@/lib/templateCatalog";
-import { TrendingUp, Mail, MessageCircle, JapaneseYen, MousePointerClick } from "lucide-react";
+import { TrendingUp, Mail, MessageCircle, JapaneseYen, MousePointerClick, Gift } from "lucide-react";
+
+const INCENTIVE_KIND_LABELS: Record<string, string> = {
+  gift: "🎁 ギフト",
+  service_addon: "✨ サービス追加",
+  upgrade: "💎 アップグレード",
+  priority: "👑 優先予約",
+  experience: "🌿 体験メニュー",
+  discount: "💝 割引",
+  other: "その他",
+};
+
+interface IncentiveStat {
+  id: string;
+  kind: string;
+  title: string;
+  estimated_cost: number;
+  sent: number;
+  bookings: number;
+  revenue: number;
+}
 
 const Performance = () => {
   const { user } = useAuth();
@@ -14,6 +34,7 @@ const Performance = () => {
   const [emailStats, setEmailStats] = useState<Record<string, { sent: number; failed: number }>>({});
   const [lineStats, setLineStats] = useState<Record<string, { sent: number; failed: number }>>({});
   const [bookingsByTemplate, setBookingsByTemplate] = useState<Record<string, { count: number; revenue: number }>>({});
+  const [incentiveStats, setIncentiveStats] = useState<IncentiveStat[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -31,7 +52,7 @@ const Performance = () => {
       // LINE統計
       supabase
         .from("line_message_log")
-        .select("job_type, status")
+        .select("job_type, template_key, status")
         .eq("owner_id", user.id)
         .gte("created_at", since),
       // 予約 by source_template
@@ -41,7 +62,18 @@ const Performance = () => {
         .eq("owner_id", user.id)
         .not("source_template", "is", null)
         .gte("created_at", since),
-    ]).then(([emailRes, lineRes, bookingsRes]) => {
+      // 特典マスタ
+      supabase
+        .from("incentives")
+        .select("id, kind, title, estimated_cost")
+        .eq("owner_id", user.id),
+      // テンプレ上書き → どのテンプレに何の特典が紐づいているか
+      supabase
+        .from("template_overrides")
+        .select("template_key, channel, incentive_id")
+        .eq("owner_id", user.id)
+        .not("incentive_id", "is", null),
+    ]).then(([emailRes, lineRes, bookingsRes, incRes, ovRes]) => {
       // dedup email
       const seen = new Set<string>();
       const emap: Record<string, { sent: number; failed: number }> = {};
@@ -56,11 +88,14 @@ const Performance = () => {
       setEmailStats(emap);
 
       const lmap: Record<string, { sent: number; failed: number }> = {};
+      const lineByTemplate: Record<string, number> = {};
       (lineRes.data || []).forEach((r: any) => {
         const k = r.job_type;
         if (!lmap[k]) lmap[k] = { sent: 0, failed: 0 };
         if (r.status === "sent") lmap[k].sent++;
         else lmap[k].failed++;
+        const tk = r.template_key || r.job_type;
+        if (r.status === "sent") lineByTemplate[tk] = (lineByTemplate[tk] || 0) + 1;
       });
       setLineStats(lmap);
 
@@ -73,6 +108,33 @@ const Performance = () => {
       });
       setBookingsByTemplate(bmap);
 
+      // 特典別集計：incentive_id → 紐づくtemplate_keyリスト → そのキーの送信数/予約数を足し上げ
+      const incentives = incRes.data || [];
+      const overrides = ovRes.data || [];
+      const incToKeys: Record<string, Set<string>> = {};
+      overrides.forEach((o: any) => {
+        if (!o.incentive_id || !o.template_key) return;
+        if (!incToKeys[o.incentive_id]) incToKeys[o.incentive_id] = new Set();
+        incToKeys[o.incentive_id].add(o.template_key);
+      });
+      const istats: IncentiveStat[] = incentives.map((inc: any) => {
+        const keys = Array.from(incToKeys[inc.id] || []);
+        let sent = 0, bookings = 0, revenue = 0;
+        keys.forEach((k) => {
+          sent += (emap[k]?.sent || 0) + (lineByTemplate[k] || 0);
+          bookings += bmap[k]?.count || 0;
+          revenue += bmap[k]?.revenue || 0;
+        });
+        return {
+          id: inc.id,
+          kind: inc.kind || "other",
+          title: inc.title,
+          estimated_cost: inc.estimated_cost || 0,
+          sent, bookings, revenue,
+        };
+      });
+      setIncentiveStats(istats);
+
       setLoading(false);
     });
   }, [user, days]);
@@ -84,6 +146,28 @@ const Performance = () => {
     Object.values(bookingsByTemplate).forEach((s) => { bookingCount += s.count; revenue += s.revenue; });
     return { emailSent, lineSent, bookingCount, revenue };
   }, [emailStats, lineStats, bookingsByTemplate]);
+
+  // 特典タイプ別の集計
+  const incentiveByKind = useMemo(() => {
+    const map: Record<string, { sent: number; bookings: number; revenue: number; cost: number; count: number }> = {};
+    incentiveStats.forEach((s) => {
+      const k = s.kind;
+      if (!map[k]) map[k] = { sent: 0, bookings: 0, revenue: 0, cost: 0, count: 0 };
+      map[k].sent += s.sent;
+      map[k].bookings += s.bookings;
+      map[k].revenue += s.revenue;
+      map[k].cost += s.estimated_cost * s.bookings;
+      map[k].count += 1;
+    });
+    return Object.entries(map)
+      .map(([kind, v]) => ({
+        kind,
+        ...v,
+        cvr: v.sent > 0 ? (v.bookings / v.sent) * 100 : 0,
+        roi: v.cost > 0 ? ((v.revenue - v.cost) / v.cost) * 100 : (v.revenue > 0 ? 999 : 0),
+      }))
+      .sort((a, b) => b.revenue - a.revenue);
+  }, [incentiveStats]);
 
   const rows = useMemo(() => {
     return TEMPLATE_CATALOG
@@ -131,6 +215,70 @@ const Performance = () => {
           <CardContent><div className="text-3xl font-serif">¥{totals.revenue.toLocaleString()}</div></CardContent>
         </Card>
       </div>
+
+      <Card className="mb-8">
+        <CardHeader>
+          <CardTitle className="text-sm flex items-center gap-2"><Gift className="w-4 h-4" /> 特典タイプ別 効果測定</CardTitle>
+          <p className="text-xs text-muted-foreground mt-1">割引 vs ギフト vs 体験 — どの特典が一番"売上"に貢献したか？</p>
+        </CardHeader>
+        <CardContent>
+          {loading ? <div className="text-sm text-muted-foreground">読み込み中...</div> :
+            incentiveByKind.length === 0 ? (
+              <div className="text-sm text-muted-foreground py-6 text-center">
+                テンプレートに特典をひも付けると、ここに集計が表示されます。<br />
+                <span className="text-xs">（テンプレート編集画面で「特典」を選択してください）</span>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="border-b text-xs text-muted-foreground">
+                    <tr>
+                      <th className="text-left py-2">特典タイプ</th>
+                      <th className="text-right">登録数</th>
+                      <th className="text-right">送信</th>
+                      <th className="text-right">予約</th>
+                      <th className="text-right">転換率</th>
+                      <th className="text-right">売上</th>
+                      <th className="text-right">原価</th>
+                      <th className="text-right">ROI</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {incentiveByKind.map((k) => (
+                      <tr key={k.kind} className="border-b">
+                        <td className="py-2">{INCENTIVE_KIND_LABELS[k.kind] || k.kind}</td>
+                        <td className="text-right text-muted-foreground">{k.count}</td>
+                        <td className="text-right">{k.sent}</td>
+                        <td className="text-right">{k.bookings}</td>
+                        <td className="text-right">
+                          <Badge variant={k.cvr >= 10 ? "default" : "outline"}>{k.cvr.toFixed(1)}%</Badge>
+                        </td>
+                        <td className="text-right font-medium">¥{k.revenue.toLocaleString()}</td>
+                        <td className="text-right text-muted-foreground">¥{k.cost.toLocaleString()}</td>
+                        <td className="text-right">
+                          {k.cost > 0 ? (
+                            <Badge variant={k.roi >= 100 ? "default" : k.roi >= 0 ? "outline" : "destructive"}>
+                              {k.roi >= 999 ? "∞" : `${k.roi.toFixed(0)}%`}
+                            </Badge>
+                          ) : k.revenue > 0 ? (
+                            <Badge variant="default">無料特典</Badge>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="text-[11px] text-muted-foreground mt-3 leading-relaxed">
+                  ※ ROI = (売上 − 推定原価×予約数) ÷ 推定原価。原価¥0の特典は「無料特典」と表示されます。<br />
+                  ※ 送信数は、その特典が紐づくテンプレートで実際に配信された数（メール＋LINE）です。
+                </p>
+              </div>
+            )
+          }
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader><CardTitle className="text-sm flex items-center gap-2"><TrendingUp className="w-4 h-4" /> テンプレート別パフォーマンス</CardTitle></CardHeader>
