@@ -207,6 +207,9 @@ const Bookings = () => {
                           )}
                           {(b.status === "pending" || b.status === "confirmed") && (
                             <>
+                              <Button size="sm" variant="ghost" className="text-xs rounded-none h-8" title="お客様へ連絡" onClick={() => setMessageBooking(b)}>
+                                <MessageCircle className="w-3.5 h-3.5 stroke-[1.5]" />
+                              </Button>
                               <Button size="sm" variant="ghost" className="text-xs rounded-none h-8" title="来店完了（売上を入力）" onClick={() => handleComplete(b)}>
                                 <CheckCircle2 className="w-3.5 h-3.5 stroke-[1.5]" />
                               </Button>
