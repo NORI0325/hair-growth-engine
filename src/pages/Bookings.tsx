@@ -20,7 +20,7 @@ interface Booking {
   campaign_id: string | null;
   is_test: boolean;
   staff_id: string | null;
-  customers: { full_name: string; phone: string | null } | null;
+  customers: { full_name: string; phone: string | null; line_user_id: string | null } | null;
 }
 
 interface Staff { id: string; name: string; display_color: string; }
