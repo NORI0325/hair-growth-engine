@@ -210,7 +210,7 @@ Deno.serve(async (req) => {
         if (text === "特典を見る" || text === "特典") {
           const { data: cust } = await supabase
             .from("customers")
-            .select("full_name")
+            .select("full_name, last_visit_date, visit_count, total_spent")
             .eq("owner_id", owner.id)
             .eq("line_user_id", userId)
             .maybeSingle();
@@ -221,27 +221,41 @@ Deno.serve(async (req) => {
             continue;
           }
 
-          // DBから有効なクーポンを取得（期限切れを除外、無期限はOK）
+          // 特典マスターから有効な特典を取得（期限切れを除外、無期限はOK）
           const today = new Date().toISOString().slice(0, 10);
-          const { data: coupons } = await supabase
-            .from("coupons")
-            .select("title, description, discount_type, discount_value, expires_at")
+          const { data: incentives } = await supabase
+            .from("incentives")
+            .select("title, description, terms, value_label, target_segment, valid_until, sort_order")
             .eq("owner_id", owner.id)
-            .or(`expires_at.is.null,expires_at.gte.${today}`)
-            .order("created_at", { ascending: false })
-            .limit(5);
+            .eq("active", true)
+            .or(`valid_until.is.null,valid_until.gte.${today}`)
+            .order("sort_order", { ascending: true });
 
           const name = `${cust.full_name}様`;
+          const daysSinceLastVisit = cust.last_visit_date
+            ? Math.floor((Date.now() - new Date(cust.last_visit_date).getTime()) / (1000 * 60 * 60 * 24))
+            : null;
+          const segment = !cust.last_visit_date
+            ? "new"
+            : daysSinceLastVisit !== null && daysSinceLastVisit <= 90
+              ? "active"
+              : daysSinceLastVisit !== null && daysSinceLastVisit <= 180
+                ? "at_risk"
+                : "dormant";
+          const isVip = (cust.total_spent ?? 0) >= 150000 || (cust.visit_count ?? 0) >= 15;
+          const visibleIncentives = (incentives || [])
+            .filter((i) => !i.target_segment || i.target_segment === "all" || i.target_segment === segment || (i.target_segment === "vip" && isVip))
+            .slice(0, 5);
           let msg: string;
-          if (!coupons || coupons.length === 0) {
+          if (visibleIncentives.length === 0) {
             msg = `🎁 ${name}\n\n現在配信中の特典はございません。\n新しいクーポンが追加されましたら、こちらのトークでお知らせいたします🌸\n\n— ${owner.salon_name || "サロン"}`;
           } else {
-            const lines = coupons.map((c) => {
-              const valueLabel = c.discount_type === "percent"
-                ? `${c.discount_value}%OFF`
-                : `¥${c.discount_value.toLocaleString()}OFF`;
-              const expiry = c.expires_at ? `（〜${c.expires_at}）` : "";
-              return `・${c.title}${expiry}\n  ${valueLabel}${c.description ? ` / ${c.description}` : ""}`;
+            const lines = visibleIncentives.map((i) => {
+              const expiry = i.valid_until ? `（〜${i.valid_until}）` : "";
+              const value = i.value_label ? `\n  ${i.value_label}` : "";
+              const description = i.description ? `\n  ${i.description}` : "";
+              const terms = i.terms ? `\n  ※${i.terms}` : "";
+              return `・${i.title}${expiry}${value}${description}${terms}`;
             }).join("\n\n");
             msg = `🎁 ${name}\n\n現在ご利用いただける特典：\n\n${lines}\n\nご予約は「予約する」ボタンからどうぞ🌸\n\n— ${owner.salon_name || "サロン"}`;
           }
