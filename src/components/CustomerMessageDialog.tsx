@@ -39,6 +39,12 @@ export const CustomerMessageDialog = ({
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  // AI下書き機能
+  const [aiContext, setAiContext] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState<{ tone: string; label: string; body: string }[]>([]);
+  const [aiPickedTone, setAiPickedTone] = useState<string | null>(null);
+
   useEffect(() => {
     if (!open || !user) return;
     setLoading(true);
