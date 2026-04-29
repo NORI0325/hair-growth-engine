@@ -9,7 +9,7 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { token, date, time, notes } = body;
+    const { token, date, time, notes, staff_id } = body;
     let menus: string[] = Array.isArray(body.menus) ? body.menus.filter((m: any) => typeof m === "string").slice(0, 10) : [];
     // 旧クライアント互換: 単一menu文字列が来たら配列化
     if (menus.length === 0 && typeof body.menu === "string" && body.menu.trim()) {
