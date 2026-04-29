@@ -72,6 +72,15 @@ const PublicBooking = () => {
           .eq("active", true)
           .order("sort_order", { ascending: true });
         setMenuItems(items || []);
+
+        // スタッフが1人以上いるか確認（いれば動的空き枠モード）
+        const { count } = await supabase
+          .from("staff")
+          .select("id", { count: "exact", head: true })
+          .eq("owner_id", profile.id)
+          .eq("active", true)
+          .eq("bookable", true);
+        setHasStaff((count || 0) > 0);
       }
       setLoading(false);
     };
