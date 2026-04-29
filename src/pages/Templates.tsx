@@ -281,6 +281,17 @@ const Templates = () => {
                 </SelectContent>
               </Select>
             </div>
+            <div>
+              <Label className="text-xs flex items-center gap-1"><Gift className="w-3 h-3" /> 特典差し込み（割引以外も選べます）</Label>
+              <Select value={override.incentive_id || "none"} onValueChange={(v) => setOverride((o) => ({ ...o, incentive_id: v === "none" ? null : v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">なし</SelectItem>
+                  {incentives.map((i) => (<SelectItem key={i.id} value={i.id}>{i.title}</SelectItem>))}
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-muted-foreground mt-1">本文に <code>{`{{incentive_title}}`}</code> <code>{`{{incentive_description}}`}</code> <code>{`{{incentive_terms}}`}</code> を挿入できます</p>
+            </div>
 
             {/* AIアシスタント */}
             <div className="border-t pt-4">
