@@ -92,6 +92,7 @@ const Templates = () => {
             cta_url: data.cta_url ?? "",
             signature: data.signature ?? "",
             coupon_id: data.coupon_id,
+            incentive_id: (data as any).incentive_id ?? null,
             enabled: data.enabled,
           });
         } else {
