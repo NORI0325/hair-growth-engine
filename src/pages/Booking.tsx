@@ -59,7 +59,7 @@ const Booking = () => {
           const [menusRes, staffRes] = await Promise.all([
             supabase
               .from("menu_items")
-              .select("id, name, duration_minutes, price")
+              .select("id, name, duration_minutes, price, image_url")
               .eq("owner_id", data.owner_id)
               .eq("active", true)
               .order("sort_order", { ascending: true }),
