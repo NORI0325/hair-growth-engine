@@ -117,15 +117,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    // 指名なしの場合、空いているスタッフを自動割り当て（負荷分散）
+    // 指名なしの場合、空いているスタッフを自動割り当て（先頭から空き枠を探す）
     if (!assignedStaffId) {
-      const { data: slotData } = await supabase.rpc("get_available_slots_by_staff", {
-        _salon_slug: null, // owner_idベースでは呼べないので別ロジック
-        _date: date,
-        _duration_minutes: totalDuration || 60,
-        _staff_id: null,
-      } as any).then(r => r).catch(() => ({ data: null } as any));
-      // 上は salon_slug が必要なため失敗してOK。フォールバックで空きスタッフを直接検索：
       const weekday = new Date(`${date}T00:00:00+09:00`).getDay();
       const { data: candidates } = await supabase
         .from("staff")
