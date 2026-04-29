@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import AppLayout from "@/components/AppLayout";
-import { PageHeader } from "@/components/PageHeader";
+import PageHeader from "@/components/PageHeader";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
