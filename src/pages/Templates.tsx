@@ -13,7 +13,7 @@ import { TEMPLATE_CATALOG, CATEGORY_LABEL, type TemplateChannel, type TemplateMe
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
-import { Sparkles, Save, RotateCcw, Eye, Send, Tag } from "lucide-react";
+import { Sparkles, Save, RotateCcw, Eye, Send, Tag, Gift } from "lucide-react";
 
 type Override = {
   id?: string;
@@ -24,11 +24,12 @@ type Override = {
   cta_url: string | null;
   signature: string | null;
   coupon_id: string | null;
+  incentive_id: string | null;
   enabled: boolean;
 };
 
 const EMPTY: Override = {
-  subject: "", greeting: "", body: "", cta_label: "", cta_url: "", signature: "", coupon_id: null, enabled: true,
+  subject: "", greeting: "", body: "", cta_label: "", cta_url: "", signature: "", coupon_id: null, incentive_id: null, enabled: true,
 };
 
 const Templates = () => {
@@ -41,6 +42,7 @@ const Templates = () => {
   const [aiBusy, setAiBusy] = useState(false);
   const [preview, setPreview] = useState<string>("");
   const [coupons, setCoupons] = useState<Array<{ id: string; title: string }>>([]);
+  const [incentives, setIncentives] = useState<Array<{ id: string; title: string; kind: string }>>([]);
 
   const meta = useMemo<TemplateMeta>(
     () => TEMPLATE_CATALOG.find((t) => t.key === selectedKey)!,
@@ -62,6 +64,9 @@ const Templates = () => {
     if (!user) return;
     supabase.from("coupons").select("id, title").eq("owner_id", user.id).then(({ data }) => {
       setCoupons(data || []);
+    });
+    supabase.from("incentives").select("id, title, kind").eq("owner_id", user.id).eq("active", true).order("sort_order").then(({ data }) => {
+      setIncentives(data || []);
     });
   }, [user]);
 
