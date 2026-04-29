@@ -103,6 +103,7 @@ const Bookings = () => {
     setBookings((prev) => prev.filter((b) => b.id !== id));
   };
 
+  const grouped = bookings.reduce((acc, b) => {
     if (!acc[b.booking_date]) acc[b.booking_date] = [];
     acc[b.booking_date].push(b);
     return acc;
