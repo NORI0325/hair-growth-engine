@@ -55,6 +55,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         customer: { id: customer.id, full_name: customer.full_name },
+        owner_id: customer.owner_id,
         salon_name: profile?.salon_name || "Salon",
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }

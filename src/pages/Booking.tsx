@@ -1,15 +1,22 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, CheckCircle2 } from "lucide-react";
+import { Loader2, CheckCircle2, Check } from "lucide-react";
 import { toast } from "sonner";
 
-const MENUS = ["カット", "カット＋カラー", "カット＋パーマ", "縮毛矯正", "ヘッドスパ", "その他"];
+const FALLBACK_MENUS = ["カット", "カット＋カラー", "カット＋パーマ", "縮毛矯正", "ヘッドスパ", "その他"];
 const TIMES = ["10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00"];
+
+interface MenuItem {
+  id: string;
+  name: string;
+  duration_minutes: number;
+  price: number;
+}
 
 const Booking = () => {
   const { token } = useParams();
@@ -17,10 +24,11 @@ const Booking = () => {
   const [booking, setBooking] = useState(false);
   const [customer, setCustomer] = useState<any>(null);
   const [salonName, setSalonName] = useState("");
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
 
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
-  const [menu, setMenu] = useState("");
+  const [selectedMenus, setSelectedMenus] = useState<string[]>([]);
   const [notes, setNotes] = useState("");
   const [completed, setCompleted] = useState(false);
 
@@ -31,6 +39,17 @@ const Booking = () => {
       if (data?.customer) {
         setCustomer(data.customer);
         setSalonName(data.salon_name || "Salon Boost");
+
+        // メニュー取得（owner_id があれば）
+        if (data.owner_id) {
+          const { data: items } = await supabase
+            .from("menu_items")
+            .select("id, name, duration_minutes, price")
+            .eq("owner_id", data.owner_id)
+            .eq("active", true)
+            .order("sort_order", { ascending: true });
+          setMenuItems(items || []);
+        }
       } else {
         toast.error("リンクが無効です");
       }
@@ -43,11 +62,27 @@ const Booking = () => {
   tomorrow.setDate(tomorrow.getDate() + 1);
   const minDate = tomorrow.toISOString().split("T")[0];
 
+  const { totalDuration, totalPrice } = useMemo(() => {
+    let d = 0, p = 0;
+    for (const name of selectedMenus) {
+      const item = menuItems.find(i => i.name === name);
+      if (item) { d += item.duration_minutes; p += item.price; }
+    }
+    return { totalDuration: d, totalPrice: p };
+  }, [selectedMenus, menuItems]);
+
+  const toggleMenu = (name: string) => {
+    setSelectedMenus(prev => prev.includes(name) ? prev.filter(m => m !== name) : [...prev, name]);
+  };
+
   const handleBook = async () => {
-    if (!date || !time || !menu) { toast.error("日付・時間・メニューをお選びください"); return; }
+    if (!date || !time || selectedMenus.length === 0) {
+      toast.error("日付・時間・メニューをお選びください");
+      return;
+    }
     setBooking(true);
     const { data, error } = await supabase.functions.invoke("create-booking", {
-      body: { token, date, time, menu, notes },
+      body: { token, date, time, menus: selectedMenus, notes },
     });
     setBooking(false);
     if (error || !data?.success) { toast.error("予約に失敗しました。もう一度お試しください。"); return; }
@@ -96,7 +131,7 @@ const Booking = () => {
           <div className="text-left text-xs space-y-3 max-w-xs mx-auto pt-6 border-t border-border">
             <div className="flex justify-between"><span className="font-serif text-muted-foreground">日付</span><span className="font-serif">{new Date(date).toLocaleDateString("ja-JP")}</span></div>
             <div className="flex justify-between"><span className="font-serif text-muted-foreground">時間</span><span className="font-serif">{time}</span></div>
-            <div className="flex justify-between"><span className="font-serif text-muted-foreground">メニュー</span><span className="font-serif">{menu}</span></div>
+            <div className="flex justify-between"><span className="font-serif text-muted-foreground">メニュー</span><span className="font-serif text-right">{selectedMenus.join(" + ")}</span></div>
             <div className="flex justify-between"><span className="font-serif text-muted-foreground">サロン</span><span className="font-serif">{salonName}</span></div>
           </div>
         </div>
@@ -104,31 +139,28 @@ const Booking = () => {
     );
   }
 
+  const useRichMenus = menuItems.length > 0;
+
   return (
     <div className="min-h-screen bg-background py-12 px-6">
       <div className="max-w-md mx-auto">
-        {/* ヘッダー */}
         <div className="text-center mb-12 animate-fade-up">
           <div className="font-serif-en text-3xl tracking-luxury text-gold mb-2">SB</div>
           <h1 className="display text-xl">{salonName}</h1>
         </div>
 
-        {/* クーポン */}
         <div className="border border-gold/40 mb-12 p-10 text-center bg-secondary/30 animate-fade-up animate-delay-100 relative">
           <div className="absolute top-0 left-0 w-full h-px bg-gold" />
           <div className="absolute bottom-0 left-0 w-full h-px bg-gold" />
           <p className="eyebrow mb-3 text-gold">— Special Invitation —</p>
           <p className="font-serif text-sm text-muted-foreground mb-4">{customer.full_name} 様へ</p>
-          <h2 className="display text-2xl md:text-3xl mb-4">
-            お久しぶりクーポン
-          </h2>
+          <h2 className="display text-2xl md:text-3xl mb-4">お久しぶりクーポン</h2>
           <div className="hairline w-12 mx-auto my-4 opacity-60" />
           <p className="text-xs text-muted-foreground leading-loose">
             ご来店の際、スタッフへこの画面をご提示ください。
           </p>
         </div>
 
-        {/* フォーム */}
         <div className="space-y-8 animate-fade-up animate-delay-200">
           <div>
             <p className="eyebrow mb-3">No.01 — ご希望日 / Date</p>
@@ -149,15 +181,48 @@ const Booking = () => {
           </div>
 
           <div>
-            <p className="eyebrow mb-3">No.03 — メニュー / Menu</p>
-            <div className="grid grid-cols-2 gap-px bg-border">
-              {MENUS.map(m => (
-                <button key={m} type="button" onClick={() => setMenu(m)}
-                  className={`py-3 text-sm font-serif transition-all ${menu === m ? "bg-primary text-primary-foreground" : "bg-card hover:bg-secondary"}`}>
-                  {m}
-                </button>
-              ))}
-            </div>
+            <p className="eyebrow mb-3">No.03 — メニュー / Menu <span className="text-muted-foreground normal-case ml-1">（複数選択可）</span></p>
+            {useRichMenus ? (
+              <div className="space-y-px bg-border border border-border">
+                {menuItems.map(item => {
+                  const active = selectedMenus.includes(item.name);
+                  return (
+                    <button key={item.id} type="button" onClick={() => toggleMenu(item.name)}
+                      className={`w-full flex items-center justify-between px-4 py-4 text-left transition-all ${active ? "bg-primary text-primary-foreground" : "bg-card hover:bg-secondary"}`}>
+                      <div className="flex items-center gap-3">
+                        <div className={`w-4 h-4 border flex items-center justify-center ${active ? "border-primary-foreground bg-primary-foreground" : "border-border"}`}>
+                          {active && <Check className="w-3 h-3 text-primary" />}
+                        </div>
+                        <span className="font-serif text-sm">{item.name}</span>
+                      </div>
+                      <div className="text-xs opacity-80 font-serif">{item.duration_minutes}分 / ¥{item.price.toLocaleString()}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-px bg-border">
+                {FALLBACK_MENUS.map(m => {
+                  const active = selectedMenus.includes(m);
+                  return (
+                    <button key={m} type="button" onClick={() => toggleMenu(m)}
+                      className={`py-3 text-sm font-serif transition-all ${active ? "bg-primary text-primary-foreground" : "bg-card hover:bg-secondary"}`}>
+                      {m}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {useRichMenus && selectedMenus.length > 0 && (
+              <div className="mt-4 p-4 border border-gold/40 bg-secondary/30 flex justify-between items-center">
+                <div>
+                  <p className="eyebrow text-[10px] mb-1 text-gold">— Total —</p>
+                  <p className="font-serif text-sm">{selectedMenus.length}項目 / 約{totalDuration}分</p>
+                </div>
+                <p className="display text-2xl">¥{totalPrice.toLocaleString()}</p>
+              </div>
+            )}
           </div>
 
           <div>

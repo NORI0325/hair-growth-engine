@@ -8,16 +8,21 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { token, date, time, menu, notes } = await req.json();
+    const body = await req.json();
+    const { token, date, time, notes } = body;
+    let menus: string[] = Array.isArray(body.menus) ? body.menus.filter((m: any) => typeof m === "string").slice(0, 10) : [];
+    // 旧クライアント互換: 単一menu文字列が来たら配列化
+    if (menus.length === 0 && typeof body.menu === "string" && body.menu.trim()) {
+      menus = [body.menu.trim()];
+    }
 
-    if (!token || !date || !time || !menu) {
+    if (!token || !date || !time || menus.length === 0) {
       return new Response(JSON.stringify({ error: "Missing required fields" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // 日付・時間バリデーション
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) {
       return new Response(JSON.stringify({ error: "Invalid date/time format" }), {
         status: 400,
@@ -56,6 +61,19 @@ Deno.serve(async (req) => {
       });
     }
 
+    // メニュー合計を計算
+    const { data: menuRows } = await supabase
+      .from("menu_items")
+      .select("name, duration_minutes, buffer_minutes, price")
+      .eq("owner_id", customer.owner_id)
+      .in("name", menus);
+    let totalDuration = 0, totalPrice = 0;
+    for (const r of (menuRows || [])) {
+      totalDuration += (r.duration_minutes || 0) + (r.buffer_minutes || 0);
+      totalPrice += (r.price || 0);
+    }
+    const menuSummary = menus.join(" + ").slice(0, 200);
+
     const { data: booking, error } = await supabase
       .from("bookings")
       .insert({
@@ -63,7 +81,10 @@ Deno.serve(async (req) => {
         customer_id: customer.id,
         booking_date: date,
         booking_time: time + ":00",
-        menu: String(menu).slice(0, 200),
+        menu: menuSummary,
+        menus,
+        total_duration_minutes: totalDuration || null,
+        total_price: totalPrice || null,
         notes: notes ? String(notes).slice(0, 500) : null,
         status: "pending",
       })
@@ -77,6 +98,8 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    const menu = menuSummary;
 
     // 予約完了時のLINE即時通知（顧客がLINE連携済みなら）
     try {
