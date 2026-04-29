@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, CheckCircle2, Check } from "lucide-react";
+import { Loader2, CheckCircle2, Check, CalendarDays } from "lucide-react";
 import { toast } from "sonner";
 
 const FALLBACK_MENUS = ["カット", "カット＋カラー", "カット＋パーマ", "縮毛矯正", "ヘッドスパ", "その他"];
@@ -39,11 +39,13 @@ const Booking = () => {
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
   const [selectedMenus, setSelectedMenus] = useState<string[]>([]);
-  const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null); // null = 指名なし
+  const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
   const [completed, setCompleted] = useState(false);
   const [availableSlots, setAvailableSlots] = useState<string[] | null>(null);
   const [loadingSlots, setLoadingSlots] = useState(false);
+  const [leadHours, setLeadHours] = useState(24);
+  const [maxDaysAhead, setMaxDaysAhead] = useState(60);
 
   useEffect(() => {
     const load = async () => {
@@ -53,6 +55,8 @@ const Booking = () => {
         setCustomer(data.customer);
         setSalonName(data.salon_name || "Salon Boost");
         setSalonSlug(data.public_slug || null);
+        setLeadHours(data.booking_lead_time_hours ?? 24);
+        setMaxDaysAhead(data.booking_max_days_ahead ?? 60);
 
         // メニュー & スタッフ取得
         if (data.owner_id) {
@@ -82,9 +86,16 @@ const Booking = () => {
     load();
   }, [token]);
 
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const minDate = tomorrow.toISOString().split("T")[0];
+  // 予約可能日: リードタイム経過後の日付から / 上限日まで
+  const earliestDate = useMemo(() => {
+    const d = new Date(Date.now() + leadHours * 3600_000);
+    return d.toISOString().split("T")[0];
+  }, [leadHours]);
+  const maxDate = useMemo(() => {
+    const d = new Date(Date.now() + maxDaysAhead * 86400_000);
+    return d.toISOString().split("T")[0];
+  }, [maxDaysAhead]);
+  const minDate = earliestDate;
 
   const { totalDuration, totalPrice } = useMemo(() => {
     let d = 0, p = 0;
