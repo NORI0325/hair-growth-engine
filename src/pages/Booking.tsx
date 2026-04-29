@@ -126,17 +126,16 @@ const Booking = () => {
     }
     setBooking(true);
     const { data, error } = await supabase.functions.invoke("create-booking", {
-      body: { token, date, time, menus: selectedMenus, notes },
+      body: { token, date, time, menus: selectedMenus, notes, staff_id: selectedStaffId },
     });
     setBooking(false);
     if (error || !data?.success) {
       const msg = (data as any)?.message || "予約に失敗しました。もう一度お試しください。";
       toast.error(msg);
-      // 満席なら空き枠を再取得
       if ((data as any)?.error === "slot_taken" && salonSlug) {
         const duration = totalDuration > 0 ? totalDuration : 60;
-        const { data: slots } = await supabase.rpc("get_available_slots", {
-          _salon_slug: salonSlug, _date: date, _duration_minutes: duration,
+        const { data: slots } = await supabase.rpc("get_available_slots_by_staff", {
+          _salon_slug: salonSlug, _date: date, _duration_minutes: duration, _staff_id: selectedStaffId,
         });
         setAvailableSlots((slots || []).map((r: any) => String(r.slot_time).slice(0, 5)));
         setTime("");
