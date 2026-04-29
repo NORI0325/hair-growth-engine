@@ -134,7 +134,7 @@ const Templates = () => {
       template_key: selectedKey,
       ...override,
     };
-    const { error } = await supabase.from("template_overrides").upsert(payload, { onConflict: "owner_id,channel,template_key" });
+    const { error } = await supabase.from("template_overrides").upsert(payload as any, { onConflict: "owner_id,channel,template_key" });
     setSaving(false);
     if (error) { toast.error("保存失敗: " + error.message); return; }
     toast.success("保存しました");
