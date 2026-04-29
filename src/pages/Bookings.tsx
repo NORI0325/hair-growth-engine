@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 import AppLayout from "@/components/AppLayout";
 import PageHeader from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { toast } from "sonner";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface Booking {
   id: string;
@@ -16,8 +18,11 @@ interface Booking {
   revenue: number | null;
   campaign_id: string | null;
   is_test: boolean;
+  staff_id: string | null;
   customers: { full_name: string; phone: string | null } | null;
 }
+
+interface Staff { id: string; name: string; display_color: string; }
 
 const statusInfo = (s: string) => {
   if (s === "confirmed") return { label: "確定", color: "text-gold" };
@@ -27,21 +32,34 @@ const statusInfo = (s: string) => {
 };
 
 const Bookings = () => {
+  const { user } = useAuth();
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from("bookings")
-      .select("id, booking_date, booking_time, menu, notes, status, revenue, campaign_id, is_test, customers(full_name, phone)")
-      .order("booking_date", { ascending: true })
-      .order("booking_time", { ascending: true });
-    if (data) setBookings(data as any);
+    const [b, s] = await Promise.all([
+      supabase
+        .from("bookings")
+        .select("id, booking_date, booking_time, menu, notes, status, revenue, campaign_id, is_test, staff_id, customers(full_name, phone)")
+        .order("booking_date", { ascending: true })
+        .order("booking_time", { ascending: true }),
+      user ? supabase.from("staff").select("id, name, display_color").eq("owner_id", user.id).eq("active", true).order("sort_order") : Promise.resolve({ data: [] }),
+    ]);
+    if (b.data) setBookings(b.data as any);
+    setStaff((s.data as Staff[]) || []);
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [user]);
+
+  const assignStaff = async (id: string, staffId: string | null) => {
+    const { error } = await supabase.from("bookings").update({ staff_id: staffId }).eq("id", id);
+    if (error) { toast.error("担当変更に失敗: " + error.message); return; }
+    toast.success("担当スタッフを更新しました");
+    load();
+  };
 
   const updateStatus = async (id: string, status: "completed" | "cancelled" | "confirmed", revenue?: number) => {
     const update: any = { status };
@@ -120,11 +138,15 @@ const Bookings = () => {
                   {items.map(b => {
                     const status = statusInfo(b.status);
                     return (
-                      <div key={b.id} className="grid grid-cols-12 gap-6 py-6 border-b border-border/60 items-center hover:bg-secondary/30 transition-colors">
+                      <div key={b.id} className="grid grid-cols-12 gap-4 py-6 border-b border-border/60 items-center hover:bg-secondary/30 transition-colors">
                         <div className="col-span-2">
                           <div className="font-serif-en text-2xl">{b.booking_time.slice(0, 5)}</div>
+                          <span className={`inline-flex items-center gap-1.5 text-[10px] font-serif mt-1 ${status.color}`}>
+                            <span className="w-1 h-1 rounded-full bg-current" />
+                            {status.label}
+                          </span>
                         </div>
-                        <div className="col-span-4">
+                        <div className="col-span-3">
                           <div className="font-serif text-sm flex items-center gap-2">
                             {b.customers?.full_name || "—"}
                             {b.is_test && (
@@ -141,11 +163,39 @@ const Bookings = () => {
                           )}
                           {b.campaign_id && <div className="text-[10px] mt-1 eyebrow text-gold">— from outreach</div>}
                         </div>
-                        <div className="col-span-1">
-                          <span className={`inline-flex items-center gap-2 text-[11px] font-serif ${status.color}`}>
-                            <span className="w-1 h-1 rounded-full bg-current" />
-                            {status.label}
-                          </span>
+                        <div className="col-span-2">
+                          {staff.length > 0 ? (
+                            <Select
+                              value={b.staff_id || "unassigned"}
+                              onValueChange={(v) => assignStaff(b.id, v === "unassigned" ? null : v)}
+                            >
+                              <SelectTrigger className="rounded-none h-8 text-xs">
+                                <SelectValue>
+                                  {b.staff_id ? (
+                                    <span className="flex items-center gap-2">
+                                      <span className="w-2 h-2 rounded-full" style={{ background: staff.find(s => s.id === b.staff_id)?.display_color || "#999" }} />
+                                      {staff.find(s => s.id === b.staff_id)?.name || "—"}
+                                    </span>
+                                  ) : (
+                                    <span className="text-muted-foreground">未割当</span>
+                                  )}
+                                </SelectValue>
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="unassigned">未割当</SelectItem>
+                                {staff.map(s => (
+                                  <SelectItem key={s.id} value={s.id}>
+                                    <span className="flex items-center gap-2">
+                                      <span className="w-2 h-2 rounded-full" style={{ background: s.display_color }} />
+                                      {s.name}
+                                    </span>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <span className="text-[10px] text-muted-foreground">—</span>
+                          )}
                         </div>
                         <div className="col-span-2 flex items-center justify-end gap-1">
                           {b.status === "pending" && (
