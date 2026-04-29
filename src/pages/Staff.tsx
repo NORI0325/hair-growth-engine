@@ -91,7 +91,8 @@ const StaffPage = () => {
   };
 
   const toggleActive = async (s: Staff, field: "active" | "bookable") => {
-    const { error } = await supabase.from("staff").update({ [field]: !s[field] }).eq("id", s.id);
+    const patch = field === "active" ? { active: !s.active } : { bookable: !s.bookable };
+    const { error } = await supabase.from("staff").update(patch).eq("id", s.id);
     if (error) { toast.error("更新失敗"); return; }
     load();
   };
