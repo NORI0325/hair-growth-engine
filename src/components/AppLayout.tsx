@@ -28,8 +28,27 @@ const navItems = [
 ];
 
 const AppLayout = ({ children }: { children: ReactNode }) => {
-  const { signOut } = useAuth();
+  const { signOut, user } = useAuth();
   const navigate = useNavigate();
+  const [unreadInbox, setUnreadInbox] = useState(0);
+
+  useEffect(() => {
+    if (!user) return;
+    const fetchUnread = async () => {
+      const { count } = await supabase
+        .from("line_inbound_messages")
+        .select("id", { count: "exact", head: true })
+        .eq("owner_id", user.id)
+        .eq("handled", false);
+      setUnreadInbox(count || 0);
+    };
+    fetchUnread();
+    const ch = supabase
+      .channel("inbox-badge")
+      .on("postgres_changes", { event: "*", schema: "public", table: "line_inbound_messages" }, fetchUnread)
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [user]);
 
   const handleSignOut = async () => {
     await signOut();
