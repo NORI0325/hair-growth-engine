@@ -67,9 +67,10 @@ const EditCustomerDialog = ({ customer, open, onOpenChange, onSaved }: Props) =>
     }
   }, [customer]);
 
+  if (!customer) return null;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!customer) return;
     const parsed = schema.safeParse(form);
     if (!parsed.success) { toast.error(parsed.error.errors[0].message); return; }
     setLoading(true);
@@ -92,7 +93,6 @@ const EditCustomerDialog = ({ customer, open, onOpenChange, onSaved }: Props) =>
   };
 
   const handleDelete = async () => {
-    if (!customer) return;
     setDeleting(true);
     const { error } = await supabase.from("customers").delete().eq("id", customer.id);
     setDeleting(false);
