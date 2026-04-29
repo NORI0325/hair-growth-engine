@@ -225,6 +225,7 @@ const MenuItems = () => {
       <div className="mt-8 p-6 border border-gold/30 bg-secondary/20">
         <p className="eyebrow mb-3 text-gold">— Tips —</p>
         <ul className="text-xs text-muted-foreground space-y-2 leading-relaxed">
+          <li>• <strong>メニュー画像</strong>：仕上がり写真をアップロードすると、お客様の予約画面で視覚的に魅力的に表示されます（5MB以下推奨）。</li>
           <li>• <strong>バッファ時間</strong>：施術後の片付け・カウンセリングなど。次のお客様までの余裕時間として確保されます。</li>
           <li>• <strong>無効化</strong>：スイッチをオフにすると、お客様の予約画面に表示されなくなります（既存データは残ります）。</li>
           <li>• <strong>並び順</strong>：上から順に予約画面に表示されます。</li>
