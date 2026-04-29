@@ -214,10 +214,37 @@ Deno.serve(async (req) => {
             .eq("owner_id", owner.id)
             .eq("line_user_id", userId)
             .maybeSingle();
-          const name = cust?.full_name ? `${cust.full_name}様` : "お客様";
-          const msg = cust
-            ? `🎁 ${name}\n\n現在ご利用いただける特典：\n・次回ご予約で20%OFF\n・ご紹介で1,000円分クーポン\n・お誕生月に30%OFFクーポン配布\n\nご予約は「予約する」ボタンからどうぞ🌸`
-            : `🎁 まずはLINE連携をお願いします\n\nご登録のお電話番号をこのトークに送信してください（例：090-1234-5678）。連携後、特典クーポンをお届けします。`;
+
+          if (!cust) {
+            await replyLine(accessToken, replyToken,
+              `🎁 まずはLINE連携をお願いします\n\nご登録のお電話番号をこのトークに送信してください（例：090-1234-5678）。連携後、特典クーポンをお届けします。`);
+            continue;
+          }
+
+          // DBから有効なクーポンを取得（期限切れを除外、無期限はOK）
+          const today = new Date().toISOString().slice(0, 10);
+          const { data: coupons } = await supabase
+            .from("coupons")
+            .select("title, description, discount_type, discount_value, expires_at")
+            .eq("owner_id", owner.id)
+            .or(`expires_at.is.null,expires_at.gte.${today}`)
+            .order("created_at", { ascending: false })
+            .limit(5);
+
+          const name = `${cust.full_name}様`;
+          let msg: string;
+          if (!coupons || coupons.length === 0) {
+            msg = `🎁 ${name}\n\n現在配信中の特典はございません。\n新しいクーポンが追加されましたら、こちらのトークでお知らせいたします🌸\n\n— ${owner.salon_name || "サロン"}`;
+          } else {
+            const lines = coupons.map((c) => {
+              const valueLabel = c.discount_type === "percent"
+                ? `${c.discount_value}%OFF`
+                : `¥${c.discount_value.toLocaleString()}OFF`;
+              const expiry = c.expires_at ? `（〜${c.expires_at}）` : "";
+              return `・${c.title}${expiry}\n  ${valueLabel}${c.description ? ` / ${c.description}` : ""}`;
+            }).join("\n\n");
+            msg = `🎁 ${name}\n\n現在ご利用いただける特典：\n\n${lines}\n\nご予約は「予約する」ボタンからどうぞ🌸\n\n— ${owner.salon_name || "サロン"}`;
+          }
           await replyLine(accessToken, replyToken, msg);
           continue;
         }
