@@ -100,10 +100,39 @@ Deno.serve(async (req) => {
       console.log(`[line-webhook] event type=${ev.type} userId=${userId}`);
 
       if (ev.type === "follow" && replyToken && userId) {
+        // LINEプロフィール取得（display_name保存用）
+        let displayName: string | null = null;
+        try {
+          const pf = await fetch(`https://api.line.me/v2/bot/profile/${userId}`, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+          if (pf.ok) {
+            const j = await pf.json();
+            displayName = j?.displayName || null;
+          }
+        } catch (e) {
+          console.warn("[line-webhook] profile fetch failed:", e);
+        }
+
+        // 既存顧客にline_user_idが既に紐付いていなければ pending に登録
+        const { data: existing } = await supabase
+          .from("customers")
+          .select("id")
+          .eq("owner_id", owner.id)
+          .eq("line_user_id", userId)
+          .maybeSingle();
+        if (!existing) {
+          await supabase.from("line_pending_friends").upsert({
+            owner_id: owner.id,
+            line_user_id: userId,
+            display_name: displayName,
+          }, { onConflict: "owner_id,line_user_id" });
+        }
+
         const r = await replyLine(
           accessToken,
           replyToken,
-          `🌸 ${owner.salon_name || "サロン"}の公式アカウントへようこそ！\n\nご予約や特典のお知らせをお届けします。\n\n📱 はじめに、ご登録のお電話番号をこのトークに送信してください。\n（例：090-1234-5678）\n\n本人確認後、次回からのご予約案内・特典クーポンが届くようになります。`
+          `🌸 ${owner.salon_name || "サロン"}の公式アカウントへようこそ！\n\nご予約や特典のお知らせをお届けします。\n\n📱 ご登録のお電話番号をこのトークに送信してください（例：090-1234-5678）。\n\nお電話番号がご不明な場合は、お名前だけでも構いません。スタッフが確認のうえ連携いたします🙇‍♀️`
         );
         if (!r.ok) console.error("[line-webhook] follow reply failed:", r.err);
         continue;
