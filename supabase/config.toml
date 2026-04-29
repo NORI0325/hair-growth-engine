@@ -3,6 +3,8 @@ project_id = "miyedioemkzhetphjzzg"
 [functions]
   [functions.ai-classify-inbound]
     verify_jwt = false
+  [functions.ai-customer-insights]
+    verify_jwt = true
   [functions.ai-reply-suggestions]
     verify_jwt = true
   [functions.ai-template-assistant]
