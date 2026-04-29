@@ -1,0 +1,192 @@
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Loader2, Send, MessageCircle, Phone } from "lucide-react";
+import { toast } from "sonner";
+
+interface Template {
+  id: string;
+  kind: string;
+  title: string;
+  body: string;
+  sort_order: number;
+}
+
+interface Props {
+  open: boolean;
+  onClose: () => void;
+  customerId: string;
+  customerName: string;
+  customerPhone?: string | null;
+  hasLine: boolean;
+  bookingTime?: string; // "HH:MM"
+}
+
+export const CustomerMessageDialog = ({
+  open, onClose, customerId, customerName, customerPhone, hasLine, bookingTime,
+}: Props) => {
+  const { user } = useAuth();
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [selected, setSelected] = useState<Template | null>(null);
+  const [minutes, setMinutes] = useState(15);
+  const [newTime, setNewTime] = useState(bookingTime || "");
+  const [body, setBody] = useState("");
+  const [sending, setSending] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!open || !user) return;
+    setLoading(true);
+    setSelected(null);
+    setBody("");
+    supabase.from("customer_message_templates")
+      .select("*").eq("owner_id", user.id).eq("active", true).order("sort_order")
+      .then(({ data }) => {
+        setTemplates(data || []);
+        setLoading(false);
+      });
+  }, [open, user]);
+
+  // 差し込み変数を反映
+  const renderedBody = useMemo(() => {
+    return body
+      .replaceAll("{customer_name}", customerName || "お客様")
+      .replaceAll("{minutes}", String(minutes))
+      .replaceAll("{new_time}", newTime || "—");
+  }, [body, customerName, minutes, newTime]);
+
+  const pickTemplate = (t: Template) => {
+    setSelected(t);
+    setBody(t.body);
+    // デフォルトの新時刻提案：早上がり=15分前/相談=30分後
+    if (bookingTime) {
+      const [h, m] = bookingTime.split(":").map(Number);
+      const total = h * 60 + m + (t.kind === "early" ? -15 : t.kind === "reschedule" ? 30 : 0);
+      const nh = Math.floor(((total % 1440) + 1440) % 1440 / 60);
+      const nm = ((total % 60) + 60) % 60;
+      setNewTime(`${String(nh).padStart(2, "0")}:${String(nm).padStart(2, "0")}`);
+    }
+  };
+
+  const send = async () => {
+    if (renderedBody.length < 5) { toast.error("メッセージを入力してください"); return; }
+    setSending(true);
+    const { data, error } = await supabase.functions.invoke("send-customer-message", {
+      body: { customer_id: customerId, message: renderedBody },
+    });
+    setSending(false);
+    if (error || (data as any)?.error) {
+      const msg = (data as any)?.message || (data as any)?.error || error?.message || "送信に失敗しました";
+      toast.error(msg);
+      return;
+    }
+    toast.success("送信しました");
+    onClose();
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="rounded-none max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="font-serif flex items-center gap-2">
+            <MessageCircle className="w-4 h-4 text-gold" />
+            {customerName} 様へご連絡
+          </DialogTitle>
+        </DialogHeader>
+
+        {!hasLine ? (
+          <div className="py-8 text-center space-y-4">
+            <div className="w-12 h-12 rounded-full border border-border mx-auto flex items-center justify-center">
+              <Phone className="w-5 h-5 text-muted-foreground" />
+            </div>
+            <p className="text-sm text-muted-foreground">
+              このお客様はLINE未連携です。<br />
+              お電話で直接ご連絡くださいませ。
+            </p>
+            {customerPhone && (
+              <a href={`tel:${customerPhone}`} className="inline-block">
+                <Button className="rounded-none">
+                  <Phone className="w-3.5 h-3.5 mr-2" />{customerPhone} に電話
+                </Button>
+              </a>
+            )}
+          </div>
+        ) : loading ? (
+          <div className="py-8 text-center">
+            <Loader2 className="w-5 h-5 animate-spin mx-auto text-gold" />
+          </div>
+        ) : (
+          <div className="space-y-5">
+            {/* テンプレート選択 */}
+            <div>
+              <Label className="eyebrow text-[10px] mb-2 block">— Tone Templates —</Label>
+              <div className="space-y-2">
+                {templates.map(t => (
+                  <button key={t.id} type="button" onClick={() => pickTemplate(t)}
+                    className={`w-full text-left px-4 py-3 border transition-all ${selected?.id === t.id ? "border-gold bg-secondary/30" : "border-border hover:border-gold/40"}`}>
+                    <div className="font-serif text-sm">{t.title}</div>
+                    <div className="text-[11px] text-muted-foreground line-clamp-1 mt-1">{t.body.slice(0, 60)}…</div>
+                  </button>
+                ))}
+                <button type="button" onClick={() => { setSelected(null); setBody(""); }}
+                  className={`w-full text-left px-4 py-3 border transition-all ${!selected ? "border-gold bg-secondary/30" : "border-border hover:border-gold/40"}`}>
+                  <div className="font-serif text-sm text-muted-foreground">— 自由文で送る —</div>
+                </button>
+              </div>
+            </div>
+
+            {/* 変数入力 */}
+            {selected && (selected.body.includes("{minutes}") || selected.body.includes("{new_time}")) && (
+              <div className="grid grid-cols-2 gap-3">
+                {selected.body.includes("{minutes}") && (
+                  <div>
+                    <Label className="text-xs">何分ほど</Label>
+                    <Input type="number" min={5} max={120} value={minutes}
+                      onChange={e => setMinutes(parseInt(e.target.value) || 15)}
+                      className="rounded-none mt-1" />
+                  </div>
+                )}
+                {selected.body.includes("{new_time}") && (
+                  <div>
+                    <Label className="text-xs">提案する時刻</Label>
+                    <Input type="time" value={newTime}
+                      onChange={e => setNewTime(e.target.value)}
+                      className="rounded-none mt-1" />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* プレビュー（編集可） */}
+            <div>
+              <Label className="text-xs flex justify-between">
+                <span>プレビュー（編集可能）</span>
+                <span className="text-muted-foreground">{renderedBody.length}/2000</span>
+              </Label>
+              <Textarea value={renderedBody} onChange={e => {
+                // 編集すると変数置換は破棄して自由文化
+                setBody(e.target.value);
+              }} rows={9} className="rounded-none mt-1 font-serif text-sm" />
+              <p className="text-[10px] text-muted-foreground mt-1">
+                LINEで送信されます。送信前にトーンと内容をご確認ください。
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={onClose} className="rounded-none">キャンセル</Button>
+              <Button onClick={send} disabled={sending} className="rounded-none">
+                {sending ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> : <Send className="w-3.5 h-3.5 mr-2" />}
+                LINEで送信
+              </Button>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+};
