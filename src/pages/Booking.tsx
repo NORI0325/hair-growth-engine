@@ -53,15 +53,25 @@ const Booking = () => {
         setSalonName(data.salon_name || "Salon Boost");
         setSalonSlug(data.public_slug || null);
 
-        // メニュー取得（owner_id があれば）
+        // メニュー & スタッフ取得
         if (data.owner_id) {
-          const { data: items } = await supabase
-            .from("menu_items")
-            .select("id, name, duration_minutes, price")
-            .eq("owner_id", data.owner_id)
-            .eq("active", true)
-            .order("sort_order", { ascending: true });
-          setMenuItems(items || []);
+          const [menusRes, staffRes] = await Promise.all([
+            supabase
+              .from("menu_items")
+              .select("id, name, duration_minutes, price")
+              .eq("owner_id", data.owner_id)
+              .eq("active", true)
+              .order("sort_order", { ascending: true }),
+            supabase
+              .from("staff")
+              .select("id, name, display_color, note")
+              .eq("owner_id", data.owner_id)
+              .eq("active", true)
+              .eq("bookable", true)
+              .order("sort_order", { ascending: true }),
+          ]);
+          setMenuItems(menusRes.data || []);
+          setStaffList(staffRes.data || []);
         }
       } else {
         toast.error("リンクが無効です");
