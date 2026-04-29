@@ -6,7 +6,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, MessageCircle, Check, AlertTriangle, Sparkles, Phone } from "lucide-react";
+import { Loader2, MessageCircle, Check, AlertTriangle, Sparkles, Phone, Trash2 } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { CustomerMessageDialog } from "@/components/CustomerMessageDialog";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -82,6 +83,13 @@ export default function Inbox() {
       .eq("id", id);
     if (error) { toast.error("更新に失敗しました"); return; }
     toast.success(handled ? "対応済みにしました" : "未対応に戻しました");
+  };
+
+  const removeMessage = async (id: string) => {
+    const { error } = await supabase.from("line_inbound_messages").delete().eq("id", id);
+    if (error) { toast.error("削除に失敗しました: " + error.message); return; }
+    toast.success("メッセージを削除しました");
+    setMessages((prev) => prev.filter((m) => m.id !== id));
   };
 
   const openReply = (m: InboundMsg) => {
