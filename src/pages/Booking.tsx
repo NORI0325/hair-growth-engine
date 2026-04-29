@@ -16,6 +16,7 @@ interface MenuItem {
   name: string;
   duration_minutes: number;
   price: number;
+  image_url: string | null;
 }
 
 interface StaffMember {
