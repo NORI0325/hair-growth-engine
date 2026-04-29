@@ -6,7 +6,27 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { TEMPLATE_CATALOG } from "@/lib/templateCatalog";
-import { TrendingUp, Mail, MessageCircle, JapaneseYen, MousePointerClick } from "lucide-react";
+import { TrendingUp, Mail, MessageCircle, JapaneseYen, MousePointerClick, Gift } from "lucide-react";
+
+const INCENTIVE_KIND_LABELS: Record<string, string> = {
+  gift: "🎁 ギフト",
+  service_addon: "✨ サービス追加",
+  upgrade: "💎 アップグレード",
+  priority: "👑 優先予約",
+  experience: "🌿 体験メニュー",
+  discount: "💝 割引",
+  other: "その他",
+};
+
+interface IncentiveStat {
+  id: string;
+  kind: string;
+  title: string;
+  estimated_cost: number;
+  sent: number;
+  bookings: number;
+  revenue: number;
+}
 
 const Performance = () => {
   const { user } = useAuth();
@@ -14,6 +34,7 @@ const Performance = () => {
   const [emailStats, setEmailStats] = useState<Record<string, { sent: number; failed: number }>>({});
   const [lineStats, setLineStats] = useState<Record<string, { sent: number; failed: number }>>({});
   const [bookingsByTemplate, setBookingsByTemplate] = useState<Record<string, { count: number; revenue: number }>>({});
+  const [incentiveStats, setIncentiveStats] = useState<IncentiveStat[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
