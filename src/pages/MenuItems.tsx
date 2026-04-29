@@ -158,8 +158,34 @@ const MenuItems = () => {
         <div className="border border-border divide-y divide-border">
           {items.map(item => (
             <div key={item.id} className="grid grid-cols-1 md:grid-cols-12 gap-4 p-4 items-center hover:bg-secondary/30 transition-colors">
-              <div className="md:col-span-1 text-muted-foreground hidden md:flex">
-                <GripVertical className="w-4 h-4" />
+              <div className="md:col-span-1">
+                {item.image_url ? (
+                  <div className="relative group w-14 h-14 border border-border overflow-hidden">
+                    <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => removeImage(item.id, item.image_url)}
+                      className="absolute inset-0 bg-foreground/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
+                      title="画像を削除"
+                    >
+                      <X className="w-4 h-4 text-background" />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="cursor-pointer w-14 h-14 border border-dashed border-border flex items-center justify-center hover:border-gold hover:bg-secondary/30 transition-all">
+                    <ImagePlus className="w-4 h-4 text-muted-foreground" />
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) uploadImage(item.id, f);
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
+                )}
               </div>
               <div className="md:col-span-3">
                 <Input value={item.name} onChange={e => update(item.id, { name: e.target.value })}
