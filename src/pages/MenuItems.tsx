@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, Plus, Trash2, GripVertical } from "lucide-react";
+import { Loader2, Plus, Trash2, GripVertical, ImagePlus, X } from "lucide-react";
 import { toast } from "sonner";
 
 interface MenuItem {
@@ -18,6 +18,8 @@ interface MenuItem {
   price: number;
   sort_order: number;
   active: boolean;
+  image_url: string | null;
+  description: string | null;
 }
 
 const MenuItems = () => {
