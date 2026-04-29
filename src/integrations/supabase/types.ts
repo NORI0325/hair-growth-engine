@@ -62,6 +62,7 @@ export type Database = {
           revenue: number | null
           source_job_id: string | null
           source_template: string | null
+          staff_id: string | null
           status: Database["public"]["Enums"]["booking_status"]
           total_duration_minutes: number | null
           total_price: number | null
@@ -85,6 +86,7 @@ export type Database = {
           revenue?: number | null
           source_job_id?: string | null
           source_template?: string | null
+          staff_id?: string | null
           status?: Database["public"]["Enums"]["booking_status"]
           total_duration_minutes?: number | null
           total_price?: number | null
@@ -108,6 +110,7 @@ export type Database = {
           revenue?: number | null
           source_job_id?: string | null
           source_template?: string | null
+          staff_id?: string | null
           status?: Database["public"]["Enums"]["booking_status"]
           total_duration_minutes?: number | null
           total_price?: number | null
@@ -133,6 +136,13 @@ export type Database = {
             columns: ["customer_id"]
             isOneToOne: false
             referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bookings_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
             referencedColumns: ["id"]
           },
         ]
@@ -743,6 +753,127 @@ export type Database = {
         }
         Relationships: []
       }
+      staff: {
+        Row: {
+          active: boolean
+          bookable: boolean
+          created_at: string
+          display_color: string
+          id: string
+          name: string
+          note: string | null
+          owner_id: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          bookable?: boolean
+          created_at?: string
+          display_color?: string
+          id?: string
+          name: string
+          note?: string | null
+          owner_id: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          bookable?: boolean
+          created_at?: string
+          display_color?: string
+          id?: string
+          name?: string
+          note?: string | null
+          owner_id?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      staff_schedules: {
+        Row: {
+          active: boolean
+          created_at: string
+          end_time: string
+          id: string
+          owner_id: string
+          staff_id: string
+          start_time: string
+          updated_at: string
+          weekday: number
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          end_time?: string
+          id?: string
+          owner_id: string
+          staff_id: string
+          start_time?: string
+          updated_at?: string
+          weekday: number
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          end_time?: string
+          id?: string
+          owner_id?: string
+          staff_id?: string
+          start_time?: string
+          updated_at?: string
+          weekday?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_schedules_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      staff_time_off: {
+        Row: {
+          created_at: string
+          end_at: string
+          id: string
+          owner_id: string
+          reason: string | null
+          staff_id: string
+          start_at: string
+        }
+        Insert: {
+          created_at?: string
+          end_at: string
+          id?: string
+          owner_id: string
+          reason?: string | null
+          staff_id: string
+          start_at: string
+        }
+        Update: {
+          created_at?: string
+          end_at?: string
+          id?: string
+          owner_id?: string
+          reason?: string | null
+          staff_id?: string
+          start_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_time_off_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       suppressed_emails: {
         Row: {
           created_at: string
@@ -862,6 +993,13 @@ export type Database = {
       enqueue_email: {
         Args: { payload: Json; queue_name: string }
         Returns: number
+      }
+      get_available_slots: {
+        Args: { _date: string; _duration_minutes: number; _salon_slug: string }
+        Returns: {
+          available_staff_count: number
+          slot_time: string
+        }[]
       }
       has_role: {
         Args: {
