@@ -53,7 +53,7 @@ const Settings = () => {
     (async () => {
       const { data } = await supabase
         .from("profiles")
-        .select("salon_name, google_review_url, line_add_friend_url, line_channel_access_token, line_channel_secret, owner_notification_email, test_mode, reminder_enabled, reactivation_enabled, reminder_hour, inbound_key, booking_lead_time_hours, booking_max_days_ahead, allow_customer_cancel, cancel_deadline_hours")
+        .select("salon_name, google_review_url, line_add_friend_url, line_channel_access_token, line_channel_secret, owner_notification_email, test_mode, reminder_enabled, reactivation_enabled, reminder_hour, inbound_key, booking_lead_time_hours, booking_max_days_ahead, allow_customer_cancel, cancel_deadline_hours, auto_reply_enabled, auto_reply_use_ai, auto_reply_message")
         .eq("id", user.id)
         .maybeSingle();
       if (data) {
