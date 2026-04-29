@@ -212,9 +212,16 @@ const Booking = () => {
   return (
     <div className="min-h-screen bg-background py-12 px-6">
       <div className="max-w-md mx-auto">
-        <div className="text-center mb-12 animate-fade-up">
+        <div className="text-center mb-8 animate-fade-up">
           <div className="font-serif-en text-3xl tracking-luxury text-gold mb-2">SB</div>
           <h1 className="display text-xl">{salonName}</h1>
+        </div>
+
+        <div className="text-center mb-10">
+          <Link to={`/my-bookings/${token}`}
+            className="inline-flex items-center gap-2 text-[11px] eyebrow text-gold border-b border-gold/40 pb-1 hover:opacity-70">
+            <CalendarDays className="w-3 h-3" /> ご予約の確認・変更
+          </Link>
         </div>
 
         <div className="border border-gold/40 mb-12 p-10 text-center bg-secondary/30 animate-fade-up animate-delay-100 relative">
@@ -231,8 +238,13 @@ const Booking = () => {
 
         <div className="space-y-8 animate-fade-up animate-delay-200">
           <div>
-            <p className="eyebrow mb-3">No.01 — ご希望日 / Date</p>
-            <Input id="date" type="date" min={minDate} value={date} onChange={e => setDate(e.target.value)}
+            <p className="eyebrow mb-3">
+              No.01 — ご希望日 / Date
+              <span className="text-muted-foreground normal-case ml-2 text-[10px]">
+                （最短 {leadHours}時間後 〜 {maxDaysAhead}日先まで）
+              </span>
+            </p>
+            <Input id="date" type="date" min={minDate} max={maxDate} value={date} onChange={e => setDate(e.target.value)}
               className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
           </div>
 
