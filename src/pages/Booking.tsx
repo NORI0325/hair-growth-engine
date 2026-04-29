@@ -24,6 +24,7 @@ const Booking = () => {
   const [booking, setBooking] = useState(false);
   const [customer, setCustomer] = useState<any>(null);
   const [salonName, setSalonName] = useState("");
+  const [salonSlug, setSalonSlug] = useState<string | null>(null);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
 
   const [date, setDate] = useState("");
@@ -31,6 +32,8 @@ const Booking = () => {
   const [selectedMenus, setSelectedMenus] = useState<string[]>([]);
   const [notes, setNotes] = useState("");
   const [completed, setCompleted] = useState(false);
+  const [availableSlots, setAvailableSlots] = useState<string[] | null>(null);
+  const [loadingSlots, setLoadingSlots] = useState(false);
 
   useEffect(() => {
     const load = async () => {
