@@ -1,52 +1,39 @@
 project_id = "miyedioemkzhetphjzzg"
 
-[functions.verify-booking-token]
-verify_jwt = false
-
-[functions.create-booking]
-verify_jwt = false
-
-[functions.process-thank-you-jobs]
-verify_jwt = false
-
-[functions.process-email-queue]
-verify_jwt = true
-
-[functions.send-transactional-email]
-verify_jwt = true
-
-[functions.preview-transactional-email]
-verify_jwt = false
-
-[functions.handle-email-unsubscribe]
-verify_jwt = false
-
-[functions.handle-email-suppression]
-verify_jwt = false
-
-[functions.notify-owner-booking]
-verify_jwt = false
-
-[functions.line-webhook]
-verify_jwt = false
-
-[functions.line-test-push]
-verify_jwt = true
-
-[functions.line-setup-rich-menu]
-verify_jwt = true
-
-[functions.create-reactivation-jobs]
-verify_jwt = false
-
-[functions.line-broadcast]
-verify_jwt = true
-
-[functions.ai-template-assistant]
-verify_jwt = true
-
-[functions.preview-template-override]
-verify_jwt = true
-
-[functions.inbound-reservation-email]
-verify_jwt = false
+[functions]
+  [functions.ai-template-assistant]
+    verify_jwt = true
+  [functions.auth-email-hook]
+    verify_jwt = false
+  [functions.create-booking]
+    verify_jwt = false
+  [functions.create-reactivation-jobs]
+    verify_jwt = false
+  [functions.handle-email-suppression]
+    verify_jwt = false
+  [functions.handle-email-unsubscribe]
+    verify_jwt = false
+  [functions.inbound-reservation-email]
+    verify_jwt = false
+  [functions.line-broadcast]
+    verify_jwt = true
+  [functions.line-setup-rich-menu]
+    verify_jwt = true
+  [functions.line-test-push]
+    verify_jwt = true
+  [functions.line-webhook]
+    verify_jwt = false
+  [functions.notify-owner-booking]
+    verify_jwt = false
+  [functions.preview-template-override]
+    verify_jwt = true
+  [functions.preview-transactional-email]
+    verify_jwt = false
+  [functions.process-email-queue]
+    verify_jwt = true
+  [functions.process-thank-you-jobs]
+    verify_jwt = false
+  [functions.send-transactional-email]
+    verify_jwt = true
+  [functions.verify-booking-token]
+    verify_jwt = false
