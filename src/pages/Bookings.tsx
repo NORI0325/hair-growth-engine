@@ -18,8 +18,11 @@ interface Booking {
   revenue: number | null;
   campaign_id: string | null;
   is_test: boolean;
+  staff_id: string | null;
   customers: { full_name: string; phone: string | null } | null;
 }
+
+interface Staff { id: string; name: string; display_color: string; }
 
 const statusInfo = (s: string) => {
   if (s === "confirmed") return { label: "確定", color: "text-gold" };
