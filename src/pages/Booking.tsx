@@ -33,10 +33,12 @@ const Booking = () => {
   const [salonName, setSalonName] = useState("");
   const [salonSlug, setSalonSlug] = useState<string | null>(null);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [staffList, setStaffList] = useState<StaffMember[]>([]);
 
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
   const [selectedMenus, setSelectedMenus] = useState<string[]>([]);
+  const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null); // null = 指名なし
   const [notes, setNotes] = useState("");
   const [completed, setCompleted] = useState(false);
   const [availableSlots, setAvailableSlots] = useState<string[] | null>(null);
