@@ -4,6 +4,7 @@ import AppLayout from "@/components/AppLayout";
 import PageHeader from "@/components/PageHeader";
 import AddCustomerDialog from "@/components/AddCustomerDialog";
 import EditCustomerDialog, { type EditableCustomer } from "@/components/EditCustomerDialog";
+import PendingLineFriends from "@/components/PendingLineFriends";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -137,6 +138,8 @@ const Customers = () => {
         onOpenChange={(v) => { if (!v) setEditTarget(null); }}
         onSaved={load}
       />
+
+      <PendingLineFriends onConverted={load} />
 
       <div className="flex flex-col md:flex-row gap-4 mb-10">
         <div className="relative flex-1">

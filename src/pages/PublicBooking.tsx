@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
@@ -6,10 +6,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, CheckCircle2 } from "lucide-react";
+import { Loader2, CheckCircle2, Check } from "lucide-react";
 import { toast } from "sonner";
 
 const TIMES = ["10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00","19:00"];
+
+interface MenuItem {
+  id: string;
+  name: string;
+  duration_minutes: number;
+  price: number;
+}
 
 const schema = z.object({
   full_name: z.string().trim().min(1, "お名前を入力してください").max(100),
@@ -17,7 +24,6 @@ const schema = z.object({
   email: z.string().trim().email("正しいメールアドレス").max(255).optional().or(z.literal("")),
   date: z.string().min(1, "日付を選択してください"),
   time: z.string().min(1, "時間を選択してください"),
-  menu: z.string().min(1, "メニューを選択してください"),
   notes: z.string().max(500).optional(),
 });
 
@@ -25,20 +31,36 @@ const PublicBooking = () => {
   const { slug } = useParams();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [salon, setSalon] = useState<{ name: string; menus: string[] } | null>(null);
+  const [salonName, setSalonName] = useState("Salon");
+  const [salonExists, setSalonExists] = useState(false);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [fallbackMenus, setFallbackMenus] = useState<string[]>([]);
+  const [selectedMenus, setSelectedMenus] = useState<string[]>([]);
   const [completed, setCompleted] = useState(false);
 
-  const [form, setForm] = useState({ full_name: "", phone: "", email: "", date: "", time: "", menu: "", notes: "" });
+  const [form, setForm] = useState({ full_name: "", phone: "", email: "", date: "", time: "", notes: "" });
 
   useEffect(() => {
     const load = async () => {
       if (!slug) { setLoading(false); return; }
-      const { data } = await supabase
+      const { data: profile } = await supabase
         .from("profiles")
-        .select("salon_name, public_menus")
+        .select("id, salon_name, public_menus")
         .eq("public_slug", slug)
         .maybeSingle();
-      if (data) setSalon({ name: data.salon_name || "Salon", menus: data.public_menus || [] });
+      if (profile) {
+        setSalonExists(true);
+        setSalonName(profile.salon_name || "Salon");
+        setFallbackMenus(profile.public_menus || []);
+
+        const { data: items } = await supabase
+          .from("menu_items")
+          .select("id, name, duration_minutes, price")
+          .eq("owner_id", profile.id)
+          .eq("active", true)
+          .order("sort_order", { ascending: true });
+        setMenuItems(items || []);
+      }
       setLoading(false);
     };
     load();
@@ -47,18 +69,32 @@ const PublicBooking = () => {
   const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
   const minDate = tomorrow.toISOString().split("T")[0];
 
+  const { totalDuration, totalPrice } = useMemo(() => {
+    let d = 0, p = 0;
+    for (const name of selectedMenus) {
+      const item = menuItems.find(i => i.name === name);
+      if (item) { d += item.duration_minutes; p += item.price; }
+    }
+    return { totalDuration: d, totalPrice: p };
+  }, [selectedMenus, menuItems]);
+
+  const toggleMenu = (name: string) => {
+    setSelectedMenus(prev => prev.includes(name) ? prev.filter(m => m !== name) : [...prev, name]);
+  };
+
   const handleSubmit = async () => {
     const parsed = schema.safeParse(form);
     if (!parsed.success) { toast.error(parsed.error.errors[0].message); return; }
+    if (selectedMenus.length === 0) { toast.error("メニューを1つ以上お選びください"); return; }
     setSubmitting(true);
-    const { data, error } = await supabase.rpc("public_create_booking", {
+    const { data, error } = await supabase.rpc("public_create_booking_v2" as any, {
       _salon_slug: slug!,
       _full_name: parsed.data.full_name,
       _phone: parsed.data.phone,
       _email: parsed.data.email || "",
       _booking_date: parsed.data.date,
       _booking_time: parsed.data.time,
-      _menu: parsed.data.menu,
+      _menus: selectedMenus,
       _notes: parsed.data.notes || "",
     });
     setSubmitting(false);
@@ -66,7 +102,6 @@ const PublicBooking = () => {
       toast.error("ご予約に失敗しました。お手数ですが再度お試しください。");
       return;
     }
-    // オーナーへメール通知（失敗してもユーザー体験には影響しない）
     const bookingId = (data as any)?.booking_id;
     if (bookingId) {
       supabase.functions.invoke("notify-owner-booking", {
@@ -82,7 +117,7 @@ const PublicBooking = () => {
     </div>
   );
 
-  if (!salon) return (
+  if (!salonExists) return (
     <div className="min-h-screen flex items-center justify-center p-6 bg-background">
       <div className="max-w-md w-full text-center">
         <p className="eyebrow mb-4">— Notice —</p>
@@ -110,12 +145,15 @@ const PublicBooking = () => {
     </div>
   );
 
+  // メニュー一覧（menu_items 優先、なければ fallback）
+  const useRichMenus = menuItems.length > 0;
+
   return (
     <div className="min-h-screen bg-background py-12 px-6">
       <div className="max-w-md mx-auto">
         <div className="text-center mb-12 animate-fade-up">
           <div className="font-serif-en text-3xl tracking-luxury text-gold mb-2">SB</div>
-          <h1 className="display text-xl mb-2">{salon.name}</h1>
+          <h1 className="display text-xl mb-2">{salonName}</h1>
           <p className="eyebrow text-[10px]">— Online Reservation —</p>
         </div>
 
@@ -151,17 +189,55 @@ const PublicBooking = () => {
               ))}
             </div>
           </div>
+
           <div>
-            <p className="eyebrow mb-3">No.06 — メニュー / Menu</p>
-            <div className="grid grid-cols-2 gap-px bg-border">
-              {salon.menus.map(m => (
-                <button key={m} type="button" onClick={() => setForm({...form, menu: m})}
-                  className={`py-3 text-sm font-serif transition-all ${form.menu === m ? "bg-primary text-primary-foreground" : "bg-card hover:bg-secondary"}`}>
-                  {m}
-                </button>
-              ))}
-            </div>
+            <p className="eyebrow mb-3">No.06 — メニュー / Menu <span className="text-muted-foreground normal-case ml-1">（複数選択可）</span></p>
+
+            {useRichMenus ? (
+              <div className="space-y-px bg-border border border-border">
+                {menuItems.map(item => {
+                  const active = selectedMenus.includes(item.name);
+                  return (
+                    <button key={item.id} type="button" onClick={() => toggleMenu(item.name)}
+                      className={`w-full flex items-center justify-between px-4 py-4 text-left transition-all ${active ? "bg-primary text-primary-foreground" : "bg-card hover:bg-secondary"}`}>
+                      <div className="flex items-center gap-3">
+                        <div className={`w-4 h-4 border flex items-center justify-center ${active ? "border-primary-foreground bg-primary-foreground" : "border-border"}`}>
+                          {active && <Check className="w-3 h-3 text-primary" />}
+                        </div>
+                        <span className="font-serif text-sm">{item.name}</span>
+                      </div>
+                      <div className="text-xs opacity-80 font-serif">
+                        {item.duration_minutes}分 / ¥{item.price.toLocaleString()}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-px bg-border">
+                {fallbackMenus.map(m => {
+                  const active = selectedMenus.includes(m);
+                  return (
+                    <button key={m} type="button" onClick={() => toggleMenu(m)}
+                      className={`py-3 text-sm font-serif transition-all ${active ? "bg-primary text-primary-foreground" : "bg-card hover:bg-secondary"}`}>
+                      {m}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {useRichMenus && selectedMenus.length > 0 && (
+              <div className="mt-4 p-4 border border-gold/40 bg-secondary/30 flex justify-between items-center">
+                <div>
+                  <p className="eyebrow text-[10px] mb-1 text-gold">— Total —</p>
+                  <p className="font-serif text-sm">{selectedMenus.length}項目 / 約{totalDuration}分</p>
+                </div>
+                <p className="display text-2xl">¥{totalPrice.toLocaleString()}</p>
+              </div>
+            )}
           </div>
+
           <div>
             <Label className="eyebrow mb-3 block">ご要望 / Notes（任意）</Label>
             <Textarea rows={2} value={form.notes} onChange={e => setForm({...form, notes: e.target.value})}

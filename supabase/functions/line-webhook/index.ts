@@ -100,10 +100,39 @@ Deno.serve(async (req) => {
       console.log(`[line-webhook] event type=${ev.type} userId=${userId}`);
 
       if (ev.type === "follow" && replyToken && userId) {
+        // LINEプロフィール取得（display_name保存用）
+        let displayName: string | null = null;
+        try {
+          const pf = await fetch(`https://api.line.me/v2/bot/profile/${userId}`, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+          if (pf.ok) {
+            const j = await pf.json();
+            displayName = j?.displayName || null;
+          }
+        } catch (e) {
+          console.warn("[line-webhook] profile fetch failed:", e);
+        }
+
+        // 既存顧客にline_user_idが既に紐付いていなければ pending に登録
+        const { data: existing } = await supabase
+          .from("customers")
+          .select("id")
+          .eq("owner_id", owner.id)
+          .eq("line_user_id", userId)
+          .maybeSingle();
+        if (!existing) {
+          await supabase.from("line_pending_friends").upsert({
+            owner_id: owner.id,
+            line_user_id: userId,
+            display_name: displayName,
+          }, { onConflict: "owner_id,line_user_id" });
+        }
+
         const r = await replyLine(
           accessToken,
           replyToken,
-          `🌸 ${owner.salon_name || "サロン"}の公式アカウントへようこそ！\n\nご予約や特典のお知らせをお届けします。\n\n📱 はじめに、ご登録のお電話番号をこのトークに送信してください。\n（例：090-1234-5678）\n\n本人確認後、次回からのご予約案内・特典クーポンが届くようになります。`
+          `🌸 ${owner.salon_name || "サロン"}の公式アカウントへようこそ！\n\nご予約や特典のお知らせをお届けします。\n\n📱 ご登録のお電話番号をこのトークに送信してください（例：090-1234-5678）。\n\nお電話番号がご不明な場合は、お名前だけでも構いません。スタッフが確認のうえ連携いたします🙇‍♀️`
         );
         if (!r.ok) console.error("[line-webhook] follow reply failed:", r.err);
         continue;
@@ -135,11 +164,27 @@ Deno.serve(async (req) => {
 
         const phone = normalizePhone(text);
 
+        // 既存顧客にline_user_idが既に紐付いているか
+        const { data: linkedCustomer } = await supabase
+          .from("customers")
+          .select("id")
+          .eq("owner_id", owner.id)
+          .eq("line_user_id", userId)
+          .maybeSingle();
+
         if (!phone) {
+          // 電話番号として認識できないテキスト → pendingに最終メッセージとして保存
+          if (!linkedCustomer) {
+            await supabase.from("line_pending_friends").upsert({
+              owner_id: owner.id,
+              line_user_id: userId,
+              last_message: text.slice(0, 200),
+            }, { onConflict: "owner_id,line_user_id" });
+          }
           const r = await replyLine(
             accessToken,
             replyToken,
-            `お問い合わせありがとうございます🙇‍♀️\n\nLINE連携をご希望の場合は、ご登録のお電話番号を送信してください（例：090-1234-5678）。\n\nそれ以外のお問い合わせはお店までお電話ください。`
+            `メッセージありがとうございます🙇‍♀️\n\nお電話番号でのLINE連携をご希望の場合は、番号を送信してください（例：090-1234-5678）。\n\nお名前のみでもスタッフが確認のうえ連携いたしますので、お気軽にメッセージをお送りください🌸`
           );
           if (!r.ok) console.error("[line-webhook] text reply failed:", r.err);
           continue;
@@ -155,10 +200,17 @@ Deno.serve(async (req) => {
         const matched = (candidates || []).find(c => normalizePhone(c.phone || "") === phone);
 
         if (!matched) {
+          // pendingに番号も記録（オーナーが見て手動連携できるよう）
+          await supabase.from("line_pending_friends").upsert({
+            owner_id: owner.id,
+            line_user_id: userId,
+            last_message: text.slice(0, 200),
+          }, { onConflict: "owner_id,line_user_id" });
+
           await replyLine(
             accessToken,
             replyToken,
-            `お電話番号が見つかりませんでした🙏\n\nご登録時の番号と異なる可能性があります。お手数ですがお店までご連絡ください。`
+            `お電話番号が見つかりませんでした🙏\n\nお手数ですがお名前もメッセージでお送りいただけますと、スタッフが確認のうえ連携いたします。`
           );
           continue;
         }
@@ -176,6 +228,13 @@ Deno.serve(async (req) => {
           .from("customers")
           .update({ line_user_id: userId })
           .eq("id", matched.id);
+
+        // 連携が成立したのでpending削除
+        await supabase
+          .from("line_pending_friends")
+          .delete()
+          .eq("owner_id", owner.id)
+          .eq("line_user_id", userId);
 
         await replyLine(
           accessToken,

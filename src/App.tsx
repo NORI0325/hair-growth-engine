@@ -21,6 +21,7 @@ import LineBroadcast from "./pages/LineBroadcast";
 import Templates from "./pages/Templates";
 import Schedule from "./pages/Schedule";
 import Performance from "./pages/Performance";
+import MenuItems from "./pages/MenuItems";
 import Unsubscribe from "./pages/Unsubscribe";
 import NotFound from "./pages/NotFound";
 
@@ -50,6 +51,7 @@ const App = () => (
             <Route path="/templates" element={<ProtectedRoute><Templates /></ProtectedRoute>} />
             <Route path="/schedule" element={<ProtectedRoute><Schedule /></ProtectedRoute>} />
             <Route path="/performance" element={<ProtectedRoute><Performance /></ProtectedRoute>} />
+            <Route path="/menu-items" element={<ProtectedRoute><MenuItems /></ProtectedRoute>} />
             <Route path="/unsubscribe" element={<Unsubscribe />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
