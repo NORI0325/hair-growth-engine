@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Send, MessageCircle, Phone } from "lucide-react";
+import { Loader2, Send, MessageCircle, Phone, Sparkles, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 
 interface Template {
@@ -39,11 +39,20 @@ export const CustomerMessageDialog = ({
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  // AI下書き機能
+  const [aiContext, setAiContext] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState<{ tone: string; label: string; body: string }[]>([]);
+  const [aiPickedTone, setAiPickedTone] = useState<string | null>(null);
+
   useEffect(() => {
     if (!open || !user) return;
     setLoading(true);
     setSelected(null);
     setBody("");
+    setAiContext("");
+    setAiSuggestions([]);
+    setAiPickedTone(null);
     supabase.from("customer_message_templates")
       .select("*").eq("owner_id", user.id).eq("active", true).order("sort_order")
       .then(({ data }) => {
@@ -51,6 +60,30 @@ export const CustomerMessageDialog = ({
         setLoading(false);
       });
   }, [open, user]);
+
+  const generateAiDrafts = async () => {
+    setAiLoading(true);
+    setAiSuggestions([]);
+    setAiPickedTone(null);
+    const { data, error } = await supabase.functions.invoke("ai-reply-suggestions", {
+      body: { customer_id: customerId, context: aiContext },
+    });
+    setAiLoading(false);
+    if (error || (data as any)?.error) {
+      const msg = (data as any)?.message || (data as any)?.error || error?.message || "AI下書きの生成に失敗しました";
+      toast.error(msg);
+      return;
+    }
+    const sug = (data as any)?.suggestions || [];
+    setAiSuggestions(sug);
+    if (sug.length === 0) toast.error("提案を生成できませんでした");
+  };
+
+  const pickAiSuggestion = (s: { tone: string; body: string }) => {
+    setSelected(null);
+    setBody(s.body);
+    setAiPickedTone(s.tone);
+  };
 
   // 差し込み変数を反映
   const renderedBody = useMemo(() => {
@@ -91,7 +124,7 @@ export const CustomerMessageDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="rounded-none max-w-2xl">
+      <DialogContent className="rounded-none max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="font-serif flex items-center gap-2">
             <MessageCircle className="w-4 h-4 text-gold" />
@@ -122,6 +155,62 @@ export const CustomerMessageDialog = ({
           </div>
         ) : (
           <div className="space-y-5">
+            {/* AI下書きアシスト */}
+            <div className="border border-gold/30 bg-gradient-to-br from-secondary/20 to-transparent p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="eyebrow text-[10px] flex items-center gap-1.5">
+                  <Sparkles className="w-3 h-3 text-gold" />
+                  — AI Concierge Draft —
+                </Label>
+                <span className="text-[10px] text-muted-foreground">3案を瞬時に生成</span>
+              </div>
+              <Textarea
+                value={aiContext}
+                onChange={(e) => setAiContext(e.target.value)}
+                rows={2}
+                placeholder="伝えたい内容や状況を一言（例：本日少し遅れそう / 次回ご来店感謝 / 髪の調子確認 など）"
+                className="rounded-none text-sm"
+              />
+              <Button
+                type="button"
+                onClick={generateAiDrafts}
+                disabled={aiLoading}
+                variant="outline"
+                className="rounded-none w-full border-gold/50 hover:bg-gold/10"
+              >
+                {aiLoading ? (
+                  <><Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />生成中…</>
+                ) : (
+                  <><Wand2 className="w-3.5 h-3.5 mr-2 text-gold" />AIで返信案を作る</>
+                )}
+              </Button>
+
+              {aiSuggestions.length > 0 && (
+                <div className="space-y-2 pt-2">
+                  {aiSuggestions.map((s) => (
+                    <button
+                      key={s.tone}
+                      type="button"
+                      onClick={() => pickAiSuggestion(s)}
+                      className={`w-full text-left px-3 py-2.5 border transition-all ${
+                        aiPickedTone === s.tone
+                          ? "border-gold bg-secondary/40"
+                          : "border-border hover:border-gold/40 bg-background/50"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[10px] uppercase tracking-wider text-gold font-serif">{s.label}</span>
+                      </div>
+                      <div className="text-xs text-foreground/80 whitespace-pre-wrap line-clamp-3">{s.body}</div>
+                    </button>
+                  ))}
+                  <p className="text-[10px] text-muted-foreground">
+                    💡 案を選んでから下のプレビューで自由に編集できます。
+                  </p>
+                </div>
+              )}
+            </div>
+
             {/* テンプレート選択 */}
             <div>
               <Label className="eyebrow text-[10px] mb-2 block">— Tone Templates —</Label>
