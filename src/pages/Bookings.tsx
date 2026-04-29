@@ -4,9 +4,10 @@ import { useAuth } from "@/hooks/useAuth";
 import AppLayout from "@/components/AppLayout";
 import PageHeader from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
-import { Loader2, CheckCircle2, XCircle } from "lucide-react";
+import { Loader2, CheckCircle2, XCircle, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CustomerMessageDialog } from "@/components/CustomerMessageDialog";
 
 interface Booking {
   id: string;
@@ -19,7 +20,8 @@ interface Booking {
   campaign_id: string | null;
   is_test: boolean;
   staff_id: string | null;
-  customers: { full_name: string; phone: string | null } | null;
+  customer_id: string;
+  customers: { full_name: string; phone: string | null; line_user_id: string | null } | null;
 }
 
 interface Staff { id: string; name: string; display_color: string; }
@@ -36,13 +38,14 @@ const Bookings = () => {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
+  const [messageBooking, setMessageBooking] = useState<Booking | null>(null);
 
   const load = async () => {
     setLoading(true);
     const [b, s] = await Promise.all([
       supabase
         .from("bookings")
-        .select("id, booking_date, booking_time, menu, notes, status, revenue, campaign_id, is_test, staff_id, customers(full_name, phone)")
+        .select("id, customer_id, booking_date, booking_time, menu, notes, status, revenue, campaign_id, is_test, staff_id, customers(full_name, phone, line_user_id)")
         .order("booking_date", { ascending: true })
         .order("booking_time", { ascending: true }),
       user ? supabase.from("staff").select("id, name, display_color").eq("owner_id", user.id).eq("active", true).order("sort_order") : Promise.resolve({ data: [] }),
@@ -205,6 +208,9 @@ const Bookings = () => {
                           )}
                           {(b.status === "pending" || b.status === "confirmed") && (
                             <>
+                              <Button size="sm" variant="ghost" className="text-xs rounded-none h-8" title="お客様へ連絡" onClick={() => setMessageBooking(b)}>
+                                <MessageCircle className="w-3.5 h-3.5 stroke-[1.5]" />
+                              </Button>
                               <Button size="sm" variant="ghost" className="text-xs rounded-none h-8" title="来店完了（売上を入力）" onClick={() => handleComplete(b)}>
                                 <CheckCircle2 className="w-3.5 h-3.5 stroke-[1.5]" />
                               </Button>
@@ -223,6 +229,16 @@ const Bookings = () => {
           })}
         </div>
       )}
+
+      <CustomerMessageDialog
+        open={!!messageBooking}
+        onClose={() => setMessageBooking(null)}
+        customerId={messageBooking?.customer_id || ""}
+        customerName={messageBooking?.customers?.full_name || ""}
+        customerPhone={messageBooking?.customers?.phone}
+        hasLine={!!messageBooking?.customers?.line_user_id}
+        bookingTime={messageBooking?.booking_time?.slice(0, 5)}
+      />
     </AppLayout>
   );
 };

@@ -306,6 +306,42 @@ export type Database = {
         }
         Relationships: []
       }
+      customer_message_templates: {
+        Row: {
+          active: boolean
+          body: string
+          created_at: string
+          id: string
+          kind: string
+          owner_id: string
+          sort_order: number
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          body: string
+          created_at?: string
+          id?: string
+          kind?: string
+          owner_id: string
+          sort_order?: number
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          body?: string
+          created_at?: string
+          id?: string
+          kind?: string
+          owner_id?: string
+          sort_order?: number
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       customers: {
         Row: {
           birthday: string | null
