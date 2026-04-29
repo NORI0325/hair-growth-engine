@@ -704,8 +704,10 @@ export type Database = {
           active: boolean
           buffer_minutes: number
           created_at: string
+          description: string | null
           duration_minutes: number
           id: string
+          image_url: string | null
           name: string
           owner_id: string
           price: number
@@ -716,8 +718,10 @@ export type Database = {
           active?: boolean
           buffer_minutes?: number
           created_at?: string
+          description?: string | null
           duration_minutes?: number
           id?: string
+          image_url?: string | null
           name: string
           owner_id: string
           price?: number
@@ -728,8 +732,10 @@ export type Database = {
           active?: boolean
           buffer_minutes?: number
           created_at?: string
+          description?: string | null
           duration_minutes?: number
           id?: string
+          image_url?: string | null
           name?: string
           owner_id?: string
           price?: number
