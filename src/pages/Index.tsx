@@ -35,7 +35,7 @@ const Index = () => {
       >
         <div className="container mx-auto px-8 py-32 md:py-40">
           <div className="max-w-4xl mx-auto text-center">
-            <p className="eyebrow mb-8 animate-fade-up">— A New Chapter for Your Salon —</p>
+            <p className="eyebrow mb-8 animate-fade-up">— A New Chapter for Every Salon —</p>
             <h1 className="display text-5xl md:text-7xl mb-10 animate-fade-up animate-delay-100">
               眠っているお客様を、<br />
               <span className="text-gold font-serif-en italic">最も美しい形で</span><br />
@@ -43,8 +43,8 @@ const Index = () => {
             </h1>
             <div className="hairline w-24 mx-auto my-10 animate-fade-up animate-delay-200" />
             <p className="text-base md:text-lg text-muted-foreground leading-loose max-w-2xl mx-auto mb-14 animate-fade-up animate-delay-200">
-              2,000名のお客様情報は、サロンの最大の資産です。<br />
-              一人ひとりに寄り添うメッセージと、ワンタップで完了する予約体験。<br />
+              一度信頼を寄せてくださったお客様こそ、美容室にとって最も尊い資産。<br />
+              一人ひとりに寄り添う一通のメッセージと、ワンタップで完了する予約体験。<br />
               それは、もう一度「あの場所へ行きたい」と思わせる小さな魔法。
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center animate-fade-up animate-delay-300">
@@ -60,6 +60,7 @@ const Index = () => {
           </div>
         </div>
       </section>
+
 
       {/* Philosophy */}
       <section id="philosophy" className="py-32 border-t border-border/60">
