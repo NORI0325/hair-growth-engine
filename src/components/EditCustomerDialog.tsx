@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { CustomerInsightsPanel } from "@/components/CustomerInsightsPanel";
 
 const schema = z.object({
   full_name: z.string().trim().min(1, "お名前は必須です").max(100),
@@ -103,11 +104,14 @@ const EditCustomerDialog = ({ customer, open, onOpenChange, onSaved }: Props) =>
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="rounded-none max-w-md max-h-[90vh] overflow-y-auto">
+      <DialogContent className="rounded-none max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <p className="eyebrow mb-2">— Edit Guest —</p>
           <DialogTitle className="display text-2xl">顧客情報を編集</DialogTitle>
         </DialogHeader>
+        <div className="mt-4">
+          <CustomerInsightsPanel customerId={customer.id} />
+        </div>
         <form onSubmit={handleSubmit} className="space-y-5 mt-4">
           <div>
             <Label className="mb-2 block font-serif text-sm">お名前 <span className="text-destructive">*</span></Label>

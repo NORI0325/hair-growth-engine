@@ -20,6 +20,71 @@ async function verifySignature(secret: string, body: string, signature: string):
   }
 }
 
+// JST現在時刻が営業時間外か判定
+function checkOutsideBusinessHours(openTime?: string, closeTime?: string): boolean {
+  if (!openTime || !closeTime) return false;
+  const now = new Date();
+  // JST (+09:00)
+  const jstMs = now.getTime() + (9 * 60 * 60 * 1000) + (now.getTimezoneOffset() * 60 * 1000);
+  const jst = new Date(jstMs);
+  const cur = jst.getUTCHours() * 60 + jst.getUTCMinutes();
+  const [oh, om] = openTime.split(":").map(Number);
+  const [ch, cm] = closeTime.split(":").map(Number);
+  const open = oh * 60 + om;
+  const close = ch * 60 + cm;
+  return cur < open || cur >= close;
+}
+
+function defaultAutoReply(salonName?: string | null, openTime?: string, closeTime?: string): string {
+  const hours = openTime && closeTime ? `\n営業時間: ${openTime.slice(0,5)} 〜 ${closeTime.slice(0,5)}` : "";
+  return `メッセージありがとうございます🙇‍♀️\n\nただいま営業時間外のため、スタッフからの返信は翌営業時間内にお返しいたします。${hours}\n\nお急ぎの場合や予約の変更・キャンセルは、トーク下部の「予約する」ボタンよりご操作ください🌸\n\n— ${salonName || "サロン"}`;
+}
+
+async function generateAutoReplyAI(
+  text: string,
+  customerName: string,
+  salonName: string,
+  openTime?: string,
+  closeTime?: string,
+): Promise<string | null> {
+  const apiKey = Deno.env.get("LOVABLE_API_KEY");
+  if (!apiKey) return null;
+  const hoursText = openTime && closeTime ? `${openTime.slice(0,5)}〜${closeTime.slice(0,5)}` : "営業時間内";
+  try {
+    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash-lite",
+        messages: [
+          {
+            role: "system",
+            content: `あなたは${salonName}の品格あるコンシェルジュです。営業時間外に届いたお客様からのLINEに、AIではなく「営業時間外の自動応答」として温かい一次返信を書きます。
+- 必ずお客様のお名前で始める
+- お客様の話題に短く触れて共感を示す（具体的な約束はしない）
+- 「営業時間内に改めてご連絡します」と伝える
+- 営業時間（${hoursText}）を明示
+- 「お急ぎの場合は予約ボタンから」と一言添える
+- 150文字以内、絵文字は1〜2個まで上品に
+- 本文のみ出力（前置き・説明禁止）`,
+          },
+          {
+            role: "user",
+            content: `お客様名: ${customerName}様\n\n受信メッセージ:\n${text.slice(0, 500)}`,
+          },
+        ],
+      }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const result = data?.choices?.[0]?.message?.content?.trim();
+    return result ? `${result}\n\n— ${salonName}` : null;
+  } catch (e) {
+    console.error("[auto-reply AI] error:", e);
+    return null;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -56,7 +121,7 @@ Deno.serve(async (req) => {
   // 全プロフィールから access_token を持つものを取得（secretは未設定も許容しフォールバック）
   const { data: profiles } = await supabase
     .from("profiles")
-    .select("id, salon_name, line_channel_access_token, line_channel_secret")
+    .select("id, salon_name, line_channel_access_token, line_channel_secret, open_time, close_time, auto_reply_enabled, auto_reply_message, auto_reply_use_ai")
     .not("line_channel_access_token", "is", null);
 
   if (!profiles || profiles.length === 0) {
@@ -213,6 +278,28 @@ Deno.serve(async (req) => {
               },
               body: JSON.stringify({ inbound_id: inserted.id }),
             }).catch(e => console.error("[line-webhook] classify kick failed:", e));
+          }
+
+          // === 営業時間外の自動応答（連携済み顧客のみ） ===
+          if (linkedCustomer && owner.auto_reply_enabled) {
+            const isOutsideHours = checkOutsideBusinessHours(owner.open_time, owner.close_time);
+            if (isOutsideHours) {
+              let replyMsg: string;
+              if (owner.auto_reply_use_ai) {
+                replyMsg = await generateAutoReplyAI(
+                  text,
+                  linkedCustomer.full_name,
+                  owner.salon_name || "サロン",
+                  owner.open_time,
+                  owner.close_time,
+                ) || (owner.auto_reply_message || defaultAutoReply(owner.salon_name, owner.open_time, owner.close_time));
+              } else {
+                replyMsg = owner.auto_reply_message || defaultAutoReply(owner.salon_name, owner.open_time, owner.close_time);
+              }
+              const r = await replyLine(accessToken, replyToken, replyMsg);
+              if (!r.ok) console.error("[line-webhook] auto-reply failed:", r.err);
+              continue; // 以降の電話番号フローはスキップ
+            }
           }
         }
 

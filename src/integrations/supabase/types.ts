@@ -306,6 +306,45 @@ export type Database = {
         }
         Relationships: []
       }
+      customer_ai_insights: {
+        Row: {
+          created_at: string
+          customer_id: string
+          generated_at: string
+          id: string
+          next_visit_suggestion: string | null
+          owner_id: string
+          preferred_tone: string | null
+          recommendations: Json | null
+          risks: Json | null
+          summary: string | null
+        }
+        Insert: {
+          created_at?: string
+          customer_id: string
+          generated_at?: string
+          id?: string
+          next_visit_suggestion?: string | null
+          owner_id: string
+          preferred_tone?: string | null
+          recommendations?: Json | null
+          risks?: Json | null
+          summary?: string | null
+        }
+        Update: {
+          created_at?: string
+          customer_id?: string
+          generated_at?: string
+          id?: string
+          next_visit_suggestion?: string | null
+          owner_id?: string
+          preferred_tone?: string | null
+          recommendations?: Json | null
+          risks?: Json | null
+          summary?: string | null
+        }
+        Relationships: []
+      }
       customer_message_templates: {
         Row: {
           active: boolean
@@ -801,6 +840,9 @@ export type Database = {
       profiles: {
         Row: {
           allow_customer_cancel: boolean
+          auto_reply_enabled: boolean
+          auto_reply_message: string | null
+          auto_reply_use_ai: boolean
           booking_lead_time_hours: number
           booking_max_days_ahead: number
           cancel_deadline_hours: number
@@ -826,6 +868,9 @@ export type Database = {
         }
         Insert: {
           allow_customer_cancel?: boolean
+          auto_reply_enabled?: boolean
+          auto_reply_message?: string | null
+          auto_reply_use_ai?: boolean
           booking_lead_time_hours?: number
           booking_max_days_ahead?: number
           cancel_deadline_hours?: number
@@ -851,6 +896,9 @@ export type Database = {
         }
         Update: {
           allow_customer_cancel?: boolean
+          auto_reply_enabled?: boolean
+          auto_reply_message?: string | null
+          auto_reply_use_ai?: boolean
           booking_lead_time_hours?: number
           booking_max_days_ahead?: number
           cancel_deadline_hours?: number
