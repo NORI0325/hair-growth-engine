@@ -60,18 +60,7 @@ const Index = () => {
           </div>
         </div>
       </section>
-              <Link to="/auth">
-                <Button size="lg" className="px-12 py-6 text-sm tracking-luxury rounded-none bg-primary hover:bg-primary-glow text-primary-foreground shadow-elegant">
-                  BEGIN YOUR JOURNEY
-                </Button>
-              </Link>
-              <a href="#philosophy" className="text-sm tracking-wider text-muted-foreground gold-underline">
-                詳しく見る ↓
-              </a>
-            </div>
-          </div>
-        </div>
-      </section>
+
 
       {/* Philosophy */}
       <section id="philosophy" className="py-32 border-t border-border/60">
