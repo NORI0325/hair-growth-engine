@@ -50,6 +50,9 @@ export const CustomerMessageDialog = ({
     setLoading(true);
     setSelected(null);
     setBody("");
+    setAiContext("");
+    setAiSuggestions([]);
+    setAiPickedTone(null);
     supabase.from("customer_message_templates")
       .select("*").eq("owner_id", user.id).eq("active", true).order("sort_order")
       .then(({ data }) => {
@@ -57,6 +60,30 @@ export const CustomerMessageDialog = ({
         setLoading(false);
       });
   }, [open, user]);
+
+  const generateAiDrafts = async () => {
+    setAiLoading(true);
+    setAiSuggestions([]);
+    setAiPickedTone(null);
+    const { data, error } = await supabase.functions.invoke("ai-reply-suggestions", {
+      body: { customer_id: customerId, context: aiContext },
+    });
+    setAiLoading(false);
+    if (error || (data as any)?.error) {
+      const msg = (data as any)?.message || (data as any)?.error || error?.message || "AI下書きの生成に失敗しました";
+      toast.error(msg);
+      return;
+    }
+    const sug = (data as any)?.suggestions || [];
+    setAiSuggestions(sug);
+    if (sug.length === 0) toast.error("提案を生成できませんでした");
+  };
+
+  const pickAiSuggestion = (s: { tone: string; body: string }) => {
+    setSelected(null);
+    setBody(s.body);
+    setAiPickedTone(s.tone);
+  };
 
   // 差し込み変数を反映
   const renderedBody = useMemo(() => {
