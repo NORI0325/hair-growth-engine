@@ -227,6 +227,28 @@ const Bookings = () => {
                               </Button>
                             </>
                           )}
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button size="sm" variant="ghost" className="text-xs rounded-none h-8 text-muted-foreground hover:text-destructive" title="予約を削除">
+                                <Trash2 className="w-3.5 h-3.5 stroke-[1.5]" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent className="rounded-none">
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>この予約を削除しますか？</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  {b.customers?.full_name || "お客様"} 様 / {b.booking_date} {b.booking_time?.slice(0, 5)} / {b.menu}
+                                  <br />予約データを完全に削除します。この操作は取り消せません。
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel className="rounded-none">キャンセル</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => removeBooking(b.id)} className="rounded-none bg-destructive hover:bg-destructive/90">
+                                  削除する
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
                         </div>
                       </div>
                     );
