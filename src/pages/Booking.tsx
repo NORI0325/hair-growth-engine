@@ -202,6 +202,12 @@ const Booking = () => {
             <div className="flex justify-between"><span className="font-serif text-muted-foreground">メニュー</span><span className="font-serif text-right">{selectedMenus.join(" + ")}</span></div>
             <div className="flex justify-between"><span className="font-serif text-muted-foreground">サロン</span><span className="font-serif">{salonName}</span></div>
           </div>
+          <div className="mt-10">
+            <Link to={`/my-bookings/${token}`}
+              className="inline-flex items-center gap-2 text-[11px] eyebrow text-gold border-b border-gold/40 pb-1 hover:opacity-70">
+              <CalendarDays className="w-3 h-3" /> ご予約の確認・変更はこちら
+            </Link>
+          </div>
         </div>
       </div>
     );
