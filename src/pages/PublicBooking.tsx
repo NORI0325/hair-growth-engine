@@ -9,7 +9,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { Loader2, CheckCircle2, Check } from "lucide-react";
 import { toast } from "sonner";
 
-const TIMES = ["10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00","19:00"];
+// 15分刻みの全候補（営業時間内のスロットはRPCがフィルタ）
+const ALL_SLOTS: string[] = (() => {
+  const out: string[] = [];
+  for (let h = 8; h <= 21; h++) {
+    for (const m of [0, 15, 30, 45]) {
+      out.push(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
+    }
+  }
+  return out;
+})();
 
 interface MenuItem {
   id: string;
@@ -37,6 +46,9 @@ const PublicBooking = () => {
   const [fallbackMenus, setFallbackMenus] = useState<string[]>([]);
   const [selectedMenus, setSelectedMenus] = useState<string[]>([]);
   const [completed, setCompleted] = useState(false);
+  const [availableSlots, setAvailableSlots] = useState<Record<string, number>>({});
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  const [hasStaff, setHasStaff] = useState(false);
 
   const [form, setForm] = useState({ full_name: "", phone: "", email: "", date: "", time: "", notes: "" });
 
@@ -60,6 +72,15 @@ const PublicBooking = () => {
           .eq("active", true)
           .order("sort_order", { ascending: true });
         setMenuItems(items || []);
+
+        // スタッフが1人以上いるか確認（いれば動的空き枠モード）
+        const { count } = await supabase
+          .from("staff")
+          .select("id", { count: "exact", head: true })
+          .eq("owner_id", profile.id)
+          .eq("active", true)
+          .eq("bookable", true);
+        setHasStaff((count || 0) > 0);
       }
       setLoading(false);
     };
@@ -81,6 +102,34 @@ const PublicBooking = () => {
   const toggleMenu = (name: string) => {
     setSelectedMenus(prev => prev.includes(name) ? prev.filter(m => m !== name) : [...prev, name]);
   };
+
+  // 日付・所要時間・スタッフ有無が変わったら空き枠を再取得
+  useEffect(() => {
+    const fetchSlots = async () => {
+      if (!slug || !form.date || !hasStaff) { setAvailableSlots({}); return; }
+      const duration = totalDuration > 0 ? totalDuration : 60;
+      setSlotsLoading(true);
+      const { data, error } = await supabase.rpc("get_available_slots" as any, {
+        _salon_slug: slug,
+        _date: form.date,
+        _duration_minutes: duration,
+      });
+      setSlotsLoading(false);
+      if (error || !data) { setAvailableSlots({}); return; }
+      const map: Record<string, number> = {};
+      for (const row of data as any[]) {
+        const t = String(row.slot_time).slice(0, 5);
+        map[t] = row.available_staff_count;
+      }
+      setAvailableSlots(map);
+      // 選択中の時刻が空きでなくなったらクリア
+      if (form.time && map[form.time] === undefined) {
+        setForm(f => ({ ...f, time: "" }));
+      }
+    };
+    fetchSlots();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug, form.date, totalDuration, hasStaff]);
 
   const handleSubmit = async () => {
     const parsed = schema.safeParse(form);
@@ -179,15 +228,38 @@ const PublicBooking = () => {
               className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
           </div>
           <div>
-            <p className="eyebrow mb-3">No.05 — ご希望時間 / Time</p>
-            <div className="grid grid-cols-5 gap-px bg-border">
-              {TIMES.map(t => (
-                <button key={t} type="button" onClick={() => setForm({...form, time: t})}
-                  className={`py-3 text-sm font-serif transition-all ${form.time === t ? "bg-primary text-primary-foreground" : "bg-card hover:bg-secondary"}`}>
-                  {t}
-                </button>
-              ))}
-            </div>
+            <p className="eyebrow mb-3">
+              No.05 — ご希望時間 / Time
+              {hasStaff && slotsLoading && <Loader2 className="w-3 h-3 inline-block ml-2 animate-spin text-gold" />}
+            </p>
+            {hasStaff ? (
+              !form.date ? (
+                <p className="text-xs text-muted-foreground py-3">先に日付をお選びください</p>
+              ) : Object.keys(availableSlots).length === 0 && !slotsLoading ? (
+                <p className="text-xs text-muted-foreground py-3">この日は空き枠がございません。別の日をお試しください。</p>
+              ) : (
+                <div className="grid grid-cols-5 gap-px bg-border">
+                  {ALL_SLOTS.filter(t => availableSlots[t] !== undefined).map(t => (
+                    <button key={t} type="button" onClick={() => setForm({...form, time: t})}
+                      className={`py-3 text-sm font-serif transition-all relative ${form.time === t ? "bg-primary text-primary-foreground" : "bg-card hover:bg-secondary"}`}>
+                      {t}
+                      {availableSlots[t] > 1 && (
+                        <span className="absolute top-1 right-1 text-[9px] opacity-60">×{availableSlots[t]}</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )
+            ) : (
+              <div className="grid grid-cols-5 gap-px bg-border">
+                {["10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00","19:00"].map(t => (
+                  <button key={t} type="button" onClick={() => setForm({...form, time: t})}
+                    className={`py-3 text-sm font-serif transition-all ${form.time === t ? "bg-primary text-primary-foreground" : "bg-card hover:bg-secondary"}`}>
+                    {t}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div>
