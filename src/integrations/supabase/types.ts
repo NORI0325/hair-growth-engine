@@ -528,6 +528,63 @@ export type Database = {
         }
         Relationships: []
       }
+      incentives: {
+        Row: {
+          active: boolean
+          created_at: string
+          description: string | null
+          estimated_cost: number | null
+          id: string
+          kind: string
+          owner_id: string
+          sort_order: number
+          target_segment: string | null
+          terms: string | null
+          title: string
+          updated_at: string
+          usage_limit: number | null
+          used_count: number
+          valid_until: string | null
+          value_label: string | null
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          description?: string | null
+          estimated_cost?: number | null
+          id?: string
+          kind?: string
+          owner_id: string
+          sort_order?: number
+          target_segment?: string | null
+          terms?: string | null
+          title: string
+          updated_at?: string
+          usage_limit?: number | null
+          used_count?: number
+          valid_until?: string | null
+          value_label?: string | null
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          description?: string | null
+          estimated_cost?: number | null
+          id?: string
+          kind?: string
+          owner_id?: string
+          sort_order?: number
+          target_segment?: string | null
+          terms?: string | null
+          title?: string
+          updated_at?: string
+          usage_limit?: number | null
+          used_count?: number
+          valid_until?: string | null
+          value_label?: string | null
+        }
+        Relationships: []
+      }
       line_message_log: {
         Row: {
           broadcast_id: string | null
@@ -945,6 +1002,7 @@ export type Database = {
           enabled: boolean
           greeting: string | null
           id: string
+          incentive_id: string | null
           owner_id: string
           signature: string | null
           subject: string | null
@@ -961,6 +1019,7 @@ export type Database = {
           enabled?: boolean
           greeting?: string | null
           id?: string
+          incentive_id?: string | null
           owner_id: string
           signature?: string | null
           subject?: string | null
@@ -977,6 +1036,7 @@ export type Database = {
           enabled?: boolean
           greeting?: string | null
           id?: string
+          incentive_id?: string | null
           owner_id?: string
           signature?: string | null
           subject?: string | null
