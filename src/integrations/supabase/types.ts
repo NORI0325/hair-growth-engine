@@ -746,6 +746,10 @@ export type Database = {
       }
       profiles: {
         Row: {
+          allow_customer_cancel: boolean
+          booking_lead_time_hours: number
+          booking_max_days_ahead: number
+          cancel_deadline_hours: number
           close_time: string | null
           created_at: string
           full_name: string | null
@@ -767,6 +771,10 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          allow_customer_cancel?: boolean
+          booking_lead_time_hours?: number
+          booking_max_days_ahead?: number
+          cancel_deadline_hours?: number
           close_time?: string | null
           created_at?: string
           full_name?: string | null
@@ -788,6 +796,10 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          allow_customer_cancel?: boolean
+          booking_lead_time_hours?: number
+          booking_max_days_ahead?: number
+          cancel_deadline_hours?: number
           close_time?: string | null
           created_at?: string
           full_name?: string | null
@@ -1113,6 +1125,21 @@ export type Database = {
         Returns: {
           available_staff_ids: string[]
           slot_time: string
+        }[]
+      }
+      get_customer_bookings: {
+        Args: { _token: string }
+        Returns: {
+          booking_date: string
+          booking_time: string
+          can_cancel: boolean
+          cancel_deadline_hours: number
+          id: string
+          menu: string
+          staff_name: string
+          status: string
+          total_duration_minutes: number
+          total_price: number
         }[]
       }
       has_role: {
