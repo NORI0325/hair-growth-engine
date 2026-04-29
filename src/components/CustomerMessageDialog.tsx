@@ -55,9 +55,9 @@ export const CustomerMessageDialog = ({
   // 差し込み変数を反映
   const renderedBody = useMemo(() => {
     return body
-      .replaceAll("{customer_name}", customerName || "お客様")
-      .replaceAll("{minutes}", String(minutes))
-      .replaceAll("{new_time}", newTime || "—");
+      .split("{customer_name}").join(customerName || "お客様")
+      .split("{minutes}").join(String(minutes))
+      .split("{new_time}").join(newTime || "—");
   }, [body, customerName, minutes, newTime]);
 
   const pickTemplate = (t: Template) => {
