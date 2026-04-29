@@ -78,6 +78,7 @@ Deno.serve(async (req) => {
 
         const salonName = profile?.salon_name || "サロン";
         const bookingLink = tokenRow?.token ? `${APP_ORIGIN}/book/${tokenRow.token}` : "";
+        const myBookingsLink = tokenRow?.token ? `${APP_ORIGIN}/my-bookings/${tokenRow.token}` : "";
         const lineToken = profile?.line_channel_access_token;
 
         // === テンプレート上書き取得（チャネル別） ===
@@ -143,7 +144,7 @@ Deno.serve(async (req) => {
           const menu = p.menu || "";
           templateName = "booking-reminder";
           templateData = { customerName: customer.full_name, salonName, bookingDate: dateStr, bookingTime: timeStr, menu, bookingLink };
-          body = `🌸 明日のご予約のリマインドです\n\n${customer.full_name}様\n\n📅 ${dateStr}\n🕐 ${timeStr}\n💇 ${menu}\n\nお会いできるのを楽しみにしております。\n変更・キャンセルは恐れ入りますが、こちらから：\n→ ${bookingLink}\n\n${salonName}`;
+          body = `🌸 明日のご予約のリマインドです\n\n${customer.full_name}様\n\n📅 ${dateStr}\n🕐 ${timeStr}\n💇 ${menu}\n\nお会いできるのを楽しみにしております。\n変更・キャンセルは恐れ入りますが、こちらから：\n→ ${myBookingsLink || bookingLink}\n\n${salonName}`;
         } else if (job.job_type === "reactivation") {
           const days = (job.payload as any)?.days_since || 90;
           templateName = "reactivation";
