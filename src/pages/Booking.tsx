@@ -224,6 +224,38 @@ const Booking = () => {
               className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
           </div>
 
+          {staffList.length > 0 && (
+            <div>
+              <p className="eyebrow mb-3">
+                スタッフ指名 / Staff <span className="text-muted-foreground normal-case ml-1 text-[10px]">（任意）</span>
+              </p>
+              <div className="grid grid-cols-2 gap-px bg-border">
+                <button
+                  type="button"
+                  onClick={() => setSelectedStaffId(null)}
+                  className={`py-3 px-3 text-xs font-serif transition-all flex items-center justify-center gap-2 ${selectedStaffId === null ? "bg-primary text-primary-foreground" : "bg-card hover:bg-secondary"}`}
+                >
+                  指名なし
+                  <span className="opacity-60 text-[10px]">おまかせ</span>
+                </button>
+                {staffList.map(s => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => setSelectedStaffId(s.id)}
+                    className={`py-3 px-3 text-xs font-serif transition-all flex items-center justify-center gap-2 ${selectedStaffId === s.id ? "bg-primary text-primary-foreground" : "bg-card hover:bg-secondary"}`}
+                  >
+                    <span
+                      className="w-2 h-2 rounded-full"
+                      style={{ backgroundColor: s.display_color }}
+                    />
+                    {s.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div>
             <p className="eyebrow mb-3">
               No.02 — ご希望時間 / Time
