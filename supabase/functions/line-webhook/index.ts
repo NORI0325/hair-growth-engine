@@ -84,6 +84,8 @@ async function generateAutoReplyAI(
     return null;
   }
 }
+
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   // LINE Verify ボタンは GET ではなく空POSTで来る場合あり。常に200を返す方針に変更。
