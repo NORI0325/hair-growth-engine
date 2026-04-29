@@ -37,6 +37,7 @@ const Bookings = () => {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
+  const [messageBooking, setMessageBooking] = useState<Booking | null>(null);
 
   const load = async () => {
     setLoading(true);
