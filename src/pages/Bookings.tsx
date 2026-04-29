@@ -4,7 +4,8 @@ import { useAuth } from "@/hooks/useAuth";
 import AppLayout from "@/components/AppLayout";
 import PageHeader from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
-import { Loader2, CheckCircle2, XCircle, MessageCircle } from "lucide-react";
+import { Loader2, CheckCircle2, XCircle, MessageCircle, Trash2 } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CustomerMessageDialog } from "@/components/CustomerMessageDialog";
@@ -95,7 +96,13 @@ const Bookings = () => {
     updateStatus(b.id, "completed", amount);
   };
 
-  const grouped = bookings.reduce((acc, b) => {
+  const removeBooking = async (id: string) => {
+    const { error } = await supabase.from("bookings").delete().eq("id", id);
+    if (error) { toast.error("削除に失敗しました：" + error.message); return; }
+    toast.success("予約を削除しました");
+    setBookings((prev) => prev.filter((b) => b.id !== id));
+  };
+
     if (!acc[b.booking_date]) acc[b.booking_date] = [];
     acc[b.booking_date].push(b);
     return acc;
