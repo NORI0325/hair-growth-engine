@@ -79,6 +79,26 @@ const Booking = () => {
     setSelectedMenus(prev => prev.includes(name) ? prev.filter(m => m !== name) : [...prev, name]);
   };
 
+  // 空き枠の取得（日付 or メニュー変更時）
+  useEffect(() => {
+    const fetchSlots = async () => {
+      if (!date || !salonSlug) { setAvailableSlots(null); return; }
+      const duration = totalDuration > 0 ? totalDuration : 60;
+      setLoadingSlots(true);
+      setTime(""); // 日付/メニュー変わったら時間リセット
+      const { data, error } = await supabase.rpc("get_available_slots", {
+        _salon_slug: salonSlug,
+        _date: date,
+        _duration_minutes: duration,
+      });
+      setLoadingSlots(false);
+      if (error) { console.error(error); setAvailableSlots([]); return; }
+      const slots = (data || []).map((r: any) => String(r.slot_time).slice(0, 5));
+      setAvailableSlots(slots);
+    };
+    fetchSlots();
+  }, [date, totalDuration, salonSlug]);
+
   const handleBook = async () => {
     if (!date || !time || selectedMenus.length === 0) {
       toast.error("日付・時間・メニューをお選びください");
