@@ -234,6 +234,35 @@ export default function Inbox() {
                       <Check className="w-3.5 h-3.5 mr-1.5" />
                       {m.handled ? "未対応に戻す" : "対応済みにする"}
                     </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="rounded-none text-muted-foreground hover:text-destructive"
+                          title="メッセージを削除"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent className="rounded-none">
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>このメッセージを削除しますか？</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            受信トレイから完全に削除されます。この操作は取り消せません。
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel className="rounded-none">キャンセル</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => removeMessage(m.id)}
+                            className="rounded-none bg-destructive hover:bg-destructive/90"
+                          >
+                            削除する
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                 </div>
               </Card>
