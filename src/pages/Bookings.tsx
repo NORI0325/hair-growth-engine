@@ -46,8 +46,17 @@ const Bookings = () => {
   const updateStatus = async (id: string, status: "completed" | "cancelled" | "confirmed", revenue?: number) => {
     const update: any = { status };
     if (revenue != null) update.revenue = revenue;
-    const { error } = await supabase.from("bookings").update(update).eq("id", id);
-    if (error) { toast.error("更新に失敗しました"); return; }
+    const { data, error } = await supabase.from("bookings").update(update).eq("id", id).select();
+    if (error) {
+      console.error("[bookings.update] error:", error);
+      toast.error("更新に失敗しました：" + (error.message || "不明なエラー"));
+      return;
+    }
+    if (!data || data.length === 0) {
+      console.warn("[bookings.update] 0 rows updated. Possible RLS or auth issue. id=", id);
+      toast.error("更新できませんでした。再ログイン後にお試しください。");
+      return;
+    }
     toast.success("ステータスを更新しました");
     if (status === "cancelled") {
       supabase.functions.invoke("notify-owner-booking", {
