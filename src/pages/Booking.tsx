@@ -9,7 +9,7 @@ import { Loader2, CheckCircle2, Check } from "lucide-react";
 import { toast } from "sonner";
 
 const FALLBACK_MENUS = ["カット", "カット＋カラー", "カット＋パーマ", "縮毛矯正", "ヘッドスパ", "その他"];
-const TIMES = ["10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00"];
+const FALLBACK_TIMES = ["10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00"];
 
 interface MenuItem {
   id: string;
@@ -24,6 +24,7 @@ const Booking = () => {
   const [booking, setBooking] = useState(false);
   const [customer, setCustomer] = useState<any>(null);
   const [salonName, setSalonName] = useState("");
+  const [salonSlug, setSalonSlug] = useState<string | null>(null);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
 
   const [date, setDate] = useState("");
@@ -31,6 +32,8 @@ const Booking = () => {
   const [selectedMenus, setSelectedMenus] = useState<string[]>([]);
   const [notes, setNotes] = useState("");
   const [completed, setCompleted] = useState(false);
+  const [availableSlots, setAvailableSlots] = useState<string[] | null>(null);
+  const [loadingSlots, setLoadingSlots] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -39,6 +42,7 @@ const Booking = () => {
       if (data?.customer) {
         setCustomer(data.customer);
         setSalonName(data.salon_name || "Salon Boost");
+        setSalonSlug(data.public_slug || null);
 
         // メニュー取得（owner_id があれば）
         if (data.owner_id) {
@@ -75,6 +79,26 @@ const Booking = () => {
     setSelectedMenus(prev => prev.includes(name) ? prev.filter(m => m !== name) : [...prev, name]);
   };
 
+  // 空き枠の取得（日付 or メニュー変更時）
+  useEffect(() => {
+    const fetchSlots = async () => {
+      if (!date || !salonSlug) { setAvailableSlots(null); return; }
+      const duration = totalDuration > 0 ? totalDuration : 60;
+      setLoadingSlots(true);
+      setTime(""); // 日付/メニュー変わったら時間リセット
+      const { data, error } = await supabase.rpc("get_available_slots", {
+        _salon_slug: salonSlug,
+        _date: date,
+        _duration_minutes: duration,
+      });
+      setLoadingSlots(false);
+      if (error) { console.error(error); setAvailableSlots([]); return; }
+      const slots = (data || []).map((r: any) => String(r.slot_time).slice(0, 5));
+      setAvailableSlots(slots);
+    };
+    fetchSlots();
+  }, [date, totalDuration, salonSlug]);
+
   const handleBook = async () => {
     if (!date || !time || selectedMenus.length === 0) {
       toast.error("日付・時間・メニューをお選びください");
@@ -85,7 +109,20 @@ const Booking = () => {
       body: { token, date, time, menus: selectedMenus, notes },
     });
     setBooking(false);
-    if (error || !data?.success) { toast.error("予約に失敗しました。もう一度お試しください。"); return; }
+    if (error || !data?.success) {
+      const msg = (data as any)?.message || "予約に失敗しました。もう一度お試しください。";
+      toast.error(msg);
+      // 満席なら空き枠を再取得
+      if ((data as any)?.error === "slot_taken" && salonSlug) {
+        const duration = totalDuration > 0 ? totalDuration : 60;
+        const { data: slots } = await supabase.rpc("get_available_slots", {
+          _salon_slug: salonSlug, _date: date, _duration_minutes: duration,
+        });
+        setAvailableSlots((slots || []).map((r: any) => String(r.slot_time).slice(0, 5)));
+        setTime("");
+      }
+      return;
+    }
     setCompleted(true);
   };
 
@@ -169,15 +206,43 @@ const Booking = () => {
           </div>
 
           <div>
-            <p className="eyebrow mb-3">No.02 — ご希望時間 / Time</p>
-            <div className="grid grid-cols-5 gap-px bg-border">
-              {TIMES.map(t => (
-                <button key={t} type="button" onClick={() => setTime(t)}
-                  className={`py-3 text-sm font-serif transition-all ${time === t ? "bg-primary text-primary-foreground" : "bg-card hover:bg-secondary"}`}>
-                  {t}
-                </button>
-              ))}
-            </div>
+            <p className="eyebrow mb-3">
+              No.02 — ご希望時間 / Time
+              {date && (
+                <span className="text-muted-foreground normal-case ml-2 text-[10px]">
+                  {selectedMenus.length === 0
+                    ? "（先にメニューをお選びいただくと、所要時間に合わせた空き枠を表示します）"
+                    : loadingSlots
+                      ? "（空き枠を確認中...）"
+                      : availableSlots && availableSlots.length > 0
+                        ? `（${availableSlots.length}枠 空きあり）`
+                        : "（この日の空き枠はございません）"}
+                </span>
+              )}
+            </p>
+            {!date ? (
+              <p className="text-xs text-muted-foreground py-4">日付をお選びください</p>
+            ) : loadingSlots ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-4 h-4 animate-spin text-gold" />
+              </div>
+            ) : availableSlots !== null && availableSlots.length === 0 ? (
+              <div className="border border-border bg-secondary/30 px-4 py-6 text-center">
+                <p className="text-xs text-muted-foreground leading-loose">
+                  この日のご希望時間帯は満席です。<br />
+                  別の日をお選びくださいませ。
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-4 gap-px bg-border">
+                {(availableSlots || FALLBACK_TIMES).map(t => (
+                  <button key={t} type="button" onClick={() => setTime(t)}
+                    className={`py-3 text-xs font-serif transition-all ${time === t ? "bg-primary text-primary-foreground" : "bg-card hover:bg-secondary"}`}>
+                    {t}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div>

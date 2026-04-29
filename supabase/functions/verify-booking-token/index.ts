@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("salon_name")
+      .select("salon_name, public_slug, open_time, close_time")
       .eq("id", customer.owner_id)
       .maybeSingle();
 
@@ -57,6 +57,9 @@ Deno.serve(async (req) => {
         customer: { id: customer.id, full_name: customer.full_name },
         owner_id: customer.owner_id,
         salon_name: profile?.salon_name || "Salon",
+        public_slug: profile?.public_slug || null,
+        open_time: profile?.open_time || "10:00:00",
+        close_time: profile?.close_time || "19:00:00",
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

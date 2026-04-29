@@ -74,6 +74,27 @@ Deno.serve(async (req) => {
     }
     const menuSummary = menus.join(" + ").slice(0, 200);
 
+    // ダブルブッキング防止：同オーナーの同時間帯と被っていないか確認
+    const reqStart = new Date(`${date}T${time}:00+09:00`);
+    const reqEnd = new Date(reqStart.getTime() + (totalDuration || 60) * 60_000);
+    const { data: existing } = await supabase
+      .from("bookings")
+      .select("booking_time, total_duration_minutes, status")
+      .eq("owner_id", customer.owner_id)
+      .eq("booking_date", date)
+      .in("status", ["pending", "confirmed"]);
+    const conflict = (existing || []).some((b: any) => {
+      const bStart = new Date(`${date}T${b.booking_time}+09:00`);
+      const bEnd = new Date(bStart.getTime() + ((b.total_duration_minutes || 60) * 60_000));
+      return bStart < reqEnd && bEnd > reqStart;
+    });
+    if (conflict) {
+      return new Response(JSON.stringify({ error: "slot_taken", message: "申し訳ございません、その時間は満席となりました。別の時間をお選びください。" }), {
+        status: 409,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const { data: booking, error } = await supabase
       .from("bookings")
       .insert({
