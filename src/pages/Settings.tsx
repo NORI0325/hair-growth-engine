@@ -290,6 +290,56 @@ const Settings = () => {
             </div>
           )}
 
+          {/* === 営業時間外のLINE自動応答 === */}
+          <div className="pt-6 mt-2 border-t border-border/50">
+            <div className="eyebrow text-[10px] text-gold mb-3">— After-Hours Auto Reply —</div>
+            <div className="flex items-center justify-between p-5 border border-border bg-secondary/20">
+              <div>
+                <div className="font-serif text-sm">営業時間外のLINE自動応答</div>
+                <div className="text-[10px] text-muted-foreground mt-1">
+                  {form.auto_reply_enabled
+                    ? form.auto_reply_use_ai
+                      ? "✨ AIが毎回パーソナライズされた一次返信を自動送信"
+                      : "✅ 固定文で一次返信を自動送信"
+                    : "❌ 無効 — 返信は手動のみ"}
+                </div>
+              </div>
+              <Switch checked={form.auto_reply_enabled}
+                onCheckedChange={v => setForm({...form, auto_reply_enabled: v})} />
+            </div>
+
+            {form.auto_reply_enabled && (
+              <>
+                <div className="flex items-center justify-between p-5 border border-border mt-3">
+                  <div>
+                    <div className="font-serif text-sm">AIで毎回パーソナライズ</div>
+                    <div className="text-[10px] text-muted-foreground mt-1">
+                      OFFにすると下記のカスタム文（または既定文）を毎回送信します
+                    </div>
+                  </div>
+                  <Switch checked={form.auto_reply_use_ai}
+                    onCheckedChange={v => setForm({...form, auto_reply_use_ai: v})} />
+                </div>
+
+                <div className="mt-3">
+                  <Label className="mb-2 block font-serif text-sm">
+                    カスタム応答文（任意）<span className="eyebrow text-[9px] text-muted-foreground ml-1">Fallback Message</span>
+                  </Label>
+                  <textarea
+                    value={form.auto_reply_message}
+                    onChange={e => setForm({...form, auto_reply_message: e.target.value.slice(0, 500)})}
+                    rows={4}
+                    placeholder="（空欄ならサロン情報を含む既定文を使用）"
+                    className="w-full px-3 py-2 border border-border bg-background text-sm font-serif rounded-none focus:outline-none focus:border-gold"
+                  />
+                  <p className="text-[10px] text-muted-foreground mt-2">
+                    AI生成に失敗した場合、または「AIパーソナライズOFF」時に使用されます
+                  </p>
+                </div>
+              </>
+            )}
+          </div>
+
           <Button onClick={save} disabled={saving} variant="outline"
             className="rounded-none border-gold/40 text-xs tracking-luxury hover:bg-gold/5">
             {saving ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> : null}
