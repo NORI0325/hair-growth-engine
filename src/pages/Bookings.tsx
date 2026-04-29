@@ -233,7 +233,7 @@ const Bookings = () => {
       <CustomerMessageDialog
         open={!!messageBooking}
         onClose={() => setMessageBooking(null)}
-        customerId={(messageBooking as any)?.customer_id || ""}
+        customerId={messageBooking?.customer_id || ""}
         customerName={messageBooking?.customers?.full_name || ""}
         customerPhone={messageBooking?.customers?.phone}
         hasLine={!!messageBooking?.customers?.line_user_id}
