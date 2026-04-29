@@ -1,6 +1,10 @@
 project_id = "miyedioemkzhetphjzzg"
 
 [functions]
+  [functions.ai-classify-inbound]
+    verify_jwt = false
+  [functions.ai-reply-suggestions]
+    verify_jwt = true
   [functions.ai-template-assistant]
     verify_jwt = true
   [functions.auth-email-hook]
