@@ -136,7 +136,7 @@ const PublicBooking = () => {
     if (!parsed.success) { toast.error(parsed.error.errors[0].message); return; }
     if (selectedMenus.length === 0) { toast.error("メニューを1つ以上お選びください"); return; }
     setSubmitting(true);
-    const { data, error } = await supabase.rpc("public_create_booking_v2" as any, {
+    const { data, error } = await supabase.rpc("public_create_booking_v3" as any, {
       _salon_slug: slug!,
       _full_name: parsed.data.full_name,
       _phone: parsed.data.phone,
