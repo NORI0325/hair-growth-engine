@@ -9,7 +9,7 @@ import { Loader2, CheckCircle2, Check } from "lucide-react";
 import { toast } from "sonner";
 
 const FALLBACK_MENUS = ["カット", "カット＋カラー", "カット＋パーマ", "縮毛矯正", "ヘッドスパ", "その他"];
-const TIMES = ["10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00"];
+const FALLBACK_TIMES = ["10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00"];
 
 interface MenuItem {
   id: string;
