@@ -9,7 +9,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { Loader2, CheckCircle2, Check } from "lucide-react";
 import { toast } from "sonner";
 
-const TIMES = ["10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00","19:00"];
+// 15分刻みの全候補（営業時間内のスロットはRPCがフィルタ）
+const ALL_SLOTS: string[] = (() => {
+  const out: string[] = [];
+  for (let h = 8; h <= 21; h++) {
+    for (const m of [0, 15, 30, 45]) {
+      out.push(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
+    }
+  }
+  return out;
+})();
 
 interface MenuItem {
   id: string;
