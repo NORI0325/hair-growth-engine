@@ -45,7 +45,7 @@ const Bookings = () => {
     const [b, s] = await Promise.all([
       supabase
         .from("bookings")
-        .select("id, booking_date, booking_time, menu, notes, status, revenue, campaign_id, is_test, staff_id, customers(full_name, phone, line_user_id)")
+        .select("id, customer_id, booking_date, booking_time, menu, notes, status, revenue, campaign_id, is_test, staff_id, customers(full_name, phone, line_user_id)")
         .order("booking_date", { ascending: true })
         .order("booking_time", { ascending: true }),
       user ? supabase.from("staff").select("id, name, display_color").eq("owner_id", user.id).eq("active", true).order("sort_order") : Promise.resolve({ data: [] }),
