@@ -193,15 +193,43 @@ const Booking = () => {
           </div>
 
           <div>
-            <p className="eyebrow mb-3">No.02 — ご希望時間 / Time</p>
-            <div className="grid grid-cols-5 gap-px bg-border">
-              {TIMES.map(t => (
-                <button key={t} type="button" onClick={() => setTime(t)}
-                  className={`py-3 text-sm font-serif transition-all ${time === t ? "bg-primary text-primary-foreground" : "bg-card hover:bg-secondary"}`}>
-                  {t}
-                </button>
-              ))}
-            </div>
+            <p className="eyebrow mb-3">
+              No.02 — ご希望時間 / Time
+              {date && (
+                <span className="text-muted-foreground normal-case ml-2 text-[10px]">
+                  {selectedMenus.length === 0
+                    ? "（先にメニューをお選びいただくと、所要時間に合わせた空き枠を表示します）"
+                    : loadingSlots
+                      ? "（空き枠を確認中...）"
+                      : availableSlots && availableSlots.length > 0
+                        ? `（${availableSlots.length}枠 空きあり）`
+                        : "（この日の空き枠はございません）"}
+                </span>
+              )}
+            </p>
+            {!date ? (
+              <p className="text-xs text-muted-foreground py-4">日付をお選びください</p>
+            ) : loadingSlots ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-4 h-4 animate-spin text-gold" />
+              </div>
+            ) : availableSlots !== null && availableSlots.length === 0 ? (
+              <div className="border border-border bg-secondary/30 px-4 py-6 text-center">
+                <p className="text-xs text-muted-foreground leading-loose">
+                  この日のご希望時間帯は満席です。<br />
+                  別の日をお選びくださいませ。
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-4 gap-px bg-border">
+                {(availableSlots || FALLBACK_TIMES).map(t => (
+                  <button key={t} type="button" onClick={() => setTime(t)}
+                    className={`py-3 text-xs font-serif transition-all ${time === t ? "bg-primary text-primary-foreground" : "bg-card hover:bg-secondary"}`}>
+                    {t}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div>
