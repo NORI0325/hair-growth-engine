@@ -42,6 +42,7 @@ const Booking = () => {
       if (data?.customer) {
         setCustomer(data.customer);
         setSalonName(data.salon_name || "Salon Boost");
+        setSalonSlug(data.public_slug || null);
 
         // メニュー取得（owner_id があれば）
         if (data.owner_id) {
