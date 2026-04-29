@@ -18,6 +18,13 @@ interface MenuItem {
   price: number;
 }
 
+interface StaffMember {
+  id: string;
+  name: string;
+  display_color: string;
+  note: string | null;
+}
+
 const Booking = () => {
   const { token } = useParams();
   const [loading, setLoading] = useState(true);
