@@ -167,10 +167,54 @@ Deno.serve(async (req) => {
         // 既存顧客にline_user_idが既に紐付いているか
         const { data: linkedCustomer } = await supabase
           .from("customers")
-          .select("id")
+          .select("id, full_name")
           .eq("owner_id", owner.id)
           .eq("line_user_id", userId)
           .maybeSingle();
+
+        // 連携済み顧客からのメッセージ、または未連携でも電話番号でないテキスト
+        // → 受信トレイに保存し、AI分類をバックグラウンドで実行
+        const isPhoneAttempt = !!phone && !linkedCustomer;
+        if (!isPhoneAttempt) {
+          // displayName取得（未連携時のみ）
+          let displayName: string | null = null;
+          if (!linkedCustomer) {
+            try {
+              const pf = await fetch(`https://api.line.me/v2/bot/profile/${userId}`, {
+                headers: { Authorization: `Bearer ${accessToken}` },
+              });
+              if (pf.ok) {
+                const j = await pf.json();
+                displayName = j?.displayName || null;
+              }
+            } catch { /* noop */ }
+          }
+
+          const { data: inserted } = await supabase
+            .from("line_inbound_messages")
+            .insert({
+              owner_id: owner.id,
+              customer_id: linkedCustomer?.id || null,
+              line_user_id: userId,
+              display_name: displayName || linkedCustomer?.full_name || null,
+              message_text: text.slice(0, 2000),
+            })
+            .select("id")
+            .maybeSingle();
+
+          // AI分類を非同期で起動（fire-and-forget）
+          if (inserted?.id) {
+            const fnUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/ai-classify-inbound`;
+            fetch(fnUrl, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+              },
+              body: JSON.stringify({ inbound_id: inserted.id }),
+            }).catch(e => console.error("[line-webhook] classify kick failed:", e));
+          }
+        }
 
         if (!phone) {
           // 電話番号として認識できないテキスト → pendingに最終メッセージとして保存

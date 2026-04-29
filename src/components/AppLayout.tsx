@@ -1,14 +1,16 @@
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import {
-  LayoutDashboard, Users, Upload, Megaphone, Calendar, LogOut, Share2, Settings as SettingsIcon, Mail, MessageCircle, FileText, CalendarClock, TrendingUp, Scissors, UserCog, Gift,
+  LayoutDashboard, Users, Upload, Megaphone, Calendar, LogOut, Share2, Settings as SettingsIcon, Mail, MessageCircle, FileText, CalendarClock, TrendingUp, Scissors, UserCog, Gift, Inbox,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { to: "/dashboard", label: "ダッシュボード", en: "Overview", icon: LayoutDashboard },
+  { to: "/inbox", label: "受信トレイ", en: "Inbox", icon: Inbox, badgeKey: "inbox" as const },
   { to: "/customers", label: "顧客", en: "Guests", icon: Users },
   { to: "/import", label: "インポート", en: "Import", icon: Upload },
   { to: "/templates", label: "テンプレート", en: "Templates", icon: FileText },
@@ -26,8 +28,27 @@ const navItems = [
 ];
 
 const AppLayout = ({ children }: { children: ReactNode }) => {
-  const { signOut } = useAuth();
+  const { signOut, user } = useAuth();
   const navigate = useNavigate();
+  const [unreadInbox, setUnreadInbox] = useState(0);
+
+  useEffect(() => {
+    if (!user) return;
+    const fetchUnread = async () => {
+      const { count } = await supabase
+        .from("line_inbound_messages")
+        .select("id", { count: "exact", head: true })
+        .eq("owner_id", user.id)
+        .eq("handled", false);
+      setUnreadInbox(count || 0);
+    };
+    fetchUnread();
+    const ch = supabase
+      .channel("inbox-badge")
+      .on("postgres_changes", { event: "*", schema: "public", table: "line_inbound_messages" }, fetchUnread)
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [user]);
 
   const handleSignOut = async () => {
     await signOut();
@@ -44,7 +65,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
         </div>
 
         <nav className="flex-1 px-4 py-8 space-y-1">
-          {navItems.map(({ to, label, en, icon: Icon }) => (
+          {navItems.map(({ to, label, en, icon: Icon, badgeKey }: any) => (
             <NavLink
               key={to}
               to={to}
@@ -58,10 +79,15 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
               }
             >
               <Icon className="w-3.5 h-3.5 stroke-[1.5]" />
-              <div className="flex flex-col">
+              <div className="flex flex-col flex-1">
                 <span className="font-serif text-[13px] tracking-wider">{label}</span>
                 <span className="eyebrow text-[9px] text-sidebar-foreground/40">{en}</span>
               </div>
+              {badgeKey === "inbox" && unreadInbox > 0 && (
+                <span className="ml-auto text-[10px] font-mono px-1.5 py-0.5 bg-gold text-background rounded-sm min-w-[20px] text-center">
+                  {unreadInbox > 99 ? "99+" : unreadInbox}
+                </span>
+              )}
             </NavLink>
           ))}
         </nav>
