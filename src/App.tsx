@@ -22,6 +22,7 @@ import Templates from "./pages/Templates";
 import Schedule from "./pages/Schedule";
 import Performance from "./pages/Performance";
 import MenuItems from "./pages/MenuItems";
+import Staff from "./pages/Staff";
 import Unsubscribe from "./pages/Unsubscribe";
 import NotFound from "./pages/NotFound";
 
