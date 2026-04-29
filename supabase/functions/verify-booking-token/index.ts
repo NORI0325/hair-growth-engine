@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("salon_name, public_slug, open_time, close_time")
+      .select("salon_name, public_slug, open_time, close_time, booking_lead_time_hours, booking_max_days_ahead, allow_customer_cancel")
       .eq("id", customer.owner_id)
       .maybeSingle();
 
@@ -60,6 +60,9 @@ Deno.serve(async (req) => {
         public_slug: profile?.public_slug || null,
         open_time: profile?.open_time || "10:00:00",
         close_time: profile?.close_time || "19:00:00",
+        booking_lead_time_hours: (profile as any)?.booking_lead_time_hours ?? 24,
+        booking_max_days_ahead: (profile as any)?.booking_max_days_ahead ?? 60,
+        allow_customer_cancel: (profile as any)?.allow_customer_cancel ?? true,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
