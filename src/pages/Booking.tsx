@@ -18,6 +18,13 @@ interface MenuItem {
   price: number;
 }
 
+interface StaffMember {
+  id: string;
+  name: string;
+  display_color: string;
+  note: string | null;
+}
+
 const Booking = () => {
   const { token } = useParams();
   const [loading, setLoading] = useState(true);
@@ -26,10 +33,12 @@ const Booking = () => {
   const [salonName, setSalonName] = useState("");
   const [salonSlug, setSalonSlug] = useState<string | null>(null);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [staffList, setStaffList] = useState<StaffMember[]>([]);
 
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
   const [selectedMenus, setSelectedMenus] = useState<string[]>([]);
+  const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null); // null = 指名なし
   const [notes, setNotes] = useState("");
   const [completed, setCompleted] = useState(false);
   const [availableSlots, setAvailableSlots] = useState<string[] | null>(null);
@@ -44,15 +53,25 @@ const Booking = () => {
         setSalonName(data.salon_name || "Salon Boost");
         setSalonSlug(data.public_slug || null);
 
-        // メニュー取得（owner_id があれば）
+        // メニュー & スタッフ取得
         if (data.owner_id) {
-          const { data: items } = await supabase
-            .from("menu_items")
-            .select("id, name, duration_minutes, price")
-            .eq("owner_id", data.owner_id)
-            .eq("active", true)
-            .order("sort_order", { ascending: true });
-          setMenuItems(items || []);
+          const [menusRes, staffRes] = await Promise.all([
+            supabase
+              .from("menu_items")
+              .select("id, name, duration_minutes, price")
+              .eq("owner_id", data.owner_id)
+              .eq("active", true)
+              .order("sort_order", { ascending: true }),
+            supabase
+              .from("staff")
+              .select("id, name, display_color, note")
+              .eq("owner_id", data.owner_id)
+              .eq("active", true)
+              .eq("bookable", true)
+              .order("sort_order", { ascending: true }),
+          ]);
+          setMenuItems(menusRes.data || []);
+          setStaffList(staffRes.data || []);
         }
       } else {
         toast.error("リンクが無効です");
@@ -79,17 +98,18 @@ const Booking = () => {
     setSelectedMenus(prev => prev.includes(name) ? prev.filter(m => m !== name) : [...prev, name]);
   };
 
-  // 空き枠の取得（日付 or メニュー変更時）
+  // 空き枠の取得（日付・メニュー・スタッフ変更時）
   useEffect(() => {
     const fetchSlots = async () => {
       if (!date || !salonSlug) { setAvailableSlots(null); return; }
       const duration = totalDuration > 0 ? totalDuration : 60;
       setLoadingSlots(true);
-      setTime(""); // 日付/メニュー変わったら時間リセット
-      const { data, error } = await supabase.rpc("get_available_slots", {
+      setTime("");
+      const { data, error } = await supabase.rpc("get_available_slots_by_staff", {
         _salon_slug: salonSlug,
         _date: date,
         _duration_minutes: duration,
+        _staff_id: selectedStaffId,
       });
       setLoadingSlots(false);
       if (error) { console.error(error); setAvailableSlots([]); return; }
@@ -97,7 +117,7 @@ const Booking = () => {
       setAvailableSlots(slots);
     };
     fetchSlots();
-  }, [date, totalDuration, salonSlug]);
+  }, [date, totalDuration, salonSlug, selectedStaffId]);
 
   const handleBook = async () => {
     if (!date || !time || selectedMenus.length === 0) {
@@ -106,17 +126,16 @@ const Booking = () => {
     }
     setBooking(true);
     const { data, error } = await supabase.functions.invoke("create-booking", {
-      body: { token, date, time, menus: selectedMenus, notes },
+      body: { token, date, time, menus: selectedMenus, notes, staff_id: selectedStaffId },
     });
     setBooking(false);
     if (error || !data?.success) {
       const msg = (data as any)?.message || "予約に失敗しました。もう一度お試しください。";
       toast.error(msg);
-      // 満席なら空き枠を再取得
       if ((data as any)?.error === "slot_taken" && salonSlug) {
         const duration = totalDuration > 0 ? totalDuration : 60;
-        const { data: slots } = await supabase.rpc("get_available_slots", {
-          _salon_slug: salonSlug, _date: date, _duration_minutes: duration,
+        const { data: slots } = await supabase.rpc("get_available_slots_by_staff", {
+          _salon_slug: salonSlug, _date: date, _duration_minutes: duration, _staff_id: selectedStaffId,
         });
         setAvailableSlots((slots || []).map((r: any) => String(r.slot_time).slice(0, 5)));
         setTime("");
@@ -204,6 +223,38 @@ const Booking = () => {
             <Input id="date" type="date" min={minDate} value={date} onChange={e => setDate(e.target.value)}
               className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
           </div>
+
+          {staffList.length > 0 && (
+            <div>
+              <p className="eyebrow mb-3">
+                スタッフ指名 / Staff <span className="text-muted-foreground normal-case ml-1 text-[10px]">（任意）</span>
+              </p>
+              <div className="grid grid-cols-2 gap-px bg-border">
+                <button
+                  type="button"
+                  onClick={() => setSelectedStaffId(null)}
+                  className={`py-3 px-3 text-xs font-serif transition-all flex items-center justify-center gap-2 ${selectedStaffId === null ? "bg-primary text-primary-foreground" : "bg-card hover:bg-secondary"}`}
+                >
+                  指名なし
+                  <span className="opacity-60 text-[10px]">おまかせ</span>
+                </button>
+                {staffList.map(s => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => setSelectedStaffId(s.id)}
+                    className={`py-3 px-3 text-xs font-serif transition-all flex items-center justify-center gap-2 ${selectedStaffId === s.id ? "bg-primary text-primary-foreground" : "bg-card hover:bg-secondary"}`}
+                  >
+                    <span
+                      className="w-2 h-2 rounded-full"
+                      style={{ backgroundColor: s.display_color }}
+                    />
+                    {s.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div>
             <p className="eyebrow mb-3">

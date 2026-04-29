@@ -9,7 +9,7 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { token, date, time, notes } = body;
+    const { token, date, time, notes, staff_id } = body;
     let menus: string[] = Array.isArray(body.menus) ? body.menus.filter((m: any) => typeof m === "string").slice(0, 10) : [];
     // 旧クライアント互換: 単一menu文字列が来たら配列化
     if (menus.length === 0 && typeof body.menu === "string" && body.menu.trim()) {
@@ -74,15 +74,37 @@ Deno.serve(async (req) => {
     }
     const menuSummary = menus.join(" + ").slice(0, 200);
 
-    // ダブルブッキング防止：同オーナーの同時間帯と被っていないか確認
+    // 指名スタッフの妥当性チェック
+    let assignedStaffId: string | null = null;
+    if (staff_id && typeof staff_id === "string") {
+      const { data: staffRow } = await supabase
+        .from("staff")
+        .select("id")
+        .eq("id", staff_id)
+        .eq("owner_id", customer.owner_id)
+        .eq("active", true)
+        .eq("bookable", true)
+        .maybeSingle();
+      if (!staffRow) {
+        return new Response(JSON.stringify({ error: "invalid_staff", message: "選択されたスタッフは現在ご予約いただけません。" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      assignedStaffId = staff_id;
+    }
+
+    // ダブルブッキング防止：指名ありはそのスタッフ、指名なしは「全スタッフ枠が埋まっていないか」をチェック
     const reqStart = new Date(`${date}T${time}:00+09:00`);
     const reqEnd = new Date(reqStart.getTime() + (totalDuration || 60) * 60_000);
-    const { data: existing } = await supabase
+    let bookingsQuery = supabase
       .from("bookings")
-      .select("booking_time, total_duration_minutes, status")
+      .select("booking_time, total_duration_minutes, staff_id, status")
       .eq("owner_id", customer.owner_id)
       .eq("booking_date", date)
       .in("status", ["pending", "confirmed"]);
+    if (assignedStaffId) bookingsQuery = bookingsQuery.eq("staff_id", assignedStaffId);
+    const { data: existing } = await bookingsQuery;
     const conflict = (existing || []).some((b: any) => {
       const bStart = new Date(`${date}T${b.booking_time}+09:00`);
       const bEnd = new Date(bStart.getTime() + ((b.total_duration_minutes || 60) * 60_000));
@@ -93,6 +115,40 @@ Deno.serve(async (req) => {
         status: 409,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // 指名なしの場合、空いているスタッフを自動割り当て（先頭から空き枠を探す）
+    if (!assignedStaffId) {
+      const weekday = new Date(`${date}T00:00:00+09:00`).getDay();
+      const { data: candidates } = await supabase
+        .from("staff")
+        .select("id, sort_order, staff_schedules!inner(weekday, start_time, end_time, active)")
+        .eq("owner_id", customer.owner_id)
+        .eq("active", true)
+        .eq("bookable", true)
+        .eq("staff_schedules.weekday", weekday)
+        .eq("staff_schedules.active", true)
+        .order("sort_order", { ascending: true });
+      const reqTimeStr = time + ":00";
+      const endTimeStr = `${String(reqEnd.getUTCHours() + 9).padStart(2, "0")}:${String(reqEnd.getUTCMinutes()).padStart(2, "0")}:00`;
+      for (const c of (candidates || [])) {
+        const sch = (c as any).staff_schedules?.[0];
+        if (!sch) continue;
+        if (reqTimeStr < sch.start_time || endTimeStr > sch.end_time) continue;
+        // そのスタッフの予約が被っていないか
+        const { data: bk } = await supabase
+          .from("bookings")
+          .select("booking_time, total_duration_minutes")
+          .eq("staff_id", c.id)
+          .eq("booking_date", date)
+          .in("status", ["pending", "confirmed"]);
+        const busy = (bk || []).some((b: any) => {
+          const bs = new Date(`${date}T${b.booking_time}+09:00`);
+          const be = new Date(bs.getTime() + ((b.total_duration_minutes || 60) * 60_000));
+          return bs < reqEnd && be > reqStart;
+        });
+        if (!busy) { assignedStaffId = c.id; break; }
+      }
     }
 
     const { data: booking, error } = await supabase
@@ -107,6 +163,7 @@ Deno.serve(async (req) => {
         total_duration_minutes: totalDuration || null,
         total_price: totalPrice || null,
         notes: notes ? String(notes).slice(0, 500) : null,
+        staff_id: assignedStaffId,
         status: "pending",
       })
       .select()
