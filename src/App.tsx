@@ -26,6 +26,7 @@ import MenuItems from "./pages/MenuItems";
 import Staff from "./pages/Staff";
 import Incentives from "./pages/Incentives";
 import Unsubscribe from "./pages/Unsubscribe";
+import Inbox from "./pages/Inbox";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
