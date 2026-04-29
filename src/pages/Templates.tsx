@@ -13,7 +13,7 @@ import { TEMPLATE_CATALOG, CATEGORY_LABEL, type TemplateChannel, type TemplateMe
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
-import { Sparkles, Save, RotateCcw, Eye, Send, Tag } from "lucide-react";
+import { Sparkles, Save, RotateCcw, Eye, Send, Tag, Gift } from "lucide-react";
 
 type Override = {
   id?: string;
@@ -24,11 +24,12 @@ type Override = {
   cta_url: string | null;
   signature: string | null;
   coupon_id: string | null;
+  incentive_id: string | null;
   enabled: boolean;
 };
 
 const EMPTY: Override = {
-  subject: "", greeting: "", body: "", cta_label: "", cta_url: "", signature: "", coupon_id: null, enabled: true,
+  subject: "", greeting: "", body: "", cta_label: "", cta_url: "", signature: "", coupon_id: null, incentive_id: null, enabled: true,
 };
 
 const Templates = () => {
@@ -41,6 +42,7 @@ const Templates = () => {
   const [aiBusy, setAiBusy] = useState(false);
   const [preview, setPreview] = useState<string>("");
   const [coupons, setCoupons] = useState<Array<{ id: string; title: string }>>([]);
+  const [incentives, setIncentives] = useState<Array<{ id: string; title: string; kind: string }>>([]);
 
   const meta = useMemo<TemplateMeta>(
     () => TEMPLATE_CATALOG.find((t) => t.key === selectedKey)!,
@@ -62,6 +64,9 @@ const Templates = () => {
     if (!user) return;
     supabase.from("coupons").select("id, title").eq("owner_id", user.id).then(({ data }) => {
       setCoupons(data || []);
+    });
+    supabase.from("incentives").select("id, title, kind").eq("owner_id", user.id).eq("active", true).order("sort_order").then(({ data }) => {
+      setIncentives(data || []);
     });
   }, [user]);
 
@@ -87,6 +92,7 @@ const Templates = () => {
             cta_url: data.cta_url ?? "",
             signature: data.signature ?? "",
             coupon_id: data.coupon_id,
+            incentive_id: (data as any).incentive_id ?? null,
             enabled: data.enabled,
           });
         } else {
@@ -128,7 +134,7 @@ const Templates = () => {
       template_key: selectedKey,
       ...override,
     };
-    const { error } = await supabase.from("template_overrides").upsert(payload, { onConflict: "owner_id,channel,template_key" });
+    const { error } = await supabase.from("template_overrides").upsert(payload as any, { onConflict: "owner_id,channel,template_key" });
     setSaving(false);
     if (error) { toast.error("保存失敗: " + error.message); return; }
     toast.success("保存しました");
@@ -274,6 +280,17 @@ const Templates = () => {
                   {coupons.map((c) => (<SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>))}
                 </SelectContent>
               </Select>
+            </div>
+            <div>
+              <Label className="text-xs flex items-center gap-1"><Gift className="w-3 h-3" /> 特典差し込み（割引以外も選べます）</Label>
+              <Select value={override.incentive_id || "none"} onValueChange={(v) => setOverride((o) => ({ ...o, incentive_id: v === "none" ? null : v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">なし</SelectItem>
+                  {incentives.map((i) => (<SelectItem key={i.id} value={i.id}>{i.title}</SelectItem>))}
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-muted-foreground mt-1">本文に <code>{`{{incentive_title}}`}</code> <code>{`{{incentive_description}}`}</code> <code>{`{{incentive_terms}}`}</code> を挿入できます</p>
             </div>
 
             {/* AIアシスタント */}

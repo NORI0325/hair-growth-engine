@@ -23,6 +23,7 @@ import Schedule from "./pages/Schedule";
 import Performance from "./pages/Performance";
 import MenuItems from "./pages/MenuItems";
 import Staff from "./pages/Staff";
+import Incentives from "./pages/Incentives";
 import Unsubscribe from "./pages/Unsubscribe";
 import NotFound from "./pages/NotFound";
 
@@ -54,6 +55,7 @@ const App = () => (
             <Route path="/performance" element={<ProtectedRoute><Performance /></ProtectedRoute>} />
             <Route path="/menu-items" element={<ProtectedRoute><MenuItems /></ProtectedRoute>} />
             <Route path="/staff" element={<ProtectedRoute><Staff /></ProtectedRoute>} />
+            <Route path="/incentives" element={<ProtectedRoute><Incentives /></ProtectedRoute>} />
             <Route path="/unsubscribe" element={<Unsubscribe />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
