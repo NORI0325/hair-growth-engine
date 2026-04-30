@@ -37,7 +37,7 @@ function checkOutsideBusinessHours(openTime?: string, closeTime?: string): boole
 
 function defaultAutoReply(salonName?: string | null, openTime?: string, closeTime?: string): string {
   const hours = openTime && closeTime ? `\n営業時間: ${openTime.slice(0,5)} 〜 ${closeTime.slice(0,5)}` : "";
-  return `メッセージありがとうございます🙇‍♀️\n\nただいま営業時間外のため、スタッフからの返信は翌営業時間内にお返しいたします。${hours}\n\nお急ぎの場合や予約の変更・キャンセルは、トーク下部の「予約する」ボタンよりご操作ください🌸\n\n— ${salonName || "サロン"}`;
+  return `メッセージありがとうございます🙇‍♀️\n\nただいま営業時間外のため、担当者からの返信は翌営業時間内にお返しいたします。${hours}\n\nお急ぎの場合や予約の変更・キャンセルは、トーク下部の「予約する」ボタンよりご操作ください🌸\n\n— ${salonName || "サロン"}`;
 }
 
 async function generateAutoReplyAI(
@@ -98,8 +98,8 @@ async function generateLinkedCustomerReply(
   if (!apiKey) return null;
   const hoursText = openTime && closeTime ? `${openTime.slice(0,5)}〜${closeTime.slice(0,5)}` : "営業時間内";
   const timeContext = isOutsideHours
-    ? `現在は営業時間外（営業時間：${hoursText}）。営業時間内に改めてスタッフからご連絡することを伝える。`
-    : `現在は営業時間内。スタッフが順次確認するため少しお待ちいただくよう伝える。`;
+    ? `現在は営業時間外（営業時間：${hoursText}）。営業時間内に改めて担当者からご連絡することを伝える。`
+    : `現在は営業時間内。担当者が順次確認するため少しお待ちいただくよう伝える。`;
   try {
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -115,7 +115,7 @@ async function generateLinkedCustomerReply(
 - 必ず「${customerName}様」で始める
 - お客様のメッセージ内容に短く触れて共感や感謝を示す
 - 予約変更・キャンセルの相談なら「予約する」ボタンへ案内
-- 質問や雑談なら、スタッフが確認してご連絡する旨を伝える
+- 質問や雑談なら、担当者が確認してご連絡する旨を伝える
 - 「こんにちは」「ありがとう」など挨拶には、温かく挨拶を返す
 - 100〜140文字、絵文字は1〜2個まで上品に
 - 末尾に「— ${salonName}」を付ける
@@ -342,7 +342,7 @@ Deno.serve(async (req) => {
         const r = await replyLine(
           accessToken,
           replyToken,
-          `🌸 ${owner.salon_name || "サロン"}の公式アカウントへようこそ！\n\nご予約や特典のお知らせをお届けします。\n\n📱 ご登録のお電話番号をこのトークに送信してください（例：090-1234-5678）。\n\nお電話番号がご不明な場合は、お名前だけでも構いません。スタッフが確認のうえ連携いたします🙇‍♀️`
+          `🌸 ${owner.salon_name || "サロン"}の公式アカウントへようこそ！\n\nご予約や特典のお知らせをお届けします。\n\n📱 ご登録のお電話番号をこのトークに送信してください（例：090-1234-5678）。\n\nお電話番号がご不明な場合は、お名前だけでも構いません。担当者が確認のうえ連携いたします🙇‍♀️`
         );
         if (!r.ok) console.error("[line-webhook] follow reply failed:", r.err);
         continue;
@@ -409,7 +409,7 @@ Deno.serve(async (req) => {
         }
         if (text === "お問合せ") {
           await replyLine(accessToken, replyToken,
-            `お問合せありがとうございます🙇‍♀️\n\nご質問・ご要望はこのトークに直接お送りください。スタッフが営業時間内に確認のうえ返信いたします。\n\n※ ご予約の変更・キャンセルは「予約する」ボタンから行えます。`);
+            `お問合せありがとうございます🙇‍♀️\n\nご質問・ご要望はこのトークに直接お送りください。担当者が営業時間内に確認のうえ返信いたします。\n\n※ ご予約の変更・キャンセルは「予約する」ボタンから行えます。`);
           continue;
         }
 
@@ -484,7 +484,7 @@ Deno.serve(async (req) => {
             const isOutsideHours = checkOutsideBusinessHours(owner.open_time, owner.close_time);
             const shouldReply = owner.auto_reply_enabled || isOutsideHours;
             if (!shouldReply) {
-              continue; // 営業時間内かつ自動応答OFF：スタッフが手動で対応
+              continue; // 営業時間内かつ自動応答OFF：担当者が手動で対応
             }
 
             const kind = classifyMessageKind(text);
@@ -552,9 +552,9 @@ Deno.serve(async (req) => {
             );
             guideMsg = aiReply
               ? `${aiReply}\n\n────────\n💡 ご予約履歴の連携をご希望でしたら、ご登録のお電話番号（例：090-1234-5678）をお送りください🌸`
-              : `${displayName ? displayName + "様、" : ""}メッセージありがとうございます🌸\n\nスタッフが確認のうえご連絡いたします。\n\n💡 ご予約履歴の連携をご希望でしたら、ご登録のお電話番号（例：090-1234-5678）をお送りください。\n\n— ${owner.salon_name || "サロン"}`;
+              : `${displayName ? displayName + "様、" : ""}メッセージありがとうございます🌸\n\n担当者が確認のうえご連絡いたします。\n\n💡 ご予約履歴の連携をご希望でしたら、ご登録のお電話番号（例：090-1234-5678）をお送りください。\n\n— ${owner.salon_name || "サロン"}`;
           } else {
-            guideMsg = `${displayName ? displayName + "様、" : ""}メッセージありがとうございます🙇‍♀️\n\nスタッフが内容を確認のうえご連絡いたします。少々お待ちくださいませ🌸\n\n💡 ご予約履歴の連携をご希望の場合は、ご登録のお電話番号をお送りください（例：090-1234-5678）。\n\n— ${owner.salon_name || "サロン"}`;
+            guideMsg = `${displayName ? displayName + "様、" : ""}メッセージありがとうございます🙇‍♀️\n\n担当者が内容を確認のうえご連絡いたします。少々お待ちくださいませ🌸\n\n💡 ご予約履歴の連携をご希望の場合は、ご登録のお電話番号をお送りください（例：090-1234-5678）。\n\n— ${owner.salon_name || "サロン"}`;
           }
 
           const r = await replyLine(accessToken, replyToken, guideMsg);
@@ -587,7 +587,7 @@ Deno.serve(async (req) => {
           await replyLine(
             accessToken,
             replyToken,
-            `お電話番号が見つかりませんでした🙏\n\nお手数ですがお名前もメッセージでお送りいただけますと、スタッフが確認のうえ連携いたします。`
+            `お電話番号が見つかりませんでした🙏\n\nお手数ですがお名前もメッセージでお送りいただけますと、担当者が確認のうえ連携いたします。`
           );
           continue;
         }
