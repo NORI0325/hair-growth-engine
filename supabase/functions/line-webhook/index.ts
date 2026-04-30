@@ -450,10 +450,9 @@ Deno.serve(async (req) => {
                 owner.close_time,
               );
             }
-            if (!replyMsg) {
-              replyMsg = owner.auto_reply_message
-                || defaultAutoReply(owner.salon_name, owner.open_time, owner.close_time);
-            }
+            const finalReply: string = replyMsg
+              || owner.auto_reply_message
+              || defaultAutoReply(owner.salon_name, owner.open_time, owner.close_time);
 
             const r = await replyLine(accessToken, replyToken, replyMsg);
             if (!r.ok) console.error("[line-webhook] linked reply failed:", r.err);
