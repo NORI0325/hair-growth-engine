@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>サロンボード顧客エクスポーター</title>
+  <style>
+    body { font-family: -apple-system, "Hiragino Sans", sans-serif; width: 340px; padding: 16px; margin: 0; background: #fafaf7; color: #1a1a1a; }
+    h1 { font-size: 14px; margin: 0 0 4px; letter-spacing: 0.1em; }
+    .sub { font-size: 11px; color: #888; margin-bottom: 16px; letter-spacing: 0.05em; }
+    .section { border-top: 1px solid #d4d4d0; padding: 14px 0; }
+    .section h2 { font-size: 12px; margin: 0 0 6px; letter-spacing: 0.08em; }
+    .section p { font-size: 11px; color: #666; margin: 0 0 10px; line-height: 1.5; }
+    button { width: 100%; padding: 10px; border: 1px solid #1a1a1a; background: #1a1a1a; color: #fff; font-size: 11px; letter-spacing: 0.15em; cursor: pointer; border-radius: 0; transition: opacity .15s; }
+    button:hover { opacity: 0.85; }
+    button.secondary { background: #fff; color: #1a1a1a; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .status { font-size: 11px; color: #b8860b; margin-top: 12px; padding: 8px; background: #fdfaf0; border-left: 2px solid #c9a961; line-height: 1.5; min-height: 16px; }
+    .row { display: flex; gap: 8px; }
+    .row button { flex: 1; }
+    label { font-size: 11px; display: block; margin: 6px 0 4px; color: #555; }
+    input { width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 0; font-size: 12px; box-sizing: border-box; }
+  </style>
+</head>
+<body>
+  <h1>SALON BOARD EXPORTER</h1>
+  <div class="sub">お客様情報バックアップツール</div>
+
+  <div class="section">
+    <h2>① 一覧スキャン（高速）</h2>
+    <p>お客様一覧の全ページを巡回し、基本情報をCSV化します（約1〜2分）</p>
+    <label>開始ページ</label>
+    <input type="number" id="startPage" value="1" min="1">
+    <label>終了ページ（空欄=最終まで）</label>
+    <input type="number" id="endPage" placeholder="例: 26">
+    <label>ページ間隔（ミリ秒）</label>
+    <input type="number" id="delay" value="2500" min="1000">
+    <div style="height:10px"></div>
+    <button id="scanList">一覧をスキャン開始</button>
+  </div>
+
+  <div class="section">
+    <h2>② 詳細スキャン（完全版）</h2>
+    <p>一覧スキャン後、各顧客の詳細ページに入り、電話・誕生日・履歴まで取得（時間がかかります）</p>
+    <button id="scanDetails" class="secondary">詳細スキャン開始</button>
+  </div>
+
+  <div class="section">
+    <h2>データ操作</h2>
+    <div class="row">
+      <button id="downloadCsv" class="secondary">CSVダウンロード</button>
+      <button id="clearData" class="secondary">クリア</button>
+    </div>
+  </div>
+
+  <div class="status" id="status">使い方: お客様一覧画面を開いた状態で「スキャン開始」を押してください</div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -27,6 +27,7 @@ import Staff from "./pages/Staff";
 import Incentives from "./pages/Incentives";
 import Unsubscribe from "./pages/Unsubscribe";
 import Inbox from "./pages/Inbox";
+import SalonBoardExport from "./pages/SalonBoardExport";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -60,6 +61,7 @@ const App = () => (
             <Route path="/menu-items" element={<ProtectedRoute><MenuItems /></ProtectedRoute>} />
             <Route path="/staff" element={<ProtectedRoute><Staff /></ProtectedRoute>} />
             <Route path="/incentives" element={<ProtectedRoute><Incentives /></ProtectedRoute>} />
+            <Route path="/salonboard-export" element={<ProtectedRoute><SalonBoardExport /></ProtectedRoute>} />
             <Route path="/unsubscribe" element={<Unsubscribe />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
