@@ -219,6 +219,18 @@ function findNextPageLink() {
   return null;
 }
 
+function findPageNumberLink(pageNo) {
+  const wanted = String(pageNo);
+  const candidates = [...document.querySelectorAll('a, button, input[type="button"], input[type="submit"]')];
+  return candidates.find(el => {
+    const txt = (cleanText(el) || el.value || '').trim();
+    if (txt !== wanted) return false;
+    if (el.disabled || el.getAttribute('aria-disabled') === 'true' || el.classList.contains('disabled')) return false;
+    if (el.closest('.disabled')) return false;
+    return true;
+  }) || null;
+}
+
 function getPageInfo() {
   const txt = (document.body.innerText || document.body.textContent || '').replace(/\s+/g, ' ');
   let current = 1, total = 1, totalCount = null;
