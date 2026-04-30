@@ -170,17 +170,17 @@ function parseListPage() {
 // ============ ページネーション ============
 // 「次へ」リンクを画面から探す
 function findNextPageLink() {
-  // テキストベース
   const candidates = [...document.querySelectorAll('a, button, input[type="button"], input[type="submit"]')];
   for (const el of candidates) {
-    const txt = cleanText(el) || el.value || '';
-    if (/^(次へ|次の|次ページ|>>?|»)$/.test(txt) || /次へ/.test(txt)) {
-      // disabled でないこと
-      if (el.disabled || el.classList.contains('disabled')) continue;
-      const parentDisabled = el.closest('.disabled');
-      if (parentDisabled) continue;
-      return el;
-    }
+    const txt = cleanText(el) || el.value || el.getAttribute('title') || el.getAttribute('alt') || '';
+    const cls = el.className || '';
+    const href = el.getAttribute('href') || '';
+    const onclick = el.getAttribute('onclick') || '';
+    const looksNext = /次へ|次の|次ページ|next/i.test(`${txt} ${cls} ${href} ${onclick}`) || /^(>|>>|»)$/.test(txt.trim());
+    if (!looksNext) continue;
+    if (el.disabled || el.getAttribute('aria-disabled') === 'true' || el.classList.contains('disabled')) continue;
+    if (el.closest('.disabled')) continue;
+    return el;
   }
   return null;
 }
@@ -189,11 +189,10 @@ function findNextPageLink() {
 function getPageInfo() {
   const txt = document.body.innerText.replace(/\s+/g, ' ');
   let current = 1, total = 1, totalCount = null;
-  let m = txt.match(/(\d+)\s*\/\s*(\d+)\s*ページ/);
+  let m = txt.match(/(\d+)\s*\/\s*(\d+)\s*ページ/) || txt.match(/(\d+)\s*\/\s*(\d+)\s*ﾍﾟｰｼﾞ/);
   if (m) { current = parseInt(m[1]); total = parseInt(m[2]); }
-  m = txt.match(/該当[:：]?\s*(\d+)\s*件/) || txt.match(/(\d+)\s*件\s*該当/) || txt.match(/全\s*(\d+)\s*件/);
+  m = txt.match(/該当するお客様情報が\s*(\d+)\s*件/) || txt.match(/該当[:：]?\s*(\d+)\s*件/) || txt.match(/(\d+)\s*件\s*該当/) || txt.match(/全\s*(\d+)\s*件/);
   if (m) totalCount = parseInt(m[1]);
-  // 現在ページ強調表示（<strong>1</strong> や class="current"）
   const cur = document.querySelector('.pager .current, .pagination .active, .pageNation strong, .page strong');
   if (cur) {
     const n = parseInt(cleanText(cur));
@@ -260,8 +259,15 @@ async function autoContinueIfJobActive() {
 function mergeCustomers(existing, fresh) {
   const map = new Map();
   [...existing, ...fresh].forEach(c => {
-    const key = c.customer_no || c.detail_url || ((c.kana || '') + '|' + (c.full_name || ''));
-    if (!key || key === '|') return;
+    const customerNo = normalizeValue(c.customer_no);
+    const key = customerNo
+      ? `no:${customerNo}`
+      : c.detail_key
+        ? `detail:${c.detail_key}`
+        : c.detail_url
+          ? `url:${c.detail_url}`
+          : `name:${normalizeValue(c.kana)}|${normalizeValue(c.full_name)}|${normalizeValue(c.last_visit_date)}|${normalizeValue(c.visit_count)}|p${c.scan_page || ''}r${c.scan_row || ''}`;
+    if (!key || key === 'name:||||p r') return;
     const prev = map.get(key) || {};
     map.set(key, { ...prev, ...c });
   });
