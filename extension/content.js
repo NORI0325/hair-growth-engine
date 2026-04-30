@@ -105,21 +105,23 @@ function looksLikeLabelOnly(value) {
 }
 
 function resolveDetailCustomerIndex(customers, job, detail = {}) {
+  const sessionTarget = readSessionDetailTarget();
   const expectKey = job.currentKey;
-  const expectUid = job.currentUid;
-  const expectIndex = Number.isInteger(job.currentIndex) ? job.currentIndex : -1;
-  const snapshot = job.currentSnapshot || {};
+  const expectUid = job.currentUid || sessionTarget?.uid;
+  const expectIndex = Number.isInteger(job.currentIndex) ? job.currentIndex : (Number.isInteger(sessionTarget?.index) ? sessionTarget.index : -1);
+  const snapshot = job.currentSnapshot || sessionTarget?.snapshot || {};
 
-  // ① クリック時に確定したUID（最優先・絶対）
+  // ① クリック直前に sessionStorage に固定した配列位置（ページ遷移しても残るため最優先）
+  if (expectIndex >= 0 && customers[expectIndex]) {
+    const c = customers[expectIndex];
+    if (!expectUid || c.export_uid === expectUid || c.detail_status === 'processing') return expectIndex;
+  }
+  // ② クリック時に確定したUID
   if (expectUid) {
     const i = customers.findIndex(c => c.export_uid === expectUid);
     if (i >= 0) return i;
   }
-  // ② クリック時のインデックス位置（配列が変わっていなければ）
-  if (expectIndex >= 0 && customers[expectIndex]) {
-    return expectIndex;
-  }
-  // ③ processing フラグが立っているもの
+  // ③ processing フラグが立っているもの（複数あれば先頭）
   let idx = customers.findIndex(c => c.detail_status === 'processing');
   if (idx >= 0) return idx;
   // ④ snapshot による(ページ/行) または (氏名+カナ) 一致
