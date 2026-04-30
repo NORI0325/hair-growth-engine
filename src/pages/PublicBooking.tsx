@@ -47,8 +47,11 @@ const PublicBooking = () => {
   const [selectedMenus, setSelectedMenus] = useState<string[]>([]);
   const [completed, setCompleted] = useState(false);
   const [availableSlots, setAvailableSlots] = useState<Record<string, number>>({});
+  const [maxStaffCount, setMaxStaffCount] = useState(1);
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [hasStaff, setHasStaff] = useState(false);
+  const [openTime, setOpenTime] = useState<string>("10:00");
+  const [closeTime, setCloseTime] = useState<string>("19:00");
 
   const [form, setForm] = useState({ full_name: "", phone: "", email: "", date: "", time: "", notes: "" });
 
@@ -57,13 +60,15 @@ const PublicBooking = () => {
       if (!slug) { setLoading(false); return; }
       const { data: profile } = await supabase
         .from("profiles")
-        .select("id, salon_name, public_menus")
+        .select("id, salon_name, public_menus, open_time, close_time")
         .eq("public_slug", slug)
         .maybeSingle();
       if (profile) {
         setSalonExists(true);
         setSalonName(profile.salon_name || "Salon");
         setFallbackMenus(profile.public_menus || []);
+        if (profile.open_time) setOpenTime(String(profile.open_time).slice(0, 5));
+        if (profile.close_time) setCloseTime(String(profile.close_time).slice(0, 5));
 
         const { data: items } = await supabase
           .from("menu_items")
@@ -81,6 +86,7 @@ const PublicBooking = () => {
           .eq("active", true)
           .eq("bookable", true);
         setHasStaff((count || 0) > 0);
+        setMaxStaffCount(Math.max(1, count || 1));
       }
       setLoading(false);
     };
@@ -235,21 +241,82 @@ const PublicBooking = () => {
             {hasStaff ? (
               !form.date ? (
                 <p className="text-xs text-muted-foreground py-3">先に日付をお選びください</p>
-              ) : Object.keys(availableSlots).length === 0 && !slotsLoading ? (
-                <p className="text-xs text-muted-foreground py-3">この日は空き枠がございません。別の日をお試しください。</p>
-              ) : (
-                <div className="grid grid-cols-5 gap-px bg-border">
-                  {ALL_SLOTS.filter(t => availableSlots[t] !== undefined).map(t => (
-                    <button key={t} type="button" onClick={() => setForm({...form, time: t})}
-                      className={`py-3 text-sm font-serif transition-all relative ${form.time === t ? "bg-primary text-primary-foreground" : "bg-card hover:bg-secondary"}`}>
-                      {t}
-                      {availableSlots[t] > 1 && (
-                        <span className="absolute top-1 right-1 text-[9px] opacity-60">×{availableSlots[t]}</span>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )
+              ) : (() => {
+                // 営業時間内の30分刻みスロットを生成（全枠表示）
+                const [oh, om] = openTime.split(":").map(Number);
+                const [ch, cm] = closeTime.split(":").map(Number);
+                const startMin = oh * 60 + om;
+                const endMin = ch * 60 + cm;
+                const businessSlots: string[] = [];
+                for (let m = startMin; m < endMin; m += 30) {
+                  businessSlots.push(`${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`);
+                }
+                const totalAvail = businessSlots.reduce((s, t) => s + (availableSlots[t] || 0), 0);
+                const totalCap = businessSlots.length * maxStaffCount;
+                const fillRatio = totalCap > 0 ? 1 - totalAvail / totalCap : 0;
+                const remainingCount = businessSlots.filter(t => (availableSlots[t] || 0) > 0).length;
+
+                return (
+                  <div>
+                    {/* 埋まり具合インジケーター（売れてる感の演出） */}
+                    {!slotsLoading && (
+                      <div className="mb-3 flex items-center justify-between text-[10px] tracking-luxury">
+                        <span className="text-muted-foreground">
+                          {fillRatio >= 0.7 ? (
+                            <span className="text-gold">★ 残りわずか — Almost Full</span>
+                          ) : fillRatio >= 0.4 ? (
+                            <span className="text-gold/80">人気の日程 — Popular</span>
+                          ) : (
+                            <span>空きあり — Available</span>
+                          )}
+                        </span>
+                        <span className="text-muted-foreground">残 {remainingCount} 枠</span>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-5 gap-px bg-border">
+                      {businessSlots.map(t => {
+                        const avail = availableSlots[t] ?? 0;
+                        const isBooked = avail === 0;
+                        const isSelected = form.time === t;
+                        const isLowStock = !isBooked && avail === 1 && maxStaffCount > 1;
+                        return (
+                          <button
+                            key={t}
+                            type="button"
+                            disabled={isBooked}
+                            onClick={() => !isBooked && setForm({ ...form, time: t })}
+                            className={`py-3 text-sm font-serif transition-all relative ${
+                              isSelected
+                                ? "bg-primary text-primary-foreground"
+                                : isBooked
+                                  ? "bg-muted/40 text-muted-foreground/50 cursor-not-allowed line-through"
+                                  : isLowStock
+                                    ? "bg-gold/10 text-foreground hover:bg-gold/20 border-l-2 border-gold"
+                                    : "bg-card hover:bg-secondary"
+                            }`}
+                          >
+                            {t}
+                            {isBooked && (
+                              <span className="absolute bottom-0.5 left-0 right-0 text-[8px] tracking-luxury opacity-70">満席</span>
+                            )}
+                            {!isBooked && isLowStock && (
+                              <span className="absolute top-0.5 right-1 text-[8px] text-gold">残1</span>
+                            )}
+                            {!isBooked && avail > 1 && (
+                              <span className="absolute top-1 right-1 text-[9px] opacity-40">×{avail}</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {totalAvail === 0 && !slotsLoading && (
+                      <p className="text-xs text-muted-foreground py-3 text-center">
+                        この日はすべて満席です。別の日をお試しください。
+                      </p>
+                    )}
+                  </div>
+                );
+              })()
             ) : (
               <div className="grid grid-cols-5 gap-px bg-border">
                 {["10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00","19:00"].map(t => (
