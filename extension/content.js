@@ -1,4 +1,4 @@
-// Salon Board Customer Exporter - Content Script v6
+// Salon Board Customer Exporter - Content Script v8
 // 戦略:
 //  ① 一覧スキャン: 実画面遷移で全ページ巡回。各行の「名前リンクのクリック識別子」も保存
 //  ② 詳細スキャン: 未取得顧客を1人ずつ実画面で開き、詳細を読み取り→一覧に戻る を繰り返す
@@ -45,6 +45,24 @@ async function clearDetailJob() {
 
 const MAX_DETAIL_ATTEMPTS = 2;
 const DETAIL_NAVIGATION_TIMEOUT_MS = 12000;
+const CURRENT_TARGET_SESSION_KEY = 'sb_detail_current_target_v8';
+
+function readSessionDetailTarget() {
+  try {
+    const raw = sessionStorage.getItem(CURRENT_TARGET_SESSION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function writeSessionDetailTarget(target) {
+  try { sessionStorage.setItem(CURRENT_TARGET_SESSION_KEY, JSON.stringify(target)); } catch (e) {}
+}
+
+function clearSessionDetailTarget() {
+  try { sessionStorage.removeItem(CURRENT_TARGET_SESSION_KEY); } catch (e) {}
+}
 
 function customerUid(c, index = 0) {
   const customerNo = normalizeValue(c.customer_no);
