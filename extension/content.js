@@ -587,7 +587,21 @@ async function autoContinueDetailJob() {
     } else {
       // 保存先不明 → snapshot/expectUid を使って強制マーク（無限ループ防止）
       const fallbackUid = lock?.uid || job.currentUid || (job.currentSnapshot && job.currentSnapshot.export_uid);
-      if (fallbackUid) {
+      const fallbackIdx = fallbackUid ? customers.findIndex(c => c.export_uid === fallbackUid) : customers.findIndex(c => c.detail_status === 'processing' || (allowed.has(c.export_uid) && isDetailPending(c)));
+      if (fallbackIdx >= 0) {
+        const ok = hasUsefulDetail(detail);
+        const mergedDetail = mergeDetailForSave(customers[fallbackIdx], detail);
+        customers[fallbackIdx] = {
+          ...mergedDetail,
+          detail_fetched: ok,
+          detail_status: ok ? 'fetched' : 'skipped',
+          detail_error: ok ? '' : '保存先照合が弱かったためスキップ扱いにしました',
+          detail_fetched_at: new Date().toISOString(),
+          detail_url: location.href,
+        };
+        await saveStored(customers);
+        sendStatus(`${ok ? '📥 詳細取得' : '⚠️ 詳細読取失敗'}: ${customers[fallbackIdx].full_name || customers[fallbackIdx].kana || '(名前不明)'} [強制前進]`);
+      } else if (fallbackUid) {
         const ok = hasUsefulDetail(detail);
         const newEntry = {
           ...(lock?.snapshot || job.currentSnapshot || {}),
@@ -603,7 +617,7 @@ async function autoContinueDetailJob() {
         await saveStored(customers);
         sendStatus(`⚠️ 保存先を特定できないため強制保存: ${newEntry.full_name || newEntry.kana || fallbackUid}`);
       } else {
-        sendStatus(`⚠️ 保存先を特定できません。次の顧客へ進みます(${detail.full_name || job.currentSnapshot?.full_name || '?'})`);
+        sendStatus(`⚠️ 詳細ページは読めましたが一覧との照合ができないため、次の顧客へ進みます(${detail.full_name || job.currentSnapshot?.full_name || '?'})`);
       }
     }
 
