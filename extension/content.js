@@ -1,4 +1,4 @@
-// Salon Board Customer Exporter - Content Script v6
+// Salon Board Customer Exporter - Content Script v8
 // 戦略:
 //  ① 一覧スキャン: 実画面遷移で全ページ巡回。各行の「名前リンクのクリック識別子」も保存
 //  ② 詳細スキャン: 未取得顧客を1人ずつ実画面で開き、詳細を読み取り→一覧に戻る を繰り返す
@@ -42,9 +42,51 @@ async function setDetailJob(job) {
 async function clearDetailJob() {
   await chrome.storage.local.remove('sb_detail_job');
 }
+async function getDetailTargetLock() {
+  const { sb_detail_target_lock = null } = await chrome.storage.local.get('sb_detail_target_lock');
+  return sb_detail_target_lock;
+}
+async function setDetailTargetLock(lock) {
+  await chrome.storage.local.set({ sb_detail_target_lock: lock });
+}
+async function clearDetailTargetLock() {
+  await chrome.storage.local.remove('sb_detail_target_lock');
+}
 
 const MAX_DETAIL_ATTEMPTS = 2;
 const DETAIL_NAVIGATION_TIMEOUT_MS = 12000;
+const CURRENT_TARGET_SESSION_KEY = 'sb_detail_current_target_v8';
+
+function readSessionDetailTarget() {
+  try {
+    const raw = sessionStorage.getItem(CURRENT_TARGET_SESSION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function writeSessionDetailTarget(target) {
+  try { sessionStorage.setItem(CURRENT_TARGET_SESSION_KEY, JSON.stringify(target)); } catch (e) {}
+}
+
+function clearSessionDetailTarget() {
+  try { sessionStorage.removeItem(CURRENT_TARGET_SESSION_KEY); } catch (e) {}
+}
+
+function normalizeUrlForCompare(url) {
+  try {
+    const u = new URL(url, location.href);
+    u.hash = '';
+    return u.href;
+  } catch (e) {
+    return String(url || '').split('#')[0];
+  }
+}
+
+function isSameUrl(a, b) {
+  return normalizeUrlForCompare(a) === normalizeUrlForCompare(b);
+}
 
 function customerUid(c, index = 0) {
   const customerNo = normalizeValue(c.customer_no);
@@ -86,22 +128,28 @@ function looksLikeLabelOnly(value) {
   return /^(誕生日|生年月日|電話番号|住所|血液型|性別|E-?MAIL|メール|お客様番号|顧客番号|メモ|来店|職業)[：:]?$/.test(s);
 }
 
-function resolveDetailCustomerIndex(customers, job, detail = {}) {
-  const expectKey = job.currentKey;
-  const expectUid = job.currentUid;
-  const expectIndex = Number.isInteger(job.currentIndex) ? job.currentIndex : -1;
-  const snapshot = job.currentSnapshot || {};
+function normalizeMatchText(value) {
+  return normalizeValue(value).replace(/[\s　・･()（）\[\]【】]/g, '').toLowerCase();
+}
 
-  // ① クリック時に確定したUID（最優先・絶対）
+function resolveDetailCustomerIndex(customers, job, detail = {}) {
+  const sessionTarget = readSessionDetailTarget();
+  const expectKey = job.currentKey;
+  const expectUid = job.currentUid || sessionTarget?.uid;
+  const expectIndex = Number.isInteger(job.currentIndex) ? job.currentIndex : (Number.isInteger(sessionTarget?.index) ? sessionTarget.index : -1);
+  const snapshot = job.currentSnapshot || sessionTarget?.snapshot || {};
+
+  // ① クリック直前に sessionStorage に固定した配列位置（ページ遷移しても残るため最優先）
+  if (expectIndex >= 0 && customers[expectIndex]) {
+    const c = customers[expectIndex];
+    if (!expectUid || c.export_uid === expectUid || c.detail_status === 'processing') return expectIndex;
+  }
+  // ② クリック時に確定したUID
   if (expectUid) {
     const i = customers.findIndex(c => c.export_uid === expectUid);
     if (i >= 0) return i;
   }
-  // ② クリック時のインデックス位置（配列が変わっていなければ）
-  if (expectIndex >= 0 && customers[expectIndex]) {
-    return expectIndex;
-  }
-  // ③ processing フラグが立っているもの
+  // ③ processing フラグが立っているもの（複数あれば先頭）
   let idx = customers.findIndex(c => c.detail_status === 'processing');
   if (idx >= 0) return idx;
   // ④ snapshot による(ページ/行) または (氏名+カナ) 一致
@@ -111,6 +159,16 @@ function resolveDetailCustomerIndex(customers, job, detail = {}) {
   }
   if (snapshot.full_name && snapshot.kana) {
     idx = customers.findIndex(c => c.full_name === snapshot.full_name && c.kana === snapshot.kana);
+    if (idx >= 0) return idx;
+  }
+  if (detail.full_name || detail.kana) {
+    const dn = normalizeMatchText(detail.full_name);
+    const dk = normalizeMatchText(detail.kana);
+    idx = customers.findIndex(c => {
+      const cn = normalizeMatchText(c.full_name);
+      const ck = normalizeMatchText(c.kana);
+      return (dn && cn && dn === cn) || (dk && ck && dk === ck) || (dn && cn && (dn.includes(cn) || cn.includes(dn)) && dk && ck && (dk.includes(ck) || ck.includes(dk)));
+    });
     if (idx >= 0) return idx;
   }
   // ⑤ 詳細ページから読み取れた情報での一致(最後の手段)
@@ -378,6 +436,19 @@ function isDetailPage() {
   return /お客様情報詳細|お客様情報[\s\S]*来店情報|基本情報[\s\S]*来店情報|電話番号\s*1[\s\S]*E-?MAIL|氏名[\s\S]*カナ[\s\S]*電話番号/.test(txt);
 }
 
+function isCustomerListPage() {
+  const txt = (document.body.innerText || document.body.textContent || '');
+  if (!/お客様情報[\s\S]*一覧|お客様情報一覧|お客様一覧/.test(txt)) return false;
+  const table = findListTable();
+  if (!table) return false;
+  const head = getHeaderCells(table).join('|') || cleanText(table.querySelector('tr'));
+  return /氏名|カナ/.test(head) && /来店回数|前回来店|性別|お客様番号/.test(head);
+}
+
+function scheduleDetailContinue(ms = 1200) {
+  setTimeout(() => autoContinueDetailJob().catch(e => sendStatus(`⚠️ 詳細スキャン継続エラー: ${e.message}`)), ms);
+}
+
 function assignDetailField(obj, label, value) {
   if (!label || !value) return;
   const cleanLabel = normalizeValue(label).replace(/[＊*必須\s]/g, '');
@@ -493,10 +564,12 @@ async function autoContinueDetailJob() {
     await sleep(800); // レンダー完了待ち
     const detail = extractDetailInfoFromBody();
     const customers = withCustomerUids(await getStored());
+    const lock = await getDetailTargetLock();
 
     // 対象顧客を特定: クリック前に固定したUID/配列位置を最優先（氏名パース失敗でもループしない）
     const expectUid = job.currentUid;
-    const idx = resolveDetailCustomerIndex(customers, job, detail);
+    let idx = Number.isInteger(lock?.index) && customers[lock.index] ? lock.index : -1;
+    if (idx < 0) idx = resolveDetailCustomerIndex(customers, job, detail);
     if (idx >= 0) {
       const ok = hasUsefulDetail(detail);
       const mergedDetail = mergeDetailForSave(customers[idx], detail);
@@ -513,11 +586,25 @@ async function autoContinueDetailJob() {
       sendStatus(`${ok ? '📥 詳細取得' : '⚠️ 詳細読取失敗'}: ${customers[idx].full_name || customers[idx].kana || '(名前不明)'} [${doneCount}/${job.totalTargets}]`);
     } else {
       // 保存先不明 → snapshot/expectUid を使って強制マーク（無限ループ防止）
-      const fallbackUid = job.currentUid || (job.currentSnapshot && job.currentSnapshot.export_uid);
-      if (fallbackUid) {
+      const fallbackUid = lock?.uid || job.currentUid || (job.currentSnapshot && job.currentSnapshot.export_uid);
+      const fallbackIdx = fallbackUid ? customers.findIndex(c => c.export_uid === fallbackUid) : customers.findIndex(c => c.detail_status === 'processing' || isDetailPending(c));
+      if (fallbackIdx >= 0) {
+        const ok = hasUsefulDetail(detail);
+        const mergedDetail = mergeDetailForSave(customers[fallbackIdx], detail);
+        customers[fallbackIdx] = {
+          ...mergedDetail,
+          detail_fetched: ok,
+          detail_status: ok ? 'fetched' : 'skipped',
+          detail_error: ok ? '' : '保存先照合が弱かったためスキップ扱いにしました',
+          detail_fetched_at: new Date().toISOString(),
+          detail_url: location.href,
+        };
+        await saveStored(customers);
+        sendStatus(`${ok ? '📥 詳細取得' : '⚠️ 詳細読取失敗'}: ${customers[fallbackIdx].full_name || customers[fallbackIdx].kana || '(名前不明)'} [強制前進]`);
+      } else if (fallbackUid) {
         const ok = hasUsefulDetail(detail);
         const newEntry = {
-          ...(job.currentSnapshot || {}),
+          ...(lock?.snapshot || job.currentSnapshot || {}),
           ...detail,
           export_uid: fallbackUid,
           detail_fetched: ok,
@@ -530,7 +617,7 @@ async function autoContinueDetailJob() {
         await saveStored(customers);
         sendStatus(`⚠️ 保存先を特定できないため強制保存: ${newEntry.full_name || newEntry.kana || fallbackUid}`);
       } else {
-        sendStatus(`⚠️ 保存先を特定できません。次の顧客へ進みます(${detail.full_name || job.currentSnapshot?.full_name || '?'})`);
+        sendStatus(`⚠️ 詳細ページは読めましたが一覧との照合ができないため、次の顧客へ進みます(${detail.full_name || job.currentSnapshot?.full_name || '?'})`);
       }
     }
 
@@ -541,6 +628,8 @@ async function autoContinueDetailJob() {
     job.currentIndex = null;
     job.currentSnapshot = null;
     await setDetailJob(job);
+    clearSessionDetailTarget();
+    await clearDetailTargetLock();
 
     await sleep(job.delay || 2500);
     // 一覧へ戻る
@@ -575,6 +664,8 @@ async function autoContinueDetailJob() {
     job.currentIndex = null;
     job.currentSnapshot = null;
     await setDetailJob(job);
+    clearSessionDetailTarget();
+    await clearDetailTargetLock();
     customers = withCustomerUids(await getStored());
   }
 
@@ -652,6 +743,21 @@ async function autoContinueDetailJob() {
     const key = clickedTarget.target.detail_key || clickedTarget.target.customer_no || clickedTarget.target.export_uid;
     const uid = clickedTarget.target.export_uid;
     const targetIdx = customers.findIndex(c => c.export_uid === uid);
+      const targetLock = {
+        uid,
+        index: targetIdx,
+        key,
+        listUrl: location.href,
+        openedFromUrl: location.href,
+        openedAt: Date.now(),
+        snapshot: {
+          export_uid: clickedTarget.target.export_uid,
+          full_name: clickedTarget.target.full_name || '',
+          kana: clickedTarget.target.kana || '',
+          scan_page: clickedTarget.target.scan_page || null,
+          scan_row: clickedTarget.target.scan_row || null,
+        },
+      };
     if (targetIdx >= 0) {
       customers[targetIdx] = {
         ...customers[targetIdx],
@@ -664,16 +770,12 @@ async function autoContinueDetailJob() {
     job.currentKey = key;
     job.currentUid = uid;
     job.currentIndex = targetIdx;
-    job.currentSnapshot = {
-      export_uid: clickedTarget.target.export_uid,
-      full_name: clickedTarget.target.full_name || '',
-      kana: clickedTarget.target.kana || '',
-      scan_page: clickedTarget.target.scan_page || null,
-      scan_row: clickedTarget.target.scan_row || null,
-    };
+    job.currentSnapshot = targetLock.snapshot;
     job.listUrl = location.href; // 戻り先として記録
     job.openedAt = Date.now();
     await setDetailJob(job);
+    await setDetailTargetLock(targetLock);
+    writeSessionDetailTarget(targetLock);
     const doneCount = customers.filter(c => c.detail_fetched || c.detail_status === 'skipped').length;
     sendStatus(`▶ 詳細を開きます: ${clickedTarget.target.full_name || clickedTarget.target.kana || '(名前不明)'} [${doneCount + 1}/${job.totalTargets}]`);
     await sleep(500);
@@ -783,4 +885,4 @@ if (document.readyState === 'complete') {
   window.addEventListener('load', () => setTimeout(bootAutoContinue, 1000));
 }
 
-console.log('[Salon Board Exporter] v6 ready');
+console.log('[Salon Board Exporter] v8 ready');
