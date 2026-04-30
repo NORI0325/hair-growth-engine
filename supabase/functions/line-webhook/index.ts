@@ -135,6 +135,71 @@ async function generateLinkedCustomerReply(
   }
 }
 
+// メッセージの種類を判定（ハイブリッド遅延の基本速度を決める）
+type MessageKind = "urgent" | "booking" | "question" | "casual";
+
+function classifyMessageKind(text: string): MessageKind {
+  const t = text.toLowerCase();
+  // 緊急：クレーム・キャンセル・トラブル系
+  if (/(キャンセル|cancel|遅れ|遅刻|間に合わ|急ぎ|至急|今日.*行け|行けな|休み|体調|具合|熱|風邪|クレーム|苦情|怒|不満|最悪|ひどい|間違|忘れ|来店できな)/.test(t)) {
+    return "urgent";
+  }
+  // 予約系：日時・予約変更
+  if (/(予約|変更|日時|何時|空い|空き|reserv|book|時間|曜日|来週|来月|今度|また|次回)/.test(t)) {
+    return "booking";
+  }
+  // 質問系：?を含む or 質問語
+  if (/[?？]|教え|どう|何|いくら|料金|値段|メニュー|やって|できま|可能|ありま/.test(t)) {
+    return "question";
+  }
+  return "casual";
+}
+
+// 種類別の自然な遅延（ms）。範囲内ランダム + 営業時間外は短めに（埋もれ防止）
+function pickReplyDelayMs(kind: MessageKind, isOutsideHours: boolean): {
+  ackDelayMs: number;   // 受領メッセージの遅延（短い）
+  mainDelayMs: number;  // 本回答の遅延
+  twoStep: boolean;     // 2通方式にするか
+} {
+  const rand = (min: number, max: number) => Math.floor(min + Math.random() * (max - min));
+  // 営業時間外は1通だけ（受領=本回答にまとめる）
+  if (isOutsideHours) {
+    return { ackDelayMs: 0, mainDelayMs: rand(8_000, 25_000), twoStep: false };
+  }
+  switch (kind) {
+    case "urgent":
+      // 緊急は即気づく安心感。1通で短く速く。
+      return { ackDelayMs: 0, mainDelayMs: rand(15_000, 45_000), twoStep: false };
+    case "booking":
+      // 受領→本回答（予定確認している感）
+      return { ackDelayMs: rand(8_000, 18_000), mainDelayMs: rand(90_000, 180_000), twoStep: true };
+    case "question":
+      // 受領→本回答（丁寧に考えている感）
+      return { ackDelayMs: rand(10_000, 22_000), mainDelayMs: rand(120_000, 300_000), twoStep: true };
+    case "casual":
+    default:
+      // 雑談は2通方式不要、ゆったり1通
+      return { ackDelayMs: 0, mainDelayMs: rand(60_000, 180_000), twoStep: false };
+  }
+}
+
+// 受領メッセージ（短く・温かく・人間味）。ランダムに揺らぎを持たせる
+function pickAckMessage(customerName: string, kind: MessageKind): string {
+  const name = `${customerName}様`;
+  const bookingAcks = [
+    `${name}\nご連絡ありがとうございます🌸\n少々お時間いただき、確認のうえ改めてご連絡いたしますね。`,
+    `${name}\nありがとうございます。\n予定を確認しまして、追ってご返信いたします🙇‍♀️`,
+    `${name}\nメッセージありがとうございます🌷\n確認次第、改めてご案内させてくださいませ。`,
+  ];
+  const questionAcks = [
+    `${name}\nお問い合わせありがとうございます🌸\n少しお時間をいただき、改めてお返事いたしますね。`,
+    `${name}\nありがとうございます。\n確認のうえ、追ってご連絡させていただきます🙇‍♀️`,
+    `${name}\nメッセージ拝見しました🌷\n少々お待ちいただけますと幸いです。`,
+  ];
+  const list = kind === "booking" ? bookingAcks : questionAcks;
+  return list[Math.floor(Math.random() * list.length)];
+}
+
 // 未連携の挨拶判定（電話番号送信を促す前に温かい一言を返したい）
 function isGreetingOrSimpleText(text: string): boolean {
   const t = text.trim();
