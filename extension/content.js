@@ -363,4 +363,4 @@ if (document.readyState === 'complete') {
   window.addEventListener('load', () => setTimeout(autoContinueIfJobActive, 1000));
 }
 
-console.log('[Salon Board Exporter] v3 ready');
+console.log('[Salon Board Exporter] v4 ready');
