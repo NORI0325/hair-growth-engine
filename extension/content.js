@@ -702,6 +702,21 @@ async function autoContinueDetailJob() {
     const key = clickedTarget.target.detail_key || clickedTarget.target.customer_no || clickedTarget.target.export_uid;
     const uid = clickedTarget.target.export_uid;
     const targetIdx = customers.findIndex(c => c.export_uid === uid);
+      const targetLock = {
+        uid,
+        index: targetIdx,
+        key,
+        listUrl: location.href,
+        openedFromUrl: location.href,
+        openedAt: Date.now(),
+        snapshot: {
+          export_uid: clickedTarget.target.export_uid,
+          full_name: clickedTarget.target.full_name || '',
+          kana: clickedTarget.target.kana || '',
+          scan_page: clickedTarget.target.scan_page || null,
+          scan_row: clickedTarget.target.scan_row || null,
+        },
+      };
     if (targetIdx >= 0) {
       customers[targetIdx] = {
         ...customers[targetIdx],
@@ -714,16 +729,12 @@ async function autoContinueDetailJob() {
     job.currentKey = key;
     job.currentUid = uid;
     job.currentIndex = targetIdx;
-    job.currentSnapshot = {
-      export_uid: clickedTarget.target.export_uid,
-      full_name: clickedTarget.target.full_name || '',
-      kana: clickedTarget.target.kana || '',
-      scan_page: clickedTarget.target.scan_page || null,
-      scan_row: clickedTarget.target.scan_row || null,
-    };
+    job.currentSnapshot = targetLock.snapshot;
     job.listUrl = location.href; // 戻り先として記録
     job.openedAt = Date.now();
     await setDetailJob(job);
+    await setDetailTargetLock(targetLock);
+    writeSessionDetailTarget(targetLock);
     const doneCount = customers.filter(c => c.detail_fetched || c.detail_status === 'skipped').length;
     sendStatus(`▶ 詳細を開きます: ${clickedTarget.target.full_name || clickedTarget.target.kana || '(名前不明)'} [${doneCount + 1}/${job.totalTargets}]`);
     await sleep(500);
