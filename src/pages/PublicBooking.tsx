@@ -47,8 +47,11 @@ const PublicBooking = () => {
   const [selectedMenus, setSelectedMenus] = useState<string[]>([]);
   const [completed, setCompleted] = useState(false);
   const [availableSlots, setAvailableSlots] = useState<Record<string, number>>({});
+  const [maxStaffCount, setMaxStaffCount] = useState(1);
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [hasStaff, setHasStaff] = useState(false);
+  const [openTime, setOpenTime] = useState<string>("10:00");
+  const [closeTime, setCloseTime] = useState<string>("19:00");
 
   const [form, setForm] = useState({ full_name: "", phone: "", email: "", date: "", time: "", notes: "" });
 
