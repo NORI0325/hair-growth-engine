@@ -43,6 +43,41 @@ async function clearDetailJob() {
   await chrome.storage.local.remove('sb_detail_job');
 }
 
+const MAX_DETAIL_ATTEMPTS = 2;
+
+function customerUid(c, index = 0) {
+  const customerNo = normalizeValue(c.customer_no);
+  if (customerNo) return `no:${customerNo}`;
+  const detailKey = normalizeValue(c.detail_key);
+  if (detailKey) return `detail:${detailKey}`;
+  const detailUrl = normalizeValue(c.detail_url);
+  if (detailUrl) return `url:${detailUrl}`;
+  if (c.scan_page && c.scan_row) return `row:${c.scan_page}:${c.scan_row}`;
+  return `fallback:${normalizeValue(c.kana)}|${normalizeValue(c.full_name)}|${normalizeValue(c.last_visit_date)}|${normalizeValue(c.visit_count)}|${index}`;
+}
+
+function withCustomerUids(customers) {
+  return customers.map((c, i) => ({
+    ...c,
+    export_uid: c.export_uid || customerUid(c, i),
+    detail_attempts: Number(c.detail_attempts || 0),
+  }));
+}
+
+function isDetailPending(c) {
+  if (c.detail_fetched === true || c.detail_status === 'fetched') return false;
+  if (c.detail_status === 'skipped') return false;
+  return Number(c.detail_attempts || 0) < MAX_DETAIL_ATTEMPTS;
+}
+
+function hasUsefulDetail(detail) {
+  return Boolean(
+    detail.customer_no || detail.full_name || detail.kana || detail.phone || detail.phone2 ||
+    detail.email || detail.email_mobile || detail.birthday || detail.address || detail.memo ||
+    detail.blood_type || detail.visit_trigger || (detail.visit_history && detail.visit_history.length)
+  );
+}
+
 // ============ テーブル探索 ============
 function findListTable(root = document) {
   const tables = [...root.querySelectorAll('table')];
