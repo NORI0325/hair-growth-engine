@@ -317,7 +317,41 @@ function mergeCustomers(existing, fresh) {
 function isDetailPage() {
   const txt = (document.body.innerText || document.body.textContent || '');
   // 画面上部に「お客様情報詳細」、または「基本情報」「来店情報」などの見出しがある
-  return /お客様情報詳細|基本情報[\s\S]*来店情報/.test(txt);
+  return /お客様情報詳細|お客様情報[\s\S]*来店情報|基本情報[\s\S]*来店情報|電話番号\s*1[\s\S]*E-?MAIL|氏名[\s\S]*カナ[\s\S]*電話番号/.test(txt);
+}
+
+function assignDetailField(obj, label, value) {
+  if (!label || !value) return;
+  const cleanLabel = normalizeValue(label).replace(/[＊*必須\s]/g, '');
+  let val = normalizeValue(value)
+    .replace(new RegExp(`^${cleanLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[：:\s]*`), '')
+    .replace(/^お客様情報の/g, '')
+    .replace(/^[：:\s]+/, '')
+    .trim();
+  if (!val) return;
+
+  if (/氏名.*漢字|^氏名$|名前/.test(cleanLabel) && !obj.full_name) obj.full_name = val.replace(/ダイレクト会員|会員/g, '').trim();
+  else if (/氏名.*カナ|カナ/.test(cleanLabel) && !obj.kana) obj.kana = val;
+  else if (/電話番号1|電話1|^電話番号$|TEL1/i.test(cleanLabel) && !obj.phone) obj.phone = val;
+  else if (/電話番号2|電話2|TEL2/i.test(cleanLabel) && !obj.phone2) obj.phone2 = val;
+  else if (/E-?MAIL.*PC|メール.*PC/i.test(cleanLabel) && !obj.email) obj.email = val;
+  else if (/E-?MAIL.*携帯|メール.*携帯|モバイル/i.test(cleanLabel) && !obj.email_mobile) obj.email_mobile = val;
+  else if (/誕生日|生年月日/.test(cleanLabel) && !obj.birthday) obj.birthday = val;
+  else if (/血液型/.test(cleanLabel) && !obj.blood_type) obj.blood_type = val;
+  else if (/職業/.test(cleanLabel) && !obj.occupation) obj.occupation = val;
+  else if (/性別/.test(cleanLabel) && !obj.gender) obj.gender = val.replace(/^お客様情報の性別[：:\s]*/, '').split(/\s|・|\n/)[0];
+  else if (/住所/.test(cleanLabel) && !obj.address) obj.address = val;
+  else if (/お客様メモ|メモ/.test(cleanLabel) && !obj.memo) obj.memo = val;
+  else if (/初回来店/.test(cleanLabel) && !obj.first_visit_date) obj.first_visit_date = val;
+  else if (/前回来店|最終来店/.test(cleanLabel) && !obj.last_visit_date) obj.last_visit_date = val;
+  else if (/来店回数/.test(cleanLabel) && !obj.visit_count) obj.visit_count = val;
+  else if (/お客様番号|顧客番号/.test(cleanLabel) && !obj.customer_no) obj.customer_no = val;
+  else if (/要注意|注意/.test(cleanLabel) && !obj.warning_flag) obj.warning_flag = val;
+  else if (/その他1/.test(cleanLabel) && !obj.other1) obj.other1 = val;
+  else if (/その他2/.test(cleanLabel) && !obj.other2) obj.other2 = val;
+  else if (/その他3/.test(cleanLabel) && !obj.other3) obj.other3 = val;
+  else if (/はがき|DM|郵送/.test(cleanLabel) && !obj.postcard) obj.postcard = val;
+  else if (/来店きっかけ|きっかけ/.test(cleanLabel) && !obj.visit_trigger) obj.visit_trigger = val;
 }
 
 function extractDetailInfoFromBody() {
@@ -334,28 +368,32 @@ function extractDetailInfoFromBody() {
     let val = cleanText(td);
     if (!val || val === '-' || val === '－') return;
 
-    if (/氏名.*漢字|^氏名$/.test(label) && !obj.full_name) obj.full_name = val.replace(/ダイレクト会員|会員/g, '').trim();
-    else if (/氏名.*カナ/.test(label)) obj.kana = val;
-    else if (/電話番号\s*1|^電話番号$/.test(label)) obj.phone = val;
-    else if (/電話番号\s*2/.test(label)) obj.phone2 = val;
-    else if (/E-?MAIL.*PC/i.test(label)) obj.email = val;
-    else if (/E-?MAIL.*携帯/i.test(label)) obj.email_mobile = val;
-    else if (/誕生日|生年月日/.test(label)) obj.birthday = val;
-    else if (/血液型/.test(label)) obj.blood_type = val;
-    else if (/職業/.test(label)) obj.occupation = val;
-    else if (/性別/.test(label)) obj.gender = val.split(/\s|・|\n/)[0];
-    else if (/^住所$|住所/.test(label)) obj.address = val;
-    else if (/お客様メモ/.test(label)) obj.memo = val;
-    else if (/初回来店/.test(label)) obj.first_visit_date = val;
-    else if (/来店回数/.test(label)) obj.visit_count = val;
-    else if (/お客様番号|顧客番号/.test(label)) obj.customer_no = val;
-    else if (/要注意/.test(label)) obj.warning_flag = val;
-    else if (/その他\s*1/.test(label)) obj.other1 = val;
-    else if (/その他\s*2/.test(label)) obj.other2 = val;
-    else if (/その他\s*3/.test(label)) obj.other3 = val;
-    else if (/はがき/.test(label)) obj.postcard = val;
-    else if (/来店きっかけ/.test(label)) obj.visit_trigger = val;
+    assignDetailField(obj, label, val);
   });
+
+  // thが無い詳細画面・td内に「項目：値」が入る画面にも対応
+  document.querySelectorAll('tr').forEach(tr => {
+    const cells = [...tr.querySelectorAll('th,td')].map(cleanText).filter(Boolean);
+    for (let i = 0; i < cells.length - 1; i += 1) assignDetailField(obj, cells[i], cells[i + 1]);
+    cells.forEach(cell => {
+      const m = cell.match(/^(.{1,30}?)[：:]\s*(.+)$/);
+      if (m) assignDetailField(obj, m[1], m[2]);
+    });
+  });
+
+  const rawLines = (document.body.innerText || document.body.textContent || '').split(/\n+/).map(s => s.trim()).filter(Boolean);
+  rawLines.forEach(line => {
+    const m = line.match(/^(.{1,30}?)[：:]\s*(.+)$/);
+    if (m) assignDetailField(obj, m[1], m[2]);
+  });
+
+  const allText = (document.body.innerText || document.body.textContent || '').replace(/\s+/g, ' ');
+  if (!obj.email) obj.email = (allText.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i) || [])[0] || obj.email;
+  const phones = [...new Set(allText.match(/0\d{1,4}[-ー−]?\d{1,4}[-ー−]?\d{3,4}/g) || [])];
+  if (!obj.phone && phones[0]) obj.phone = phones[0];
+  if (!obj.phone2 && phones[1]) obj.phone2 = phones[1];
+  if (!obj.birthday) obj.birthday = (allText.match(/(?:19|20)\d{2}[\/年.-]\d{1,2}[\/月.-]\d{1,2}/) || [])[0] || obj.birthday;
+  if (!obj.address) obj.address = (allText.match(/〒?\d{3}[-ー−]?\d{4}\s*[^\s]+/) || [])[0] || obj.address;
 
   // 予約履歴テーブル(来店日 / スタイリスト / ステータス / メニュー …)
   try {
