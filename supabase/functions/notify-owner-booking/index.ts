@@ -1,7 +1,10 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
+import { sendLinePush } from "../_shared/line-push.ts";
 
-// 公開：予約変更（新規/更新/キャンセル）時にオーナーへメール通知
+// 公開：予約変更（新規/更新/キャンセル）時にオーナー＋お客様へ通知
+//  - オーナー: メール（owner_notification_email）
+//  - お客様 : LINE連携済みなら LINE プッシュ、メール登録があればメール
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -69,45 +72,108 @@ Deno.serve(async (req) => {
     }
 
     const [{ data: profile }, { data: customer }] = await Promise.all([
-      supabase.from("profiles").select("salon_name, owner_notification_email").eq("id", booking.owner_id).maybeSingle(),
-      supabase.from("customers").select("full_name, phone").eq("id", booking.customer_id).maybeSingle(),
+      supabase
+        .from("profiles")
+        .select("salon_name, owner_notification_email, line_channel_access_token")
+        .eq("id", booking.owner_id)
+        .maybeSingle(),
+      supabase
+        .from("customers")
+        .select("full_name, phone, email, line_user_id")
+        .eq("id", booking.customer_id)
+        .maybeSingle(),
     ]);
 
-    const recipient = profile?.owner_notification_email;
-    if (!recipient) {
-      return new Response(JSON.stringify({ skipped: true, reason: "no_recipient" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+    const salonName = profile?.salon_name ?? "サロン";
+    const bookingDate = booking.booking_date;
+    const bookingTime = String(booking.booking_time).slice(0, 5);
+    const menu = booking.menu;
+    const customerName = customer?.full_name ?? "お客様";
+
+    const eventLabel =
+      eventType === "created" ? "ご予約承りました"
+        : eventType === "updated" ? "ご予約内容を変更しました"
+          : "ご予約をキャンセルしました";
+
+    const results: Record<string, unknown> = {};
+
+    // === ① オーナーへメール通知 ===
+    const ownerRecipient = profile?.owner_notification_email;
+    if (ownerRecipient) {
+      const { error } = await supabase.functions.invoke("send-transactional-email", {
+        body: {
+          templateName: "booking-alert-owner",
+          recipientEmail: ownerRecipient,
+          idempotencyKey: `owner-alert-${eventType}-${bookingId}`,
+          templateData: {
+            eventType,
+            customerName,
+            customerPhone: customer?.phone ?? undefined,
+            bookingDate,
+            bookingTime,
+            menu,
+            notes: booking.notes ?? undefined,
+            salonName: profile?.salon_name ?? undefined,
+          },
+        },
       });
+      results.owner_email = error ? `error: ${error.message}` : "sent";
+      if (error) console.error("owner email error:", error);
+    } else {
+      results.owner_email = "skipped: no recipient";
     }
 
-    const templateData = {
-      eventType,
-      customerName: customer?.full_name ?? "お客様",
-      customerPhone: customer?.phone ?? undefined,
-      bookingDate: booking.booking_date,
-      bookingTime: String(booking.booking_time).slice(0, 5),
-      menu: booking.menu,
-      notes: booking.notes ?? undefined,
-      salonName: profile?.salon_name ?? undefined,
-    };
-
-    const { error } = await supabase.functions.invoke("send-transactional-email", {
-      body: {
-        templateName: "booking-alert-owner",
-        recipientEmail: recipient,
-        idempotencyKey: `owner-alert-${eventType}-${bookingId}`,
-        templateData,
-      },
-    });
-
-    if (error) {
-      console.error("notify-owner-booking invoke error:", error);
-      return new Response(JSON.stringify({ error: "send_failed" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    // === ② お客様へ LINE プッシュ（連携済みなら）===
+    if (customer?.line_user_id && profile?.line_channel_access_token) {
+      const lineMsg =
+        `🌸 ${customerName}様\n\n${eventLabel}。\n\n` +
+        `📅 ${bookingDate}\n⏰ ${bookingTime}\n💇 ${menu}\n\n` +
+        (eventType === "cancelled"
+          ? `またのご利用を心よりお待ちしております。\n\n— ${salonName}`
+          : `当日のご来店を心よりお待ちしております。\nご変更・キャンセルはトーク下部の「予約する」ボタンよりお願いいたします。\n\n— ${salonName}`);
+      const r = await sendLinePush(profile.line_channel_access_token, customer.line_user_id, lineMsg);
+      results.customer_line = r.ok ? "sent" : `error: ${r.err}`;
+      // ログ記録
+      await supabase.from("line_message_log").insert({
+        owner_id: booking.owner_id,
+        customer_id: booking.customer_id,
+        line_user_id: customer.line_user_id,
+        job_type: `booking_${eventType}`,
+        message: lineMsg,
+        status: r.ok ? "sent" : "failed",
+        error: r.ok ? null : r.err,
       });
+    } else {
+      results.customer_line = "skipped: not linked";
     }
 
-    return new Response(JSON.stringify({ success: true }), {
+    // === ③ お客様へメール（メール登録があれば）===
+    if (customer?.email) {
+      const templateName =
+        eventType === "cancelled" ? "booking-cancelled"
+          : eventType === "updated" ? "booking-updated"
+            : "booking-confirmation";
+      const { error } = await supabase.functions.invoke("send-transactional-email", {
+        body: {
+          templateName,
+          recipientEmail: customer.email,
+          idempotencyKey: `customer-${eventType}-${bookingId}`,
+          templateData: {
+            customerName,
+            salonName,
+            bookingDate,
+            bookingTime,
+            menu,
+          },
+        },
+      });
+      results.customer_email = error ? `error: ${error.message}` : "sent";
+      if (error) console.error("customer email error:", error);
+    } else {
+      results.customer_email = "skipped: no email";
+    }
+
+    return new Response(JSON.stringify({ success: true, results }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
