@@ -227,7 +227,13 @@ async function autoContinueIfJobActive() {
   const stored = await getStored();
   const merged = mergeCustomers(stored, rows);
   await saveStored(merged);
-  sendStatus(`💾 累計 ${merged.length}件 保存`);
+  sendStatus(`💾 このページ ${rows.length}件 / 累計 ${merged.length}件 保存`);
+
+  if (rows.length === 0) {
+    await clearJob();
+    sendStatus('⚠️ このページで0件でした。誤取得防止のため停止しました。「現在ページを診断」を押してください。');
+    return;
+  }
 
   // 終了判定
   const reachedEnd = job.endPage && info.current >= job.endPage;
@@ -328,9 +334,10 @@ function parseDetailFromDoc(doc) {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
     if (msg.action === 'scanList') {
+      if (msg.reset) await saveStored([]);
       // ジョブを記録して、現ページから処理スタート
       await setJob({ active: true, endPage: msg.endPage || null, delay: msg.delay || 2500, startedAt: Date.now() });
-      sendStatus('スキャン開始: 現在ページから自動巡回します');
+      sendStatus(msg.reset ? 'スキャン開始: 保存済みデータをクリアして自動巡回します' : 'スキャン開始: 現在ページから自動巡回します');
       await autoContinueIfJobActive();
     } else if (msg.action === 'stopScan') {
       await clearJob();
