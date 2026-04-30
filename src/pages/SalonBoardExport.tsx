@@ -37,7 +37,7 @@ const SalonBoardExport = () => {
           <p className="text-sm text-muted-foreground leading-relaxed mb-6">
             Chrome / Edge / Brave などの Chromium 系ブラウザで動作する専用拡張機能です。
             サロンボードにログインした状態のあなたのブラウザ内で動作するため、
-            安全に顧客データを抽出できます。最新版は <strong>v1.5.0</strong> です。
+            安全に顧客データを抽出できます。最新版は <strong>v1.6.0</strong> です。
           </p>
           <Button
             onClick={downloadExtension}
