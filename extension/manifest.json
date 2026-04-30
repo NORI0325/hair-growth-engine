@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Salon Board Customer Exporter",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "サロンボードのお客様情報を一覧/詳細から自動抽出してCSVバックアップします",
   "permissions": ["activeTab", "storage", "downloads", "scripting"],
   "host_permissions": [

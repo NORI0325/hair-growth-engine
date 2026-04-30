@@ -1,9 +1,12 @@
-// Salon Board Customer Exporter - Content Script v3
-// 戦略: 画面遷移ベース（fetchでなく実ナビゲーション）でセッション/JS依存を回避
-// 状態は chrome.storage に保存し、ページロード後に自動継続する
+// Salon Board Customer Exporter - Content Script v4
+// 戦略: 実画面のページ遷移で一覧を巡回し、顧客番号が「-」でも1件に潰れないよう安定キーで保存する
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const cleanText = (el) => (el?.textContent || '').replace(/\s+/g, ' ').trim();
+const normalizeValue = (value) => {
+  const s = String(value ?? '').replace(/\s+/g, ' ').trim();
+  return (s === '-' || s === '－' || s === '―' || s === '—') ? '' : s;
+};
 const sendStatus = (text) => {
   try { chrome.runtime.sendMessage({ type: 'status', text }); } catch (e) {}
   console.log('[SB Exporter]', text);
@@ -59,28 +62,48 @@ function findListTable(root = document) {
 function getHeaderCells(table) {
   let cells = [...table.querySelectorAll('thead th')].map(cleanText);
   if (!cells.length) {
-    const firstRow = table.querySelector('tr');
+    const firstRow = [...table.querySelectorAll('tr')].find(tr => tr.querySelectorAll('th').length >= 2) || table.querySelector('tr');
     cells = [...(firstRow?.querySelectorAll('th, td') || [])].map(cleanText);
   }
   return cells;
 }
 
-function mapRowToObj(headerCells, cells, link) {
-  const obj = { detail_url: null };
-  if (link) {
-    const href = link.getAttribute('href');
-    if (href && href !== '#' && !href.startsWith('javascript:')) {
-      try { obj.detail_url = new URL(href, location.href).href; } catch (e) {}
-    } else {
-      // onclick の中から ID を抜き出して URL 化（サロンボードはフォーム POST が多いのでここはベストエフォート）
-      const onclick = link.getAttribute('onclick') || '';
-      const m = onclick.match(/['"]([^'"]*\d{5,}[^'"]*)['"]/);
-      if (m) try { obj.detail_url = new URL(m[1], location.href).href; } catch (e) {}
+function getLinkInfo(link) {
+  const info = { detail_url: null, detail_key: '' };
+  if (!link) return info;
+  const href = link.getAttribute('href') || '';
+  const onclick = link.getAttribute('onclick') || '';
+  const raw = `${href} ${onclick}`;
+
+  const idMatch = raw.match(/(?:customer|kokyaku|member|id|customerCd|customerId|kokyakuId|kkykNo|kyakuNo)[^0-9A-Za-z]{0,8}([0-9A-Za-z_-]{4,})/i)
+    || raw.match(/[?&](?:id|customerId|customerCd|kokyakuId|memberId|no)=([^&'"\)]+)/i)
+    || raw.match(/['"]([0-9A-Za-z_-]{6,})['"]/);
+  if (idMatch) info.detail_key = idMatch[1];
+
+  if (href && href !== '#' && !href.startsWith('javascript:')) {
+    try { info.detail_url = new URL(href, location.href).href; } catch (e) {}
+  } else {
+    const pathMatch = onclick.match(/['"]([^'"]*(?:customer|kokyaku|member|detail|edit)[^'"]*)['"]/i);
+    if (pathMatch) {
+      try { info.detail_url = new URL(pathMatch[1], location.href).href; } catch (e) {}
     }
+  }
+  if (!info.detail_key && info.detail_url) info.detail_key = info.detail_url;
+  return info;
+}
+
+function mapRowToObj(headerCells, cells, link, meta = {}) {
+  const obj = { detail_url: null };
+  const linkInfo = getLinkInfo(link);
+  obj.detail_url = linkInfo.detail_url;
+  obj.detail_key = linkInfo.detail_key;
+
+  if (link) {
+    obj.link_text = cleanText(link);
   }
   headerCells.forEach((h, i) => {
     if (!h || cells[i] == null) return;
-    const v = cells[i];
+    const v = normalizeValue(cells[i]);
     if (/カナ/.test(h)) obj.kana = v;
     else if (/漢字|^氏名$|氏名$/.test(h) && !obj.full_name) obj.full_name = v;
     else if (/お客様番号|顧客番号|会員番号/.test(h)) obj.customer_no = v;
@@ -91,6 +114,9 @@ function mapRowToObj(headerCells, cells, link) {
     else if (/初回来店/.test(h)) obj.first_visit_date = v;
     else if (/誕生日|生年月日/.test(h)) obj.birthday = v;
   });
+  if (!obj.kana && obj.link_text && /[ァ-ヶー]/.test(obj.link_text)) obj.kana = obj.link_text;
+  obj.scan_page = meta.page || null;
+  obj.scan_row = meta.rowNumber || null;
   return obj;
 }
 
@@ -100,31 +126,41 @@ function parseListPage() {
   if (!table) return { rows: [], debug: 'table_not_found', tableCount: document.querySelectorAll('table').length };
 
   const headerCells = getHeaderCells(table);
+  const pageInfo = getPageInfo();
   const rows = [];
   const allTrs = [...table.querySelectorAll('tbody tr')];
   const trs = allTrs.length ? allTrs : [...table.querySelectorAll('tr')];
+  let dataRowNumber = 0;
 
   for (const tr of trs) {
+    if (tr.querySelectorAll('th').length > 0) continue;
     const tds = tr.querySelectorAll('td');
-    if (tds.length < 2) continue;
-    // ヘッダー行をスキップ
-    if (tr.querySelectorAll('th').length > 0 && tds.length === 0) continue;
-    const cells = [...tds].map(cleanText);
-    // 全部空 or "-" だけの行はスキップ
-    const nonEmpty = cells.filter(c => c && c !== '-' && c !== '－').length;
+    if (tds.length < 5) continue;
+    const cells = [...tds].map(td => cleanText(td));
+    const normalized = cells.map(normalizeValue);
+    const nonEmpty = normalized.filter(Boolean).length;
     if (nonEmpty < 2) continue;
 
     const link = tr.querySelector('a[href], a[onclick]');
-    const obj = mapRowToObj(headerCells, cells, link);
+    if (!link && !normalized.some(c => /[ァ-ヶー]|[一-龯]/.test(c))) continue;
+    dataRowNumber += 1;
+    const obj = mapRowToObj(headerCells, cells, link, { page: pageInfo.current, rowNumber: dataRowNumber });
 
-    // ヘッダーが取れなかった場合の位置ベース fallback
-    if (!obj.kana && !obj.full_name && cells.length >= 3) {
-      // サロンボードの典型: [チェックボックス, お客様番号, カナ, 漢字, ...]
-      // または [お客様番号, カナ, 漢字, ...]
-      const startIdx = cells[0].length === 0 || cells[0] === '□' ? 1 : 0;
-      obj.customer_no = obj.customer_no || cells[startIdx];
-      obj.kana = obj.kana || cells[startIdx + 1];
-      obj.full_name = obj.full_name || cells[startIdx + 2];
+    // 添付画面の実構造: [氏名(カナ), 氏名(漢字), お客様番号, 性別, 職業, 来店回数, 前回来店日]
+    // ヘッダー取得がずれても、この並びで必ず補完する
+    if (cells.length >= 7) {
+      obj.kana = obj.kana || normalized[0] || cleanText(link);
+      obj.full_name = obj.full_name || normalized[1];
+      obj.customer_no = obj.customer_no || normalized[2];
+      obj.gender = obj.gender || normalized[3];
+      obj.occupation = obj.occupation || normalized[4];
+      obj.visit_count = obj.visit_count || normalized[5];
+      obj.last_visit_date = obj.last_visit_date || normalized[6];
+    } else if (!obj.kana && !obj.full_name && cells.length >= 3) {
+      const startIdx = normalized[0] ? 0 : 1;
+      obj.customer_no = obj.customer_no || normalized[startIdx];
+      obj.kana = obj.kana || normalized[startIdx + 1];
+      obj.full_name = obj.full_name || normalized[startIdx + 2];
     }
     if (obj.kana || obj.full_name || obj.customer_no) rows.push(obj);
   }
@@ -134,30 +170,29 @@ function parseListPage() {
 // ============ ページネーション ============
 // 「次へ」リンクを画面から探す
 function findNextPageLink() {
-  // テキストベース
   const candidates = [...document.querySelectorAll('a, button, input[type="button"], input[type="submit"]')];
   for (const el of candidates) {
-    const txt = cleanText(el) || el.value || '';
-    if (/^(次へ|次の|次ページ|>>?|»)$/.test(txt) || /次へ/.test(txt)) {
-      // disabled でないこと
-      if (el.disabled || el.classList.contains('disabled')) continue;
-      const parentDisabled = el.closest('.disabled');
-      if (parentDisabled) continue;
-      return el;
-    }
+    const txt = cleanText(el) || el.value || el.getAttribute('title') || el.getAttribute('alt') || '';
+    const cls = el.className || '';
+    const href = el.getAttribute('href') || '';
+    const onclick = el.getAttribute('onclick') || '';
+    const looksNext = /次へ|次の|次ページ|next/i.test(`${txt} ${cls} ${href} ${onclick}`) || /^(>|>>|»)$/.test(txt.trim());
+    if (!looksNext) continue;
+    if (el.disabled || el.getAttribute('aria-disabled') === 'true' || el.classList.contains('disabled')) continue;
+    if (el.closest('.disabled')) continue;
+    return el;
   }
   return null;
 }
 
 // 現在ページ / 総ページ / 件数を抽出
 function getPageInfo() {
-  const txt = document.body.innerText.replace(/\s+/g, ' ');
+  const txt = (document.body.innerText || document.body.textContent || '').replace(/\s+/g, ' ');
   let current = 1, total = 1, totalCount = null;
-  let m = txt.match(/(\d+)\s*\/\s*(\d+)\s*ページ/);
+  let m = txt.match(/(\d+)\s*\/\s*(\d+)\s*ページ/) || txt.match(/(\d+)\s*\/\s*(\d+)\s*ﾍﾟｰｼﾞ/);
   if (m) { current = parseInt(m[1]); total = parseInt(m[2]); }
-  m = txt.match(/該当[:：]?\s*(\d+)\s*件/) || txt.match(/(\d+)\s*件\s*該当/) || txt.match(/全\s*(\d+)\s*件/);
+  m = txt.match(/該当するお客様情報が\s*(\d+)\s*件/) || txt.match(/該当[:：]?\s*(\d+)\s*件/) || txt.match(/(\d+)\s*件\s*該当/) || txt.match(/全\s*(\d+)\s*件/);
   if (m) totalCount = parseInt(m[1]);
-  // 現在ページ強調表示（<strong>1</strong> や class="current"）
   const cur = document.querySelector('.pager .current, .pagination .active, .pageNation strong, .page strong');
   if (cur) {
     const n = parseInt(cleanText(cur));
@@ -192,7 +227,13 @@ async function autoContinueIfJobActive() {
   const stored = await getStored();
   const merged = mergeCustomers(stored, rows);
   await saveStored(merged);
-  sendStatus(`💾 累計 ${merged.length}件 保存`);
+  sendStatus(`💾 このページ ${rows.length}件 / 累計 ${merged.length}件 保存`);
+
+  if (rows.length === 0) {
+    await clearJob();
+    sendStatus('⚠️ このページで0件でした。誤取得防止のため停止しました。「現在ページを診断」を押してください。');
+    return;
+  }
 
   // 終了判定
   const reachedEnd = job.endPage && info.current >= job.endPage;
@@ -224,8 +265,15 @@ async function autoContinueIfJobActive() {
 function mergeCustomers(existing, fresh) {
   const map = new Map();
   [...existing, ...fresh].forEach(c => {
-    const key = c.customer_no || c.detail_url || ((c.kana || '') + '|' + (c.full_name || ''));
-    if (!key || key === '|') return;
+    const customerNo = normalizeValue(c.customer_no);
+    const key = customerNo
+      ? `no:${customerNo}`
+      : c.detail_key
+        ? `detail:${c.detail_key}`
+        : c.detail_url
+          ? `url:${c.detail_url}`
+          : `name:${normalizeValue(c.kana)}|${normalizeValue(c.full_name)}|${normalizeValue(c.last_visit_date)}|${normalizeValue(c.visit_count)}|p${c.scan_page || ''}r${c.scan_row || ''}`;
+    if (!key || key === 'name:||||p r') return;
     const prev = map.get(key) || {};
     map.set(key, { ...prev, ...c });
   });
@@ -286,9 +334,10 @@ function parseDetailFromDoc(doc) {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
     if (msg.action === 'scanList') {
+      if (msg.reset) await saveStored([]);
       // ジョブを記録して、現ページから処理スタート
       await setJob({ active: true, endPage: msg.endPage || null, delay: msg.delay || 2500, startedAt: Date.now() });
-      sendStatus('スキャン開始: 現在ページから自動巡回します');
+      sendStatus(msg.reset ? 'スキャン開始: 保存済みデータをクリアして自動巡回します' : 'スキャン開始: 現在ページから自動巡回します');
       await autoContinueIfJobActive();
     } else if (msg.action === 'stopScan') {
       await clearJob();
@@ -314,4 +363,4 @@ if (document.readyState === 'complete') {
   window.addEventListener('load', () => setTimeout(autoContinueIfJobActive, 1000));
 }
 
-console.log('[Salon Board Exporter] v3 ready');
+console.log('[Salon Board Exporter] v4 ready');
