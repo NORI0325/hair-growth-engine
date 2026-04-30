@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import {
-  LayoutDashboard, Users, Upload, Megaphone, Calendar, LogOut, Share2, Settings as SettingsIcon, Mail, MessageCircle, FileText, CalendarClock, TrendingUp, Scissors, UserCog, Gift, Inbox,
+  LayoutDashboard, Users, Upload, Megaphone, Calendar, LogOut, Share2, Settings as SettingsIcon, Mail, MessageCircle, FileText, CalendarClock, TrendingUp, Scissors, UserCog, Gift, Inbox, Download,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -13,6 +13,7 @@ const navItems = [
   { to: "/inbox", label: "受信トレイ", en: "Inbox", icon: Inbox, badgeKey: "inbox" as const },
   { to: "/customers", label: "顧客", en: "Guests", icon: Users },
   { to: "/import", label: "インポート", en: "Import", icon: Upload },
+  { to: "/salonboard-export", label: "サロンボード顧客データ抽出", en: "SB Export", icon: Download },
   { to: "/templates", label: "テンプレート", en: "Templates", icon: FileText },
   { to: "/incentives", label: "特典マスター", en: "Incentives", icon: Gift },
   { to: "/campaigns", label: "メール配信", en: "Outreach", icon: Megaphone },
