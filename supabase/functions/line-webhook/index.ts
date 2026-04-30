@@ -486,10 +486,13 @@ Deno.serve(async (req) => {
           }
 
           // ============================================================
-          // 【連携済み顧客】温かいAI返信（営業時間内/外で文言を切替）
+          // 【連携済み顧客】ハイブリッド構成
+          //   ① メッセージ種類で基本速度を決定（緊急/予約/質問/雑談）
+          //   ② 受領→本回答の2通方式（質問・予約のみ）
+          //   ③ ランダム遅延で「人らしい揺らぎ」を表現
           // ============================================================
           if (linkedCustomer) {
-            // 二重送信防止のみ：直近20秒以内に返信済みならスキップ（LINE側の再送対策）
+            // 二重送信防止：直近20秒以内に返信済みならスキップ（LINE再送対策）
             const recentlyReplied = await wasRecentlyReplied(
               supabase, owner.id, userId, "linked_auto_reply", 20 * 1000,
             );
@@ -501,31 +504,72 @@ Deno.serve(async (req) => {
             const isOutsideHours = checkOutsideBusinessHours(owner.open_time, owner.close_time);
             const shouldReply = owner.auto_reply_enabled || isOutsideHours;
             if (!shouldReply) {
-              continue; // スタッフが手動で返す前提（営業時間内かつ自動応答OFF）
+              continue; // 営業時間内かつ自動応答OFF：スタッフが手動で対応
             }
 
-            let replyMsg: string | null = null;
-            if (owner.auto_reply_use_ai !== false) {
-              replyMsg = await generateLinkedCustomerReply(
-                text,
-                linkedCustomer.full_name,
-                owner.salon_name || "サロン",
-                isOutsideHours,
-                owner.open_time,
-                owner.close_time,
-              );
-            }
-            const finalReply: string = replyMsg
-              || owner.auto_reply_message
-              || defaultAutoReply(owner.salon_name, owner.open_time, owner.close_time);
+            const kind = classifyMessageKind(text);
+            const { ackDelayMs, mainDelayMs, twoStep } = pickReplyDelayMs(kind, isOutsideHours);
+            console.log(`[line-webhook] hybrid plan kind=${kind} twoStep=${twoStep} ack=${ackDelayMs}ms main=${mainDelayMs}ms outside=${isOutsideHours}`);
 
-            const r = await replyLine(accessToken, replyToken, finalReply);
-            if (!r.ok) console.error("[line-webhook] linked reply failed:", r.err);
+            // 重複防止ログを先に入れて、後続のwebhookで弾けるように
             await logLineReply(
               supabase, owner.id, linkedCustomer.id, userId,
-              "linked_auto_reply", finalReply,
-              r.ok ? "sent" : "failed", r.ok ? undefined : r.err,
+              "linked_auto_reply", `[planned ${kind}]`,
+              "sent",
             );
+
+            const customerName = linkedCustomer.full_name || "お客様";
+            const salonName = owner.salon_name || "サロン";
+
+            // バックグラウンド処理：遅延 → 受領（任意）→ 遅延 → 本回答
+            const task = (async () => {
+              try {
+                // ステップ1：受領メッセージ（2通方式の場合のみ）
+                if (twoStep) {
+                  if (ackDelayMs > 0) await new Promise(r => setTimeout(r, ackDelayMs));
+                  const ackMsg = pickAckMessage(customerName, kind);
+                  // 受領は replyToken が使える可能性があるが、本回答も送るため push に統一
+                  const ackR = await sendLinePush(accessToken, userId, ackMsg);
+                  await logLineReply(
+                    supabase, owner.id, linkedCustomer.id, userId,
+                    "linked_ack", ackMsg,
+                    ackR.ok ? "sent" : "failed", ackR.ok ? undefined : ackR.err,
+                  );
+                }
+
+                // ステップ2：本回答までの遅延
+                if (mainDelayMs > 0) await new Promise(r => setTimeout(r, mainDelayMs));
+
+                // ステップ3：本回答（AI生成 → フォールバック）
+                let replyMsg: string | null = null;
+                if (owner.auto_reply_use_ai !== false) {
+                  replyMsg = await generateLinkedCustomerReply(
+                    text, customerName, salonName,
+                    isOutsideHours, owner.open_time, owner.close_time,
+                  );
+                }
+                const finalReply: string = replyMsg
+                  || owner.auto_reply_message
+                  || defaultAutoReply(salonName, owner.open_time, owner.close_time);
+
+                const r = await sendLinePush(accessToken, userId, finalReply);
+                if (!r.ok) console.error("[line-webhook] linked main reply failed:", r.err);
+                await logLineReply(
+                  supabase, owner.id, linkedCustomer.id, userId,
+                  "linked_main_reply", finalReply,
+                  r.ok ? "sent" : "failed", r.ok ? undefined : r.err,
+                );
+              } catch (e) {
+                console.error("[line-webhook] hybrid task error:", e);
+              }
+            })();
+
+            // Edge Functionの応答後もタスクを継続させる
+            // @ts-ignore - EdgeRuntime is provided by Supabase
+            if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) {
+              // @ts-ignore
+              EdgeRuntime.waitUntil(task);
+            }
             continue;
           }
 
