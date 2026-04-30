@@ -419,44 +419,95 @@ Deno.serve(async (req) => {
             }).catch(e => console.error("[line-webhook] classify kick failed:", e));
           }
 
-          // === 営業時間外の自動応答（連携済み顧客のみ） ===
-          if (linkedCustomer && owner.auto_reply_enabled) {
-            const isOutsideHours = checkOutsideBusinessHours(owner.open_time, owner.close_time);
-            if (isOutsideHours) {
-              let replyMsg: string;
-              if (owner.auto_reply_use_ai) {
-                replyMsg = await generateAutoReplyAI(
-                  text,
-                  linkedCustomer.full_name,
-                  owner.salon_name || "サロン",
-                  owner.open_time,
-                  owner.close_time,
-                ) || (owner.auto_reply_message || defaultAutoReply(owner.salon_name, owner.open_time, owner.close_time));
-              } else {
-                replyMsg = owner.auto_reply_message || defaultAutoReply(owner.salon_name, owner.open_time, owner.close_time);
-              }
-              const r = await replyLine(accessToken, replyToken, replyMsg);
-              if (!r.ok) console.error("[line-webhook] auto-reply failed:", r.err);
-              continue; // 以降の電話番号フローはスキップ
+          // ============================================================
+          // 【連携済み顧客】温かいAI返信（営業時間内/外で文言を切替）
+          // ============================================================
+          if (linkedCustomer) {
+            // 連投抑制：直近5分以内に同種返信を送っていればスキップ
+            const recentlyReplied = await wasRecentlyReplied(
+              supabase, owner.id, userId, "linked_auto_reply", 5 * 60 * 1000,
+            );
+            if (recentlyReplied) {
+              console.log(`[line-webhook] suppress duplicate reply to ${userId}`);
+              continue;
             }
-          }
-        }
 
-        if (!phone) {
-          // 電話番号として認識できないテキスト → pendingに最終メッセージとして保存
-          if (!linkedCustomer) {
-            await supabase.from("line_pending_friends").upsert({
-              owner_id: owner.id,
-              line_user_id: userId,
-              last_message: text.slice(0, 200),
-            }, { onConflict: "owner_id,line_user_id" });
+            const isOutsideHours = checkOutsideBusinessHours(owner.open_time, owner.close_time);
+            const shouldReply = owner.auto_reply_enabled || isOutsideHours;
+            if (!shouldReply) {
+              continue; // スタッフが手動で返す前提（営業時間内かつ自動応答OFF）
+            }
+
+            let replyMsg: string | null = null;
+            if (owner.auto_reply_use_ai !== false) {
+              replyMsg = await generateLinkedCustomerReply(
+                text,
+                linkedCustomer.full_name,
+                owner.salon_name || "サロン",
+                isOutsideHours,
+                owner.open_time,
+                owner.close_time,
+              );
+            }
+            if (!replyMsg) {
+              replyMsg = owner.auto_reply_message
+                || defaultAutoReply(owner.salon_name, owner.open_time, owner.close_time);
+            }
+
+            const r = await replyLine(accessToken, replyToken, replyMsg);
+            if (!r.ok) console.error("[line-webhook] linked reply failed:", r.err);
+            await logLineReply(
+              supabase, owner.id, linkedCustomer.id, userId,
+              "linked_auto_reply", replyMsg,
+              r.ok ? "sent" : "failed", r.ok ? undefined : r.err,
+            );
+            continue;
           }
-          const r = await replyLine(
-            accessToken,
-            replyToken,
-            `メッセージありがとうございます🙇‍♀️\n\nお電話番号でのLINE連携をご希望の場合は、番号を送信してください（例：090-1234-5678）。\n\nお名前のみでもスタッフが確認のうえ連携いたしますので、お気軽にメッセージをお送りください🌸`
+
+          // ============================================================
+          // 【未連携 × テキスト】初回は温かい挨拶、2回目以降は無音
+          // ============================================================
+          await supabase.from("line_pending_friends").upsert({
+            owner_id: owner.id,
+            line_user_id: userId,
+            display_name: displayName,
+            last_message: text.slice(0, 200),
+          }, { onConflict: "owner_id,line_user_id" });
+
+          // 連投抑制：30分以内に未連携返信を送っていれば沈黙
+          const recentlyGuided = await wasRecentlyReplied(
+            supabase, owner.id, userId, "unlinked_guidance", 30 * 60 * 1000,
           );
-          if (!r.ok) console.error("[line-webhook] text reply failed:", r.err);
+          if (recentlyGuided) {
+            console.log(`[line-webhook] suppress duplicate guidance to ${userId}`);
+            continue;
+          }
+
+          let guideMsg: string;
+          const greetingLike = isGreetingOrSimpleText(text);
+          if (greetingLike) {
+            const aiReply = await generateLinkedCustomerReply(
+              text,
+              displayName || "お客様",
+              owner.salon_name || "サロン",
+              checkOutsideBusinessHours(owner.open_time, owner.close_time),
+              owner.open_time,
+              owner.close_time,
+            );
+            guideMsg = aiReply
+              ? `${aiReply}\n\n────────\n💡 ご予約履歴の連携をご希望でしたら、ご登録のお電話番号（例：090-1234-5678）をお送りください🌸`
+              : `${displayName ? displayName + "様、" : ""}メッセージありがとうございます🌸\n\nスタッフが確認のうえご連絡いたします。\n\n💡 ご予約履歴の連携をご希望でしたら、ご登録のお電話番号（例：090-1234-5678）をお送りください。\n\n— ${owner.salon_name || "サロン"}`;
+          } else {
+            guideMsg = `${displayName ? displayName + "様、" : ""}メッセージありがとうございます🙇‍♀️\n\nスタッフが内容を確認のうえご連絡いたします。少々お待ちくださいませ🌸\n\n💡 ご予約履歴の連携をご希望の場合は、ご登録のお電話番号をお送りください（例：090-1234-5678）。\n\n— ${owner.salon_name || "サロン"}`;
+          }
+
+          const r = await replyLine(accessToken, replyToken, guideMsg);
+          if (!r.ok) console.error("[line-webhook] unlinked reply failed:", r.err);
+          await logLineReply(
+            supabase, owner.id, null, userId,
+            "unlinked_guidance", guideMsg,
+            r.ok ? "sent" : "failed", r.ok ? undefined : r.err,
+          );
           continue;
         }
 
