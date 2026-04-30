@@ -1,5 +1,8 @@
-// Salon Board Customer Exporter - Content Script v4
-// 戦略: 実画面のページ遷移で一覧を巡回し、顧客番号が「-」でも1件に潰れないよう安定キーで保存する
+// Salon Board Customer Exporter - Content Script v5
+// 戦略:
+//  ① 一覧スキャン: 実画面遷移で全ページ巡回。各行の「名前リンクのクリック識別子」も保存
+//  ② 詳細スキャン: 未取得顧客を1人ずつ実画面で開き、詳細を読み取り→一覧に戻る を繰り返す
+//     (fetchではセッションが切れるため、必ず実ブラウザ遷移を使う)
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const cleanText = (el) => (el?.textContent || '').replace(/\s+/g, ' ').trim();
@@ -29,13 +32,20 @@ async function setJob(job) {
 async function clearJob() {
   await chrome.storage.local.remove('sb_job');
 }
+async function getDetailJob() {
+  const { sb_detail_job = null } = await chrome.storage.local.get('sb_detail_job');
+  return sb_detail_job;
+}
+async function setDetailJob(job) {
+  await chrome.storage.local.set({ sb_detail_job: job });
+}
+async function clearDetailJob() {
+  await chrome.storage.local.remove('sb_detail_job');
+}
 
 // ============ テーブル探索 ============
-// 画面のあらゆるテーブルから「お客様一覧」を探す
 function findListTable(root = document) {
   const tables = [...root.querySelectorAll('table')];
-
-  // 戦略A: ヘッダーに「お客様番号」「カナ」「漢字」など複数キーワードを含む
   const KEYS = ['お客様番号', 'カナ', '漢字', '氏名', '性別', '来店回数'];
   let bestScore = 0, bestTable = null;
   for (const t of tables) {
@@ -48,7 +58,6 @@ function findListTable(root = document) {
   }
   if (bestScore >= 2 && bestTable) return bestTable;
 
-  // 戦略B: 行数が最も多い（ヘッダーらしきテーブル）
   let maxRows = 0; bestTable = null;
   for (const t of tables) {
     const rowCount = t.querySelectorAll('tbody tr, tr').length;
@@ -58,7 +67,6 @@ function findListTable(root = document) {
   return null;
 }
 
-// ============ ヘッダーマッピング ============
 function getHeaderCells(table) {
   let cells = [...table.querySelectorAll('thead th')].map(cleanText);
   if (!cells.length) {
@@ -68,39 +76,40 @@ function getHeaderCells(table) {
   return cells;
 }
 
-function getLinkInfo(link) {
-  const info = { detail_url: null, detail_key: '' };
-  if (!link) return info;
+// ============ リンク識別子の抽出 ============
+// 名前リンクからクリックを再現するための情報を取り出す
+function getLinkSignature(link) {
+  if (!link) return null;
   const href = link.getAttribute('href') || '';
   const onclick = link.getAttribute('onclick') || '';
   const raw = `${href} ${onclick}`;
 
-  const idMatch = raw.match(/(?:customer|kokyaku|member|id|customerCd|customerId|kokyakuId|kkykNo|kyakuNo)[^0-9A-Za-z]{0,8}([0-9A-Za-z_-]{4,})/i)
-    || raw.match(/[?&](?:id|customerId|customerCd|kokyakuId|memberId|no)=([^&'"\)]+)/i)
-    || raw.match(/['"]([0-9A-Za-z_-]{6,})['"]/);
-  if (idMatch) info.detail_key = idMatch[1];
+  // 顧客IDっぽいトークンを抽出（C00971546190 のような形式や数値ID）
+  const idMatch =
+    raw.match(/['"]?(C\d{8,})['"]?/i) ||
+    raw.match(/(?:customerId|kokyakuId|memberId|customerCd|kkykNo|kyakuNo|id)\s*[:=]\s*['"]?([0-9A-Za-z_-]{4,})['"]?/i) ||
+    raw.match(/[?&](?:id|customerId|customerCd|kokyakuId|memberId|no)=([^&'"\)]+)/i);
+  const detailKey = idMatch ? idMatch[1] : '';
 
+  let detailUrl = null;
   if (href && href !== '#' && !href.startsWith('javascript:')) {
-    try { info.detail_url = new URL(href, location.href).href; } catch (e) {}
-  } else {
-    const pathMatch = onclick.match(/['"]([^'"]*(?:customer|kokyaku|member|detail|edit)[^'"]*)['"]/i);
-    if (pathMatch) {
-      try { info.detail_url = new URL(pathMatch[1], location.href).href; } catch (e) {}
-    }
+    try { detailUrl = new URL(href, location.href).href; } catch (e) {}
   }
-  if (!info.detail_key && info.detail_url) info.detail_key = info.detail_url;
-  return info;
+
+  return {
+    detail_url: detailUrl,
+    detail_key: detailKey || detailUrl || '',
+    onclick_raw: onclick,
+    href_raw: href,
+    link_text: cleanText(link),
+  };
 }
 
 function mapRowToObj(headerCells, cells, link, meta = {}) {
-  const obj = { detail_url: null };
-  const linkInfo = getLinkInfo(link);
-  obj.detail_url = linkInfo.detail_url;
-  obj.detail_key = linkInfo.detail_key;
+  const obj = {};
+  const sig = getLinkSignature(link) || {};
+  Object.assign(obj, sig);
 
-  if (link) {
-    obj.link_text = cleanText(link);
-  }
   headerCells.forEach((h, i) => {
     if (!h || cells[i] == null) return;
     const v = normalizeValue(cells[i]);
@@ -120,11 +129,9 @@ function mapRowToObj(headerCells, cells, link, meta = {}) {
   return obj;
 }
 
-// ============ 一覧パース ============
 function parseListPage() {
   const table = findListTable();
   if (!table) return { rows: [], debug: 'table_not_found', tableCount: document.querySelectorAll('table').length };
-
   const headerCells = getHeaderCells(table);
   const pageInfo = getPageInfo();
   const rows = [];
@@ -146,21 +153,14 @@ function parseListPage() {
     dataRowNumber += 1;
     const obj = mapRowToObj(headerCells, cells, link, { page: pageInfo.current, rowNumber: dataRowNumber });
 
-    // 添付画面の実構造: [氏名(カナ), 氏名(漢字), お客様番号, 性別, 職業, 来店回数, 前回来店日]
-    // ヘッダー取得がずれても、この並びで必ず補完する
     if (cells.length >= 7) {
-      obj.kana = obj.kana || normalized[0] || cleanText(link);
+      obj.kana = obj.kana || normalized[0] || obj.link_text;
       obj.full_name = obj.full_name || normalized[1];
       obj.customer_no = obj.customer_no || normalized[2];
       obj.gender = obj.gender || normalized[3];
       obj.occupation = obj.occupation || normalized[4];
       obj.visit_count = obj.visit_count || normalized[5];
       obj.last_visit_date = obj.last_visit_date || normalized[6];
-    } else if (!obj.kana && !obj.full_name && cells.length >= 3) {
-      const startIdx = normalized[0] ? 0 : 1;
-      obj.customer_no = obj.customer_no || normalized[startIdx];
-      obj.kana = obj.kana || normalized[startIdx + 1];
-      obj.full_name = obj.full_name || normalized[startIdx + 2];
     }
     if (obj.kana || obj.full_name || obj.customer_no) rows.push(obj);
   }
@@ -168,7 +168,6 @@ function parseListPage() {
 }
 
 // ============ ページネーション ============
-// 「次へ」リンクを画面から探す
 function findNextPageLink() {
   const candidates = [...document.querySelectorAll('a, button, input[type="button"], input[type="submit"]')];
   for (const el of candidates) {
@@ -185,7 +184,6 @@ function findNextPageLink() {
   return null;
 }
 
-// 現在ページ / 総ページ / 件数を抽出
 function getPageInfo() {
   const txt = (document.body.innerText || document.body.textContent || '').replace(/\s+/g, ' ');
   let current = 1, total = 1, totalCount = null;
@@ -201,13 +199,11 @@ function getPageInfo() {
   return { current, total, totalCount };
 }
 
-// ============ 自動継続スキャン ============
-// ページロード時に「ジョブ実行中」なら自動的に続きを処理する
-async function autoContinueIfJobActive() {
+// ============ 一覧スキャン自動継続 ============
+async function autoContinueListJob() {
   const job = await getJob();
-  if (!job || !job.active) return;
+  if (!job || !job.active) return false;
 
-  // テーブルが現れるまで少し待つ（最大10秒）
   let table = null;
   for (let i = 0; i < 20; i++) {
     table = findListTable();
@@ -216,14 +212,13 @@ async function autoContinueIfJobActive() {
   }
   if (!table) {
     sendStatus('⚠️ テーブルが見つかりません。お客様一覧画面で検索を実行してから再開してください。');
-    return;
+    return true;
   }
 
   const { rows, debug } = parseListPage();
   const info = getPageInfo();
   sendStatus(`ページ ${info.current}/${info.total || '?'}: ${debug}`);
 
-  // 取得した行を保存
   const stored = await getStored();
   const merged = mergeCustomers(stored, rows);
   await saveStored(merged);
@@ -231,34 +226,32 @@ async function autoContinueIfJobActive() {
 
   if (rows.length === 0) {
     await clearJob();
-    sendStatus('⚠️ このページで0件でした。誤取得防止のため停止しました。「現在ページを診断」を押してください。');
-    return;
+    sendStatus('⚠️ このページで0件でした。停止しました。「現在ページを診断」を押してください。');
+    return true;
   }
 
-  // 終了判定
   const reachedEnd = job.endPage && info.current >= job.endPage;
   const reachedLast = info.total && info.current >= info.total;
   if (reachedEnd || reachedLast) {
     await clearJob();
     sendStatus(`✅ 一覧スキャン完了: 合計 ${merged.length}件`);
-    return;
+    return true;
   }
 
-  // 次ページへ
   await sleep(job.delay || 2500);
   const nextLink = findNextPageLink();
   if (!nextLink) {
     await clearJob();
     sendStatus(`⚠️ 「次へ」リンクが見つからないため終了。合計 ${merged.length}件`);
-    return;
+    return true;
   }
   sendStatus(`次のページへ遷移します… (${info.current + 1})`);
-  // クリック
   if (nextLink.tagName === 'A' && nextLink.href && !nextLink.getAttribute('onclick')) {
     location.href = nextLink.href;
   } else {
     nextLink.click();
   }
+  return true;
 }
 
 // ============ マージ ============
@@ -280,40 +273,28 @@ function mergeCustomers(existing, fresh) {
   return [...map.values()];
 }
 
-// ============ 詳細スキャン ============
-async function scanDetails({ delay = 2500 }) {
-  const customers = await getStored();
-  const targets = customers.filter(c => c.detail_url && !c.phone && !c.birthday);
-  if (!targets.length) {
-    sendStatus('詳細取得対象がありません');
-    return;
-  }
-  for (let i = 0; i < targets.length; i++) {
-    const c = targets[i];
-    sendStatus(`詳細取得中: ${i + 1}/${targets.length}`);
-    try {
-      const html = await fetch(c.detail_url, { credentials: 'include' }).then(r => r.text());
-      const doc = new DOMParser().parseFromString(html, 'text/html');
-      Object.assign(c, parseDetailFromDoc(doc));
-    } catch (e) {
-      console.error('詳細取得エラー', e);
-    }
-    if (i % 5 === 0) await saveStored(customers);
-    await sleep(delay);
-  }
-  await saveStored(customers);
-  sendStatus(`✅ 詳細スキャン完了: ${targets.length}件`);
+// ============ 詳細ページ判定&パース ============
+function isDetailPage() {
+  const txt = (document.body.innerText || document.body.textContent || '');
+  // 画面上部に「お客様情報詳細」、または「基本情報」「来店情報」などの見出しがある
+  return /お客様情報詳細|基本情報[\s\S]*来店情報/.test(txt);
 }
 
-function parseDetailFromDoc(doc) {
+function extractDetailInfoFromBody() {
   const obj = {};
-  doc.querySelectorAll('th').forEach(th => {
+  // 顧客IDをページから取得（例: 顧客ID:C00971546190）
+  const idTxt = (document.body.innerText || document.body.textContent || '').match(/顧客\s*ID\s*[:：]\s*([0-9A-Za-z_-]+)/);
+  if (idTxt) obj.detail_key = idTxt[1];
+
+  // テーブル th/td のラベル→値マッピング
+  document.querySelectorAll('th').forEach(th => {
     const label = cleanText(th);
-    const td = th.nextElementSibling;
+    let td = th.nextElementSibling;
     if (!td || td.tagName !== 'TD') return;
-    const val = cleanText(td);
+    let val = cleanText(td);
     if (!val || val === '-' || val === '－') return;
-    if (/氏名.*漢字|^氏名$/.test(label)) obj.full_name = val.replace(/ダイレクト会員|会員/g, '').trim();
+
+    if (/氏名.*漢字|^氏名$/.test(label) && !obj.full_name) obj.full_name = val.replace(/ダイレクト会員|会員/g, '').trim();
     else if (/氏名.*カナ/.test(label)) obj.kana = val;
     else if (/電話番号\s*1|^電話番号$/.test(label)) obj.phone = val;
     else if (/電話番号\s*2/.test(label)) obj.phone2 = val;
@@ -322,12 +303,171 @@ function parseDetailFromDoc(doc) {
     else if (/誕生日|生年月日/.test(label)) obj.birthday = val;
     else if (/血液型/.test(label)) obj.blood_type = val;
     else if (/職業/.test(label)) obj.occupation = val;
-    else if (/性別/.test(label)) obj.gender = val.split(/\s|・/)[0];
-    else if (/住所/.test(label)) obj.address = val;
+    else if (/性別/.test(label)) obj.gender = val.split(/\s|・|\n/)[0];
+    else if (/^住所$|住所/.test(label)) obj.address = val;
     else if (/お客様メモ/.test(label)) obj.memo = val;
     else if (/初回来店/.test(label)) obj.first_visit_date = val;
+    else if (/来店回数/.test(label)) obj.visit_count = val;
+    else if (/お客様番号|顧客番号/.test(label)) obj.customer_no = val;
+    else if (/要注意/.test(label)) obj.warning_flag = val;
+    else if (/その他\s*1/.test(label)) obj.other1 = val;
+    else if (/その他\s*2/.test(label)) obj.other2 = val;
+    else if (/その他\s*3/.test(label)) obj.other3 = val;
+    else if (/はがき/.test(label)) obj.postcard = val;
+    else if (/来店きっかけ/.test(label)) obj.visit_trigger = val;
   });
+
+  // 予約履歴テーブル(来店日 / スタイリスト / ステータス / メニュー …)
+  try {
+    const tables = [...document.querySelectorAll('table')];
+    for (const t of tables) {
+      const head = cleanText(t.querySelector('thead') || t.querySelector('tr'));
+      if (/来店日/.test(head) && /メニュー|店販|サービス/.test(head)) {
+        const history = [];
+        t.querySelectorAll('tbody tr, tr').forEach(tr => {
+          if (tr.querySelectorAll('th').length) return;
+          const tds = [...tr.querySelectorAll('td')].map(cleanText);
+          if (tds.length >= 4) {
+            history.push({
+              visit_date: tds[0] || '',
+              stylist: tds[1] || '',
+              route: tds[2] || '',
+              status: tds[3] || '',
+              menu: tds[4] || '',
+              memo: tds[5] || '',
+            });
+          }
+        });
+        if (history.length) obj.visit_history = history;
+        break;
+      }
+    }
+  } catch (e) {}
+
   return obj;
+}
+
+// ============ 詳細スキャン自動継続 ============
+async function autoContinueDetailJob() {
+  const job = await getDetailJob();
+  if (!job || !job.active) return false;
+
+  // 詳細ページに居る場合: パースして保存→一覧へ戻る
+  if (isDetailPage()) {
+    await sleep(800); // レンダー完了待ち
+    const detail = extractDetailInfoFromBody();
+    const customers = await getStored();
+
+    // 対象顧客を特定: 期待キー or 顧客ID or 名前で
+    const expectKey = job.currentKey;
+    const idx = customers.findIndex(c => {
+      if (expectKey && (c.detail_key === expectKey || c.customer_no === expectKey)) return true;
+      if (detail.detail_key && c.detail_key === detail.detail_key) return true;
+      if (detail.customer_no && c.customer_no === detail.customer_no) return true;
+      if (detail.full_name && c.full_name === detail.full_name && c.kana === detail.kana) return true;
+      return false;
+    });
+    if (idx >= 0) {
+      customers[idx] = { ...customers[idx], ...detail, detail_fetched: true };
+      await saveStored(customers);
+      sendStatus(`📥 詳細取得: ${detail.full_name || customers[idx].full_name || '(名前不明)'} [${job.processed + 1}/${job.totalTargets}]`);
+    } else {
+      sendStatus(`⚠️ 一致する顧客が見つかりません(${detail.full_name || '?'})`);
+    }
+
+    job.processed = (job.processed || 0) + 1;
+    job.currentKey = null;
+    await setDetailJob(job);
+
+    await sleep(job.delay || 2500);
+    // 一覧へ戻る
+    if (job.listUrl) {
+      location.href = job.listUrl;
+    } else {
+      history.back();
+    }
+    return true;
+  }
+
+  // 一覧ページに居る場合: 次のターゲットをクリック
+  const table = findListTable();
+  if (!table) {
+    // まだロード中の可能性。少し待つ
+    for (let i = 0; i < 20; i++) {
+      await sleep(500);
+      if (findListTable()) break;
+    }
+  }
+
+  const customers = await getStored();
+  const remaining = customers.filter(c => !c.detail_fetched);
+  if (remaining.length === 0) {
+    await clearDetailJob();
+    sendStatus(`✅ 詳細スキャン完了: 全 ${job.totalTargets} 件取得済み`);
+    return true;
+  }
+
+  // 現在の一覧ページから、未取得顧客の名前リンクを探す
+  const tbl = findListTable();
+  if (!tbl) {
+    sendStatus('⚠️ 一覧ページのテーブルが見つかりません');
+    return true;
+  }
+
+  let clickedTarget = null;
+  const trs = [...tbl.querySelectorAll('tbody tr, tr')];
+  for (const tr of trs) {
+    if (tr.querySelectorAll('th').length) continue;
+    const link = tr.querySelector('a[href], a[onclick]');
+    if (!link) continue;
+    const sig = getLinkSignature(link);
+    if (!sig) continue;
+    // 未取得顧客の中に、このリンクに対応するものがあるか
+    const tds = [...tr.querySelectorAll('td')].map(cleanText);
+    const linkText = cleanText(link);
+    const target = remaining.find(c => {
+      if (sig.detail_key && c.detail_key && sig.detail_key === c.detail_key) return true;
+      if (linkText && c.kana === linkText) return true;
+      // 行データの全文一致(漢字名 or カナ)
+      if (c.full_name && tds.some(t => t.includes(c.full_name))) return true;
+      if (c.kana && tds.some(t => t === c.kana)) return true;
+      return false;
+    });
+    if (target) {
+      clickedTarget = { target, link, sig };
+      break;
+    }
+  }
+
+  if (clickedTarget) {
+    const key = clickedTarget.target.detail_key || clickedTarget.target.customer_no || clickedTarget.target.full_name;
+    job.currentKey = key;
+    job.listUrl = location.href; // 戻り先として記録
+    await setDetailJob(job);
+    sendStatus(`▶ 詳細を開きます: ${clickedTarget.target.full_name || clickedTarget.target.kana || '(名前不明)'} [${job.processed + 1}/${job.totalTargets}]`);
+    await sleep(500);
+    clickedTarget.link.click();
+    return true;
+  }
+
+  // このページに未取得顧客がいない → 次ページへ
+  await sleep(job.delay || 2500);
+  const nextLink = findNextPageLink();
+  if (nextLink) {
+    sendStatus('このページに未取得なし。次ページへ…');
+    if (nextLink.tagName === 'A' && nextLink.href && !nextLink.getAttribute('onclick')) {
+      location.href = nextLink.href;
+    } else {
+      nextLink.click();
+    }
+    return true;
+  }
+
+  // 最終ページ到達
+  await clearDetailJob();
+  const stillRemaining = (await getStored()).filter(c => !c.detail_fetched).length;
+  sendStatus(`✅ 詳細スキャン終了。未取得 ${stillRemaining} 件 (リンク不一致の可能性)`);
+  return true;
 }
 
 // ============ メッセージ受信 ============
@@ -335,21 +475,41 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
     if (msg.action === 'scanList') {
       if (msg.reset) await saveStored([]);
-      // ジョブを記録して、現ページから処理スタート
+      await clearDetailJob();
       await setJob({ active: true, endPage: msg.endPage || null, delay: msg.delay || 2500, startedAt: Date.now() });
       sendStatus(msg.reset ? 'スキャン開始: 保存済みデータをクリアして自動巡回します' : 'スキャン開始: 現在ページから自動巡回します');
-      await autoContinueIfJobActive();
+      await autoContinueListJob();
     } else if (msg.action === 'stopScan') {
       await clearJob();
-      sendStatus('⏸ スキャンを停止しました');
+      await clearDetailJob();
+      sendStatus('⏸ スキャン(一覧/詳細)を停止しました');
     } else if (msg.action === 'scanDetails') {
-      scanDetails(msg).catch(e => sendStatus('❌ ' + e.message));
+      await clearJob();
+      const customers = await getStored();
+      const targets = customers.filter(c => !c.detail_fetched);
+      if (!targets.length) {
+        sendStatus('対象がありません(全件取得済み)。「クリア」してから再スキャンするか、未取得が出る条件を確認してください');
+        return;
+      }
+      await setDetailJob({
+        active: true,
+        delay: msg.delay || 2500,
+        totalTargets: targets.length,
+        processed: 0,
+        currentKey: null,
+        listUrl: location.href, // 開始時の一覧URLを戻り先に
+        startedAt: Date.now(),
+      });
+      sendStatus(`詳細スキャン開始: ${targets.length}件を1件ずつ実画面で開きます`);
+      await autoContinueDetailJob();
     } else if (msg.action === 'debug') {
       const r = parseListPage();
       const p = getPageInfo();
       const next = findNextPageLink();
-      sendStatus(`診断: ${r.debug} / ページ ${p.current}/${p.total || '?'} (該当${p.totalCount || '?'}件) / 次へリンク: ${next ? '✓発見' : '✗なし'} / table数: ${document.querySelectorAll('table').length}`);
-      console.log('[SB Exporter] 診断詳細', { parse: r, page: p, nextLink: next });
+      const stored = await getStored();
+      const fetched = stored.filter(c => c.detail_fetched).length;
+      sendStatus(`診断: ${r.debug} / ページ ${p.current}/${p.total || '?'} (該当${p.totalCount || '?'}件) / 次へ:${next ? '✓' : '✗'} / 保存${stored.length}件(詳細済${fetched}) / 詳細ページ判定:${isDetailPage() ? 'YES' : 'NO'}`);
+      console.log('[SB Exporter] 診断', { parse: r, page: p, nextLink: next, isDetail: isDetailPage() });
     }
     sendResponse({ ok: true });
   })();
@@ -357,10 +517,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 });
 
 // ============ ページロード時に自動継続 ============
-if (document.readyState === 'complete') {
-  autoContinueIfJobActive();
-} else {
-  window.addEventListener('load', () => setTimeout(autoContinueIfJobActive, 1000));
+async function bootAutoContinue() {
+  // 詳細ジョブが優先
+  const dj = await getDetailJob();
+  if (dj && dj.active) { await autoContinueDetailJob(); return; }
+  const lj = await getJob();
+  if (lj && lj.active) { await autoContinueListJob(); return; }
 }
 
-console.log('[Salon Board Exporter] v4 ready');
+if (document.readyState === 'complete') {
+  bootAutoContinue();
+} else {
+  window.addEventListener('load', () => setTimeout(bootAutoContinue, 1000));
+}
+
+console.log('[Salon Board Exporter] v5 ready');
