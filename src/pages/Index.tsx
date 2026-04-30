@@ -315,9 +315,8 @@ const Index = () => {
       <section className="py-32 bg-primary text-primary-foreground">
         <div className="container mx-auto px-8 text-center max-w-3xl">
           <p className="eyebrow text-primary-foreground/60 mb-6">— Begin —</p>
-          <h2 className="display text-4xl md:text-5xl mb-10 text-center flex flex-col items-center">
-            <span>眠れる資産を、</span>
-            <span className="font-serif-en italic text-gold">今</span>、目覚めさせよ。
+          <h2 className="display text-4xl md:text-5xl mb-10 leading-relaxed">
+            眠れる資産を、<span className="font-serif-en italic text-gold">今</span>、目覚めさせよ。
           </h2>
           <div className="hairline w-24 mx-auto my-10 opacity-60" />
           <Link to="/auth">
