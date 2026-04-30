@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
-import { replyLine, normalizePhone } from "../_shared/line-push.ts";
+import { replyLine, sendLinePush, normalizePhone } from "../_shared/line-push.ts";
 
 // LINE署名検証 (HMAC-SHA256)
 async function verifySignature(secret: string, body: string, signature: string): Promise<boolean> {
