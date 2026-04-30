@@ -572,13 +572,19 @@ const Settings = () => {
               LINEトーク画面の下に常設される「予約 / 特典 / お問合せ」3ボタンメニューを自動セットアップします。
               友だち追加した瞬間から、お客様がワンタップで予約できる導線が完成します。
             </p>
+            <div className="p-3 border border-gold/30 bg-gold/5 text-[10px] leading-relaxed space-y-1">
+              <p className="font-serif text-gold">各ボタンの動作・編集場所</p>
+              <p>・<strong className="text-foreground">「予約する」</strong> → サロン公開予約ページ（このページ上部の<strong>公開URL</strong>）に遷移</p>
+              <p>・<strong className="text-foreground">「特典」</strong> → <a href="/incentives" className="text-gold underline">特典マスター</a>で「有効」にした特典がお客様のセグメント別に自動表示されます</p>
+              <p>・<strong className="text-foreground">「お問合せ」</strong> → 自動応答メッセージ（下記の自動応答設定で編集可）</p>
+            </div>
             <Button type="button" onClick={setupRichMenu} disabled={settingMenu} variant="outline"
               className="rounded-none border-gold/40 text-xs tracking-luxury hover:bg-gold/5">
               {settingMenu ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> : <Sparkles className="w-3.5 h-3.5 mr-2" />}
               リッチメニューを設定する <span className="ml-2 opacity-60 text-[10px]">SETUP</span>
             </Button>
             <p className="text-[10px] text-muted-foreground">
-              ※ チャネルアクセストークンの保存と、サロン公開URLが必要です。
+              ※ チャネルアクセストークンの保存と、サロン公開URLが必要です。設定後、LINEアプリを一度閉じて開き直すと反映されます。
             </p>
           </div>
         </section>
