@@ -60,13 +60,15 @@ const PublicBooking = () => {
       if (!slug) { setLoading(false); return; }
       const { data: profile } = await supabase
         .from("profiles")
-        .select("id, salon_name, public_menus")
+        .select("id, salon_name, public_menus, open_time, close_time")
         .eq("public_slug", slug)
         .maybeSingle();
       if (profile) {
         setSalonExists(true);
         setSalonName(profile.salon_name || "Salon");
         setFallbackMenus(profile.public_menus || []);
+        if (profile.open_time) setOpenTime(String(profile.open_time).slice(0, 5));
+        if (profile.close_time) setCloseTime(String(profile.close_time).slice(0, 5));
 
         const { data: items } = await supabase
           .from("menu_items")
@@ -84,6 +86,7 @@ const PublicBooking = () => {
           .eq("active", true)
           .eq("bookable", true);
         setHasStaff((count || 0) > 0);
+        setMaxStaffCount(Math.max(1, count || 1));
       }
       setLoading(false);
     };
