@@ -92,26 +92,41 @@ function resolveDetailCustomerIndex(customers, job, detail = {}) {
   const expectIndex = Number.isInteger(job.currentIndex) ? job.currentIndex : -1;
   const snapshot = job.currentSnapshot || {};
 
-  let idx = customers.findIndex(c => {
-    if (expectUid && c.export_uid === expectUid) return true;
-    if (expectKey && (c.detail_key === expectKey || c.customer_no === expectKey || c.export_uid === expectKey)) return true;
-    if (detail.detail_key && c.detail_key === detail.detail_key) return true;
-    if (detail.customer_no && c.customer_no === detail.customer_no) return true;
-    if (detail.full_name && detail.kana && c.full_name === detail.full_name && c.kana === detail.kana) return true;
-    return false;
-  });
-  if (idx >= 0) return idx;
-  if (expectIndex >= 0 && customers[expectIndex] && (!expectUid || customers[expectIndex].export_uid === expectUid)) return expectIndex;
-  idx = customers.findIndex(c => c.detail_status === 'processing');
-  if (idx >= 0) return idx;
-  if (snapshot.full_name || snapshot.kana || snapshot.scan_page || snapshot.scan_row) {
-    idx = customers.findIndex(c =>
-      (snapshot.export_uid && c.export_uid === snapshot.export_uid) ||
-      (snapshot.scan_page && snapshot.scan_row && c.scan_page === snapshot.scan_page && c.scan_row === snapshot.scan_row) ||
-      (snapshot.full_name && snapshot.kana && c.full_name === snapshot.full_name && c.kana === snapshot.kana)
-    );
+  // ① クリック時に確定したUID（最優先・絶対）
+  if (expectUid) {
+    const i = customers.findIndex(c => c.export_uid === expectUid);
+    if (i >= 0) return i;
   }
-  return idx;
+  // ② クリック時のインデックス位置（配列が変わっていなければ）
+  if (expectIndex >= 0 && customers[expectIndex]) {
+    return expectIndex;
+  }
+  // ③ processing フラグが立っているもの
+  let idx = customers.findIndex(c => c.detail_status === 'processing');
+  if (idx >= 0) return idx;
+  // ④ snapshot による(ページ/行) または (氏名+カナ) 一致
+  if (snapshot.scan_page && snapshot.scan_row) {
+    idx = customers.findIndex(c => c.scan_page === snapshot.scan_page && c.scan_row === snapshot.scan_row);
+    if (idx >= 0) return idx;
+  }
+  if (snapshot.full_name && snapshot.kana) {
+    idx = customers.findIndex(c => c.full_name === snapshot.full_name && c.kana === snapshot.kana);
+    if (idx >= 0) return idx;
+  }
+  // ⑤ 詳細ページから読み取れた情報での一致(最後の手段)
+  if (detail.detail_key) {
+    idx = customers.findIndex(c => c.detail_key === detail.detail_key);
+    if (idx >= 0) return idx;
+  }
+  if (detail.customer_no) {
+    idx = customers.findIndex(c => c.customer_no === detail.customer_no);
+    if (idx >= 0) return idx;
+  }
+  if (expectKey) {
+    idx = customers.findIndex(c => c.detail_key === expectKey || c.customer_no === expectKey || c.export_uid === expectKey);
+    if (idx >= 0) return idx;
+  }
+  return -1;
 }
 
 function mergeDetailForSave(base, detail) {
