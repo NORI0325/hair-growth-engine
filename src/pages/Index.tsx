@@ -9,7 +9,7 @@ const HERO_SLIDES = [
   {
     image: hero1,
     eyebrow: "Chapter 01 — Reconnect",
-    headline: ["眠ってしまったお客様を、", "もう一度、", "灯す。"],
+    headline: ["眠ったお客様を、", "もう一度、", "灯す。"],
     accent: "灯す。",
   },
   {
@@ -290,7 +290,7 @@ const Index = () => {
 
           <div className="space-y-16">
             {[
-              { step: "01", title: "資産を、整える。", desc: "お持ちのお客様リストを取り込み、休眠・離脱予備軍・優良客に静かに分類します。" },
+              { step: "01", title: "資産を、整える。", desc: "お持ちのお客様リストを取り込み、休眠・離脱予備軍・優良客に分類します。" },
               { step: "02", title: "言葉を、届ける。", desc: "「お久しぶりです」その一言を、最も適切なタイミングで、最も心に届く形で送ります。" },
               { step: "03", title: "再会を、迎える。", desc: "メッセージから流れるようにご予約。サロンには、懐かしい笑顔が戻ってきます。" },
             ].map((s) => (
@@ -315,9 +315,9 @@ const Index = () => {
       <section className="py-32 bg-primary text-primary-foreground">
         <div className="container mx-auto px-8 text-center max-w-3xl">
           <p className="eyebrow text-primary-foreground/60 mb-6">— Begin —</p>
-          <h2 className="display text-4xl md:text-5xl mb-10">
-            眠れる資産を、<br />
-            <span className="font-serif-en italic text-gold">今夜</span>、目覚めさせよ。
+          <h2 className="display text-4xl md:text-5xl mb-10 text-center flex flex-col items-center">
+            <span>眠れる資産を、</span>
+            <span className="font-serif-en italic text-gold">今</span>、目覚めさせよ。
           </h2>
           <div className="hairline w-24 mx-auto my-10 opacity-60" />
           <Link to="/auth">
