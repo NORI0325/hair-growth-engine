@@ -155,49 +155,30 @@ function classifyMessageKind(text: string): MessageKind {
   return "casual";
 }
 
-// 種類別の自然な遅延（ms）。範囲内ランダム + 営業時間外は短めに（埋もれ防止）
+// 種類別の自然な遅延（ms）。1通方式・範囲内ランダム + 営業時間外は短めに（埋もれ防止）
 function pickReplyDelayMs(kind: MessageKind, isOutsideHours: boolean): {
-  ackDelayMs: number;   // 受領メッセージの遅延（短い）
-  mainDelayMs: number;  // 本回答の遅延
-  twoStep: boolean;     // 2通方式にするか
+  mainDelayMs: number;
 } {
   const rand = (min: number, max: number) => Math.floor(min + Math.random() * (max - min));
-  // 営業時間外は1通だけ（受領=本回答にまとめる）
+  // 営業時間外は短めに（埋もれ防止）
   if (isOutsideHours) {
-    return { ackDelayMs: 0, mainDelayMs: rand(8_000, 25_000), twoStep: false };
+    return { mainDelayMs: rand(8_000, 25_000) };
   }
   switch (kind) {
     case "urgent":
-      // 緊急は即気づく安心感。1通で短く速く。
-      return { ackDelayMs: 0, mainDelayMs: rand(15_000, 45_000), twoStep: false };
+      // 緊急：即気づく安心感
+      return { mainDelayMs: rand(15_000, 45_000) };
     case "booking":
-      // 受領→本回答（予定確認している感）
-      return { ackDelayMs: rand(8_000, 18_000), mainDelayMs: rand(90_000, 180_000), twoStep: true };
+      // 予約系：予定を確認している感
+      return { mainDelayMs: rand(60_000, 180_000) };
     case "question":
-      // 受領→本回答（丁寧に考えている感）
-      return { ackDelayMs: rand(10_000, 22_000), mainDelayMs: rand(120_000, 300_000), twoStep: true };
+      // 質問系：丁寧に考えている感
+      return { mainDelayMs: rand(90_000, 240_000) };
     case "casual":
     default:
-      // 雑談は2通方式不要、ゆったり1通
-      return { ackDelayMs: 0, mainDelayMs: rand(60_000, 180_000), twoStep: false };
+      // 雑談：ゆったり
+      return { mainDelayMs: rand(60_000, 180_000) };
   }
-}
-
-// 受領メッセージ（短く・温かく・人間味）。ランダムに揺らぎを持たせる
-function pickAckMessage(customerName: string, kind: MessageKind): string {
-  const name = `${customerName}様`;
-  const bookingAcks = [
-    `${name}\nご連絡ありがとうございます🌸\n少々お時間いただき、確認のうえ改めてご連絡いたしますね。`,
-    `${name}\nありがとうございます。\n予定を確認しまして、追ってご返信いたします🙇‍♀️`,
-    `${name}\nメッセージありがとうございます🌷\n確認次第、改めてご案内させてくださいませ。`,
-  ];
-  const questionAcks = [
-    `${name}\nお問い合わせありがとうございます🌸\n少しお時間をいただき、改めてお返事いたしますね。`,
-    `${name}\nありがとうございます。\n確認のうえ、追ってご連絡させていただきます🙇‍♀️`,
-    `${name}\nメッセージ拝見しました🌷\n少々お待ちいただけますと幸いです。`,
-  ];
-  const list = kind === "booking" ? bookingAcks : questionAcks;
-  return list[Math.floor(Math.random() * list.length)];
 }
 
 // 未連携の挨拶判定（電話番号送信を促す前に温かい一言を返したい）
