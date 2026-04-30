@@ -454,11 +454,11 @@ Deno.serve(async (req) => {
               || owner.auto_reply_message
               || defaultAutoReply(owner.salon_name, owner.open_time, owner.close_time);
 
-            const r = await replyLine(accessToken, replyToken, replyMsg);
+            const r = await replyLine(accessToken, replyToken, finalReply);
             if (!r.ok) console.error("[line-webhook] linked reply failed:", r.err);
             await logLineReply(
               supabase, owner.id, linkedCustomer.id, userId,
-              "linked_auto_reply", replyMsg,
+              "linked_auto_reply", finalReply,
               r.ok ? "sent" : "failed", r.ok ? undefined : r.err,
             );
             continue;
