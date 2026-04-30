@@ -48,7 +48,7 @@ const Auth = () => {
         <div className="space-y-8 max-w-md animate-fade-up">
           <p className="eyebrow text-primary-foreground/50">— A New Chapter —</p>
           <h2 className="display text-4xl leading-snug">
-            眠っているお客様を、<br />
+            眠ってしまったお客様を、<br />
             <span className="font-serif-en italic text-gold">最も美しい形で</span><br />
             呼び戻す。
           </h2>
