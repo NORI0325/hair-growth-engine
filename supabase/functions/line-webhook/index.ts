@@ -155,49 +155,30 @@ function classifyMessageKind(text: string): MessageKind {
   return "casual";
 }
 
-// 種類別の自然な遅延（ms）。範囲内ランダム + 営業時間外は短めに（埋もれ防止）
+// 種類別の自然な遅延（ms）。1通方式・範囲内ランダム + 営業時間外は短めに（埋もれ防止）
 function pickReplyDelayMs(kind: MessageKind, isOutsideHours: boolean): {
-  ackDelayMs: number;   // 受領メッセージの遅延（短い）
-  mainDelayMs: number;  // 本回答の遅延
-  twoStep: boolean;     // 2通方式にするか
+  mainDelayMs: number;
 } {
   const rand = (min: number, max: number) => Math.floor(min + Math.random() * (max - min));
-  // 営業時間外は1通だけ（受領=本回答にまとめる）
+  // 営業時間外は短めに（埋もれ防止）
   if (isOutsideHours) {
-    return { ackDelayMs: 0, mainDelayMs: rand(8_000, 25_000), twoStep: false };
+    return { mainDelayMs: rand(8_000, 25_000) };
   }
   switch (kind) {
     case "urgent":
-      // 緊急は即気づく安心感。1通で短く速く。
-      return { ackDelayMs: 0, mainDelayMs: rand(15_000, 45_000), twoStep: false };
+      // 緊急：即気づく安心感
+      return { mainDelayMs: rand(15_000, 45_000) };
     case "booking":
-      // 受領→本回答（予定確認している感）
-      return { ackDelayMs: rand(8_000, 18_000), mainDelayMs: rand(90_000, 180_000), twoStep: true };
+      // 予約系：予定を確認している感
+      return { mainDelayMs: rand(60_000, 180_000) };
     case "question":
-      // 受領→本回答（丁寧に考えている感）
-      return { ackDelayMs: rand(10_000, 22_000), mainDelayMs: rand(120_000, 300_000), twoStep: true };
+      // 質問系：丁寧に考えている感
+      return { mainDelayMs: rand(90_000, 240_000) };
     case "casual":
     default:
-      // 雑談は2通方式不要、ゆったり1通
-      return { ackDelayMs: 0, mainDelayMs: rand(60_000, 180_000), twoStep: false };
+      // 雑談：ゆったり
+      return { mainDelayMs: rand(60_000, 180_000) };
   }
-}
-
-// 受領メッセージ（短く・温かく・人間味）。ランダムに揺らぎを持たせる
-function pickAckMessage(customerName: string, kind: MessageKind): string {
-  const name = `${customerName}様`;
-  const bookingAcks = [
-    `${name}\nご連絡ありがとうございます🌸\n少々お時間いただき、確認のうえ改めてご連絡いたしますね。`,
-    `${name}\nありがとうございます。\n予定を確認しまして、追ってご返信いたします🙇‍♀️`,
-    `${name}\nメッセージありがとうございます🌷\n確認次第、改めてご案内させてくださいませ。`,
-  ];
-  const questionAcks = [
-    `${name}\nお問い合わせありがとうございます🌸\n少しお時間をいただき、改めてお返事いたしますね。`,
-    `${name}\nありがとうございます。\n確認のうえ、追ってご連絡させていただきます🙇‍♀️`,
-    `${name}\nメッセージ拝見しました🌷\n少々お待ちいただけますと幸いです。`,
-  ];
-  const list = kind === "booking" ? bookingAcks : questionAcks;
-  return list[Math.floor(Math.random() * list.length)];
 }
 
 // 未連携の挨拶判定（電話番号送信を促す前に温かい一言を返したい）
@@ -486,10 +467,9 @@ Deno.serve(async (req) => {
           }
 
           // ============================================================
-          // 【連携済み顧客】ハイブリッド構成
+          // 【連携済み顧客】1通方式・自然なランダム遅延
           //   ① メッセージ種類で基本速度を決定（緊急/予約/質問/雑談）
-          //   ② 受領→本回答の2通方式（質問・予約のみ）
-          //   ③ ランダム遅延で「人らしい揺らぎ」を表現
+          //   ② ランダム遅延で「人らしい揺らぎ」を表現
           // ============================================================
           if (linkedCustomer) {
             // 二重送信防止：直近20秒以内に返信済みならスキップ（LINE再送対策）
@@ -508,8 +488,8 @@ Deno.serve(async (req) => {
             }
 
             const kind = classifyMessageKind(text);
-            const { ackDelayMs, mainDelayMs, twoStep } = pickReplyDelayMs(kind, isOutsideHours);
-            console.log(`[line-webhook] hybrid plan kind=${kind} twoStep=${twoStep} ack=${ackDelayMs}ms main=${mainDelayMs}ms outside=${isOutsideHours}`);
+            const { mainDelayMs } = pickReplyDelayMs(kind, isOutsideHours);
+            console.log(`[line-webhook] reply plan kind=${kind} delay=${mainDelayMs}ms outside=${isOutsideHours}`);
 
             // 重複防止ログを先に入れて、後続のwebhookで弾けるように
             await logLineReply(
@@ -521,26 +501,12 @@ Deno.serve(async (req) => {
             const customerName = linkedCustomer.full_name || "お客様";
             const salonName = owner.salon_name || "サロン";
 
-            // バックグラウンド処理：遅延 → 受領（任意）→ 遅延 → 本回答
+            // バックグラウンド処理：遅延 → 本回答（1通方式）
             const task = (async () => {
               try {
-                // ステップ1：受領メッセージ（2通方式の場合のみ）
-                if (twoStep) {
-                  if (ackDelayMs > 0) await new Promise(r => setTimeout(r, ackDelayMs));
-                  const ackMsg = pickAckMessage(customerName, kind);
-                  // 受領は replyToken が使える可能性があるが、本回答も送るため push に統一
-                  const ackR = await sendLinePush(accessToken, userId, ackMsg);
-                  await logLineReply(
-                    supabase, owner.id, linkedCustomer.id, userId,
-                    "linked_ack", ackMsg,
-                    ackR.ok ? "sent" : "failed", ackR.ok ? undefined : ackR.err,
-                  );
-                }
-
-                // ステップ2：本回答までの遅延
                 if (mainDelayMs > 0) await new Promise(r => setTimeout(r, mainDelayMs));
 
-                // ステップ3：本回答（AI生成 → フォールバック）
+                // 本回答（AI生成 → フォールバック）
                 let replyMsg: string | null = null;
                 if (owner.auto_reply_use_ai !== false) {
                   replyMsg = await generateLinkedCustomerReply(
@@ -560,7 +526,7 @@ Deno.serve(async (req) => {
                   r.ok ? "sent" : "failed", r.ok ? undefined : r.err,
                 );
               } catch (e) {
-                console.error("[line-webhook] hybrid task error:", e);
+                console.error("[line-webhook] reply task error:", e);
               }
             })();
 
@@ -570,25 +536,6 @@ Deno.serve(async (req) => {
               // @ts-ignore
               EdgeRuntime.waitUntil(task);
             }
-            continue;
-          }
-
-          // ============================================================
-          // 【未連携 × テキスト】初回は温かい挨拶、2回目以降は無音
-          // ============================================================
-          await supabase.from("line_pending_friends").upsert({
-            owner_id: owner.id,
-            line_user_id: userId,
-            display_name: displayName,
-            last_message: text.slice(0, 200),
-          }, { onConflict: "owner_id,line_user_id" });
-
-          // 連投抑制：30分以内に未連携返信を送っていれば沈黙
-          const recentlyGuided = await wasRecentlyReplied(
-            supabase, owner.id, userId, "unlinked_guidance", 30 * 60 * 1000,
-          );
-          if (recentlyGuided) {
-            console.log(`[line-webhook] suppress duplicate guidance to ${userId}`);
             continue;
           }
 
