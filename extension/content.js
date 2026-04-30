@@ -710,6 +710,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         targetUids: targets.map(c => c.export_uid),
         currentKey: null,
         currentUid: null,
+        currentIndex: null,
+        currentSnapshot: null,
         listUrl: location.href, // 開始時の一覧URLを戻り先に
         startListUrl: location.href,
         forceFirstPage: page.current > 1,
