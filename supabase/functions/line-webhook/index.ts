@@ -489,8 +489,8 @@ Deno.serve(async (req) => {
             }
 
             const kind = classifyMessageKind(text);
-            const { ackDelayMs, mainDelayMs, twoStep } = pickReplyDelayMs(kind, isOutsideHours);
-            console.log(`[line-webhook] hybrid plan kind=${kind} twoStep=${twoStep} ack=${ackDelayMs}ms main=${mainDelayMs}ms outside=${isOutsideHours}`);
+            const { mainDelayMs } = pickReplyDelayMs(kind, isOutsideHours);
+            console.log(`[line-webhook] reply plan kind=${kind} delay=${mainDelayMs}ms outside=${isOutsideHours}`);
 
             // 重複防止ログを先に入れて、後続のwebhookで弾けるように
             await logLineReply(
@@ -502,26 +502,12 @@ Deno.serve(async (req) => {
             const customerName = linkedCustomer.full_name || "お客様";
             const salonName = owner.salon_name || "サロン";
 
-            // バックグラウンド処理：遅延 → 受領（任意）→ 遅延 → 本回答
+            // バックグラウンド処理：遅延 → 本回答（1通方式）
             const task = (async () => {
               try {
-                // ステップ1：受領メッセージ（2通方式の場合のみ）
-                if (twoStep) {
-                  if (ackDelayMs > 0) await new Promise(r => setTimeout(r, ackDelayMs));
-                  const ackMsg = pickAckMessage(customerName, kind);
-                  // 受領は replyToken が使える可能性があるが、本回答も送るため push に統一
-                  const ackR = await sendLinePush(accessToken, userId, ackMsg);
-                  await logLineReply(
-                    supabase, owner.id, linkedCustomer.id, userId,
-                    "linked_ack", ackMsg,
-                    ackR.ok ? "sent" : "failed", ackR.ok ? undefined : ackR.err,
-                  );
-                }
-
-                // ステップ2：本回答までの遅延
                 if (mainDelayMs > 0) await new Promise(r => setTimeout(r, mainDelayMs));
 
-                // ステップ3：本回答（AI生成 → フォールバック）
+                // 本回答（AI生成 → フォールバック）
                 let replyMsg: string | null = null;
                 if (owner.auto_reply_use_ai !== false) {
                   replyMsg = await generateLinkedCustomerReply(
@@ -541,7 +527,7 @@ Deno.serve(async (req) => {
                   r.ok ? "sent" : "failed", r.ok ? undefined : r.err,
                 );
               } catch (e) {
-                console.error("[line-webhook] hybrid task error:", e);
+                console.error("[line-webhook] reply task error:", e);
               }
             })();
 
@@ -551,25 +537,6 @@ Deno.serve(async (req) => {
               // @ts-ignore
               EdgeRuntime.waitUntil(task);
             }
-            continue;
-          }
-
-          // ============================================================
-          // 【未連携 × テキスト】初回は温かい挨拶、2回目以降は無音
-          // ============================================================
-          await supabase.from("line_pending_friends").upsert({
-            owner_id: owner.id,
-            line_user_id: userId,
-            display_name: displayName,
-            last_message: text.slice(0, 200),
-          }, { onConflict: "owner_id,line_user_id" });
-
-          // 連投抑制：30分以内に未連携返信を送っていれば沈黙
-          const recentlyGuided = await wasRecentlyReplied(
-            supabase, owner.id, userId, "unlinked_guidance", 30 * 60 * 1000,
-          );
-          if (recentlyGuided) {
-            console.log(`[line-webhook] suppress duplicate guidance to ${userId}`);
             continue;
           }
 
