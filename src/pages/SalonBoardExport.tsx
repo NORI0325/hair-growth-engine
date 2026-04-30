@@ -37,7 +37,7 @@ const SalonBoardExport = () => {
           <p className="text-sm text-muted-foreground leading-relaxed mb-6">
             Chrome / Edge / Brave などの Chromium 系ブラウザで動作する専用拡張機能です。
             サロンボードにログインした状態のあなたのブラウザ内で動作するため、
-            安全に顧客データを抽出できます。最新版は <strong>v1.3.0</strong> です。
+            安全に顧客データを抽出できます。最新版は <strong>v1.5.0</strong> です。
           </p>
           <Button
             onClick={downloadExtension}
@@ -102,7 +102,7 @@ const SalonBoardExport = () => {
               <ol className="space-y-2 ml-4 text-muted-foreground">
                 <li>1. 一覧スキャン完了後、「詳細スキャン開始」を押す</li>
                 <li>2. 各顧客の詳細ページを順次取得（1,260名 × 約3秒 = 約60〜90分）</li>
-                <li>3. 進捗は5件ごとに自動保存されるため、途中で閉じても再開可能</li>
+                <li>3. 同じ顧客で止まらないよう、失敗した顧客は自動で記録して次へ進みます</li>
                 <li>4. 完了後「CSVダウンロード」で完全版を取得</li>
               </ol>
             </div>
