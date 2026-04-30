@@ -1,9 +1,12 @@
-// Salon Board Customer Exporter - Content Script v3
-// 戦略: 画面遷移ベース（fetchでなく実ナビゲーション）でセッション/JS依存を回避
-// 状態は chrome.storage に保存し、ページロード後に自動継続する
+// Salon Board Customer Exporter - Content Script v4
+// 戦略: 実画面のページ遷移で一覧を巡回し、顧客番号が「-」でも1件に潰れないよう安定キーで保存する
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const cleanText = (el) => (el?.textContent || '').replace(/\s+/g, ' ').trim();
+const normalizeValue = (value) => {
+  const s = String(value ?? '').replace(/\s+/g, ' ').trim();
+  return (s === '-' || s === '－' || s === '―' || s === '—') ? '' : s;
+};
 const sendStatus = (text) => {
   try { chrome.runtime.sendMessage({ type: 'status', text }); } catch (e) {}
   console.log('[SB Exporter]', text);
@@ -59,28 +62,48 @@ function findListTable(root = document) {
 function getHeaderCells(table) {
   let cells = [...table.querySelectorAll('thead th')].map(cleanText);
   if (!cells.length) {
-    const firstRow = table.querySelector('tr');
+    const firstRow = [...table.querySelectorAll('tr')].find(tr => tr.querySelectorAll('th').length >= 2) || table.querySelector('tr');
     cells = [...(firstRow?.querySelectorAll('th, td') || [])].map(cleanText);
   }
   return cells;
 }
 
-function mapRowToObj(headerCells, cells, link) {
-  const obj = { detail_url: null };
-  if (link) {
-    const href = link.getAttribute('href');
-    if (href && href !== '#' && !href.startsWith('javascript:')) {
-      try { obj.detail_url = new URL(href, location.href).href; } catch (e) {}
-    } else {
-      // onclick の中から ID を抜き出して URL 化（サロンボードはフォーム POST が多いのでここはベストエフォート）
-      const onclick = link.getAttribute('onclick') || '';
-      const m = onclick.match(/['"]([^'"]*\d{5,}[^'"]*)['"]/);
-      if (m) try { obj.detail_url = new URL(m[1], location.href).href; } catch (e) {}
+function getLinkInfo(link) {
+  const info = { detail_url: null, detail_key: '' };
+  if (!link) return info;
+  const href = link.getAttribute('href') || '';
+  const onclick = link.getAttribute('onclick') || '';
+  const raw = `${href} ${onclick}`;
+
+  const idMatch = raw.match(/(?:customer|kokyaku|member|id|customerCd|customerId|kokyakuId|kkykNo|kyakuNo)[^0-9A-Za-z]{0,8}([0-9A-Za-z_-]{4,})/i)
+    || raw.match(/[?&](?:id|customerId|customerCd|kokyakuId|memberId|no)=([^&'"\)]+)/i)
+    || raw.match(/['"]([0-9A-Za-z_-]{6,})['"]/);
+  if (idMatch) info.detail_key = idMatch[1];
+
+  if (href && href !== '#' && !href.startsWith('javascript:')) {
+    try { info.detail_url = new URL(href, location.href).href; } catch (e) {}
+  } else {
+    const pathMatch = onclick.match(/['"]([^'"]*(?:customer|kokyaku|member|detail|edit)[^'"]*)['"]/i);
+    if (pathMatch) {
+      try { info.detail_url = new URL(pathMatch[1], location.href).href; } catch (e) {}
     }
+  }
+  if (!info.detail_key && info.detail_url) info.detail_key = info.detail_url;
+  return info;
+}
+
+function mapRowToObj(headerCells, cells, link, meta = {}) {
+  const obj = { detail_url: null };
+  const linkInfo = getLinkInfo(link);
+  obj.detail_url = linkInfo.detail_url;
+  obj.detail_key = linkInfo.detail_key;
+
+  if (link) {
+    obj.link_text = cleanText(link);
   }
   headerCells.forEach((h, i) => {
     if (!h || cells[i] == null) return;
-    const v = cells[i];
+    const v = normalizeValue(cells[i]);
     if (/カナ/.test(h)) obj.kana = v;
     else if (/漢字|^氏名$|氏名$/.test(h) && !obj.full_name) obj.full_name = v;
     else if (/お客様番号|顧客番号|会員番号/.test(h)) obj.customer_no = v;
@@ -91,6 +114,9 @@ function mapRowToObj(headerCells, cells, link) {
     else if (/初回来店/.test(h)) obj.first_visit_date = v;
     else if (/誕生日|生年月日/.test(h)) obj.birthday = v;
   });
+  if (!obj.kana && obj.link_text && /[ァ-ヶー]/.test(obj.link_text)) obj.kana = obj.link_text;
+  obj.scan_page = meta.page || null;
+  obj.scan_row = meta.rowNumber || null;
   return obj;
 }
 
