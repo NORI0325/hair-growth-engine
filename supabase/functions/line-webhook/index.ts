@@ -82,6 +82,7 @@ async function generateAutoReplyAI(
   } catch (e) {
     console.error("[auto-reply AI] error:", e);
     return null;
+  }
 }
 
 // 連携済み顧客向け：会話に応じた温かいAI返答
