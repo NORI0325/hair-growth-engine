@@ -62,6 +62,11 @@ $('clearData').addEventListener('click', async () => {
   setStatus('データをクリアしました');
 });
 
+$('debugBtn').addEventListener('click', async () => {
+  setStatus('診断中…');
+  await send('debug');
+});
+
 // Status受信
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg.type === 'status') setStatus(msg.text);
