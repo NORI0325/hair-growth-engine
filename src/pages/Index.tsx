@@ -9,7 +9,7 @@ const HERO_SLIDES = [
   {
     image: hero1,
     eyebrow: "Chapter 01 — Reconnect",
-    headline: ["眠っているお客様を、", "もう一度、", "灯す。"],
+    headline: ["眠ってしまったお客様を、", "もう一度、", "灯す埋。"],
     accent: "灯す。",
   },
   {
