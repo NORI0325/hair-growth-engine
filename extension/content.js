@@ -128,6 +128,10 @@ function looksLikeLabelOnly(value) {
   return /^(誕生日|生年月日|電話番号|住所|血液型|性別|E-?MAIL|メール|お客様番号|顧客番号|メモ|来店|職業)[：:]?$/.test(s);
 }
 
+function normalizeMatchText(value) {
+  return normalizeValue(value).replace(/[\s　・･()（）\[\]【】]/g, '').toLowerCase();
+}
+
 function resolveDetailCustomerIndex(customers, job, detail = {}) {
   const sessionTarget = readSessionDetailTarget();
   const expectKey = job.currentKey;
@@ -155,6 +159,16 @@ function resolveDetailCustomerIndex(customers, job, detail = {}) {
   }
   if (snapshot.full_name && snapshot.kana) {
     idx = customers.findIndex(c => c.full_name === snapshot.full_name && c.kana === snapshot.kana);
+    if (idx >= 0) return idx;
+  }
+  if (detail.full_name || detail.kana) {
+    const dn = normalizeMatchText(detail.full_name);
+    const dk = normalizeMatchText(detail.kana);
+    idx = customers.findIndex(c => {
+      const cn = normalizeMatchText(c.full_name);
+      const ck = normalizeMatchText(c.kana);
+      return (dn && cn && dn === cn) || (dk && ck && dk === ck) || (dn && cn && (dn.includes(cn) || cn.includes(dn)) && dk && ck && (dk.includes(ck) || ck.includes(dk)));
+    });
     if (idx >= 0) return idx;
   }
   // ⑤ 詳細ページから読み取れた情報での一致(最後の手段)
