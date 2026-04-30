@@ -436,6 +436,19 @@ function isDetailPage() {
   return /お客様情報詳細|お客様情報[\s\S]*来店情報|基本情報[\s\S]*来店情報|電話番号\s*1[\s\S]*E-?MAIL|氏名[\s\S]*カナ[\s\S]*電話番号/.test(txt);
 }
 
+function isCustomerListPage() {
+  const txt = (document.body.innerText || document.body.textContent || '');
+  if (!/お客様情報[\s\S]*一覧|お客様情報一覧|お客様一覧/.test(txt)) return false;
+  const table = findListTable();
+  if (!table) return false;
+  const head = getHeaderCells(table).join('|') || cleanText(table.querySelector('tr'));
+  return /氏名|カナ/.test(head) && /来店回数|前回来店|性別|お客様番号/.test(head);
+}
+
+function scheduleDetailContinue(ms = 1200) {
+  setTimeout(() => autoContinueDetailJob().catch(e => sendStatus(`⚠️ 詳細スキャン継続エラー: ${e.message}`)), ms);
+}
+
 function assignDetailField(obj, label, value) {
   if (!label || !value) return;
   const cleanLabel = normalizeValue(label).replace(/[＊*必須\s]/g, '');
