@@ -424,12 +424,12 @@ Deno.serve(async (req) => {
           // 【連携済み顧客】温かいAI返信（営業時間内/外で文言を切替）
           // ============================================================
           if (linkedCustomer) {
-            // 連投抑制：直近5分以内に同種返信を送っていればスキップ
+            // 二重送信防止のみ：直近20秒以内に返信済みならスキップ（LINE側の再送対策）
             const recentlyReplied = await wasRecentlyReplied(
-              supabase, owner.id, userId, "linked_auto_reply", 5 * 60 * 1000,
+              supabase, owner.id, userId, "linked_auto_reply", 20 * 1000,
             );
             if (recentlyReplied) {
-              console.log(`[line-webhook] suppress duplicate reply to ${userId}`);
+              console.log(`[line-webhook] suppress duplicate reply (within 20s) to ${userId}`);
               continue;
             }
 
