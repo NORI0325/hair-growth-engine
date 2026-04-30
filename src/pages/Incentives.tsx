@@ -111,6 +111,17 @@ const Incentives = () => {
         </Button>
       </div>
 
+      {/* LINE連動の説明バナー */}
+      <div className="mb-6 p-4 border border-gold/30 bg-gold/5 rounded-none">
+        <p className="text-xs leading-relaxed text-foreground">
+          <span className="font-serif text-gold">📱 LINEリッチメニューと連動しています</span><br />
+          <span className="text-muted-foreground">
+            お客様がLINEのリッチメニューから「特典」をタップすると、<strong className="text-foreground">この画面で「有効」になっている特典</strong>が、お客様のセグメント（新規 / アクティブ / 離脱予備 / 休眠 / VIP）に合わせて自動表示されます。<br />
+            不要な特典は <strong>右側のスイッチでOFF</strong> に、内容は <strong>編集ボタン</strong> から変更できます。期限切れ（valid_until 経過）も自動で非表示になります。
+          </span>
+        </p>
+      </div>
+
       {loading ? (
         <p className="text-sm text-muted-foreground">読込中...</p>
       ) : items.length === 0 ? (
