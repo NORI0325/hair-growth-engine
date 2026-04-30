@@ -60,7 +60,7 @@ $('downloadCsv').addEventListener('click', async () => {
     return /[",\n]/.test(s) ? `"${s}"` : s;
   };
   const rows = [headers.join(',')];
-  customers.forEach(c => rows.push(headers.map(h => escape(c[h])).join(',')));
+  customers.forEach(c => rows.push(headers.map(h => escape(escapeJson(c[h]))).join(',')));
   
   const blob = new Blob(['\uFEFF' + rows.join('\n')], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
