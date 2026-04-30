@@ -255,10 +255,10 @@ const Index = () => {
 
           <div className="grid md:grid-cols-2 gap-x-16 gap-y-20">
             {[
-              { num: "i", title: "顧客資産の継承", en: "Customer Heritage", desc: "Excel/CSVから2,000名のお客様情報を、一括で美しく整える。最終来店日に応じて自動的に分類。" },
-              { num: "ii", title: "心に届く配信", en: "Mindful Outreach", desc: "メールとSMS、二つの経路で。お一人おひとりのお名前を添えた、テンプレートでない言葉を届ける。" },
+              { num: "i", title: "顧客資産の継承", en: "Customer Heritage", desc: "今まで全てのお客様情報を、ワンタップで一括で取り込む。紛らわしい作業は不要。最終来店日に応じて自動的に分類。" },
+              { num: "ii", title: "心に届く配信", en: "Mindful Outreach", desc: "LINE・メール・SMS、二つの経路で。お一人おひとりのお名前を添えた、テンプレートでない言葉を届ける。温かみのある言葉は最強の武器です。" },
               { num: "iii", title: "ワンタップ予約", en: "Effortless Booking", desc: "メッセージから、最短3タップで予約完了。お客様は会員登録もログインも不要。" },
-              { num: "iv", title: "静かな計測", en: "Quiet Analytics", desc: "配信から来店、そして売上まで。数字の奥にある「物語」を可視化する。" },
+              { num: "iv", title: "静かな計測", en: "Quiet Analytics", desc: "配信から来店、そして売上まで。数字の奥にある「物語」を可視化する。Salon Boostでは１％の取りこぼしも許しません。" },
             ].map((f) => (
               <div key={f.num} className="group">
                 <div className="flex items-baseline gap-6 mb-4">
