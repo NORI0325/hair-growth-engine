@@ -20,8 +20,9 @@ $('scanList').addEventListener('click', async () => {
   const endPageVal = $('endPage').value;
   const endPage = endPageVal ? parseInt(endPageVal) : null;
   const delay = parseInt($('delay').value) || 2500;
+  const reset = $('resetBeforeScan').checked;
   setStatus('一覧スキャン開始…');
-  await send('scanList', { startPage, endPage, delay });
+  await send('scanList', { startPage, endPage, delay, reset });
 });
 
 $('stopScan').addEventListener('click', async () => {
