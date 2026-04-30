@@ -526,16 +526,20 @@ async function autoContinueDetailJob() {
     const stuckIdx = customers.findIndex(c => c.export_uid === job.currentUid);
     if (stuckIdx >= 0) {
       const attempts = Number(customers[stuckIdx].detail_attempts || 0);
+      const timedOut = !job.openedAt || Date.now() - job.openedAt > DETAIL_NAVIGATION_TIMEOUT_MS;
+      const shouldSkip = attempts >= MAX_DETAIL_ATTEMPTS || timedOut;
       customers[stuckIdx] = {
         ...customers[stuckIdx],
-        detail_status: attempts >= MAX_DETAIL_ATTEMPTS ? 'skipped' : 'pending',
-        detail_error: '詳細ページへ遷移できませんでした',
+        detail_status: shouldSkip ? 'skipped' : 'pending',
+        detail_error: shouldSkip ? '詳細ページへ遷移できず自動スキップしました' : '詳細ページへ遷移できませんでした',
       };
       await saveStored(customers);
-      sendStatus(`⚠️ 詳細ページに入れなかったため${attempts >= MAX_DETAIL_ATTEMPTS ? 'スキップ' : '再試行待ち'}: ${customers[stuckIdx].full_name || customers[stuckIdx].kana || '(名前不明)'}`);
+      sendStatus(`⚠️ 詳細ページに入れなかったため${shouldSkip ? 'スキップ' : '再試行待ち'}: ${customers[stuckIdx].full_name || customers[stuckIdx].kana || '(名前不明)'}`);
     }
     job.currentKey = null;
     job.currentUid = null;
+    job.currentIndex = null;
+    job.currentSnapshot = null;
     await setDetailJob(job);
     customers = withCustomerUids(await getStored());
   }
@@ -625,6 +629,14 @@ async function autoContinueDetailJob() {
     }
     job.currentKey = key;
     job.currentUid = uid;
+    job.currentIndex = targetIdx;
+    job.currentSnapshot = {
+      export_uid: clickedTarget.target.export_uid,
+      full_name: clickedTarget.target.full_name || '',
+      kana: clickedTarget.target.kana || '',
+      scan_page: clickedTarget.target.scan_page || null,
+      scan_row: clickedTarget.target.scan_row || null,
+    };
     job.listUrl = location.href; // 戻り先として記録
     job.openedAt = Date.now();
     await setDetailJob(job);
