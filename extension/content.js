@@ -484,6 +484,21 @@ async function autoContinueDetailJob() {
     return true;
   }
 
+  const pageInfo = getPageInfo();
+  if (job.forceFirstPage && pageInfo.current > 1) {
+    const firstLink = findPageNumberLink(1);
+    if (firstLink) {
+      job.forceFirstPage = false;
+      job.didRestartFromFirst = true;
+      await setDetailJob(job);
+      sendStatus('詳細スキャンは先頭ページから始めます。1ページ目へ戻ります…');
+      firstLink.click();
+      return true;
+    }
+    job.forceFirstPage = false;
+    await setDetailJob(job);
+  }
+
   // 現在の一覧ページから、未取得顧客の名前リンクを探す
   const tbl = findListTable();
   if (!tbl) {
@@ -493,13 +508,16 @@ async function autoContinueDetailJob() {
 
   let clickedTarget = null;
   const trs = [...tbl.querySelectorAll('tbody tr, tr')];
+  let dataRowNumber = 0;
   for (const tr of trs) {
     if (tr.querySelectorAll('th').length) continue;
+    if (tr.querySelectorAll('td').length < 5) continue;
+    dataRowNumber += 1;
     const link = tr.querySelector('a[href], a[onclick]');
     if (!link) continue;
     const sig = getLinkSignature(link);
     if (!sig) continue;
-    const rowInfo = mapRowToObj(getHeaderCells(tbl), [...tr.querySelectorAll('td')].map(td => cleanText(td)), link, { page: getPageInfo().current, rowNumber: [...trs].filter(x => x.compareDocumentPosition(tr) & Node.DOCUMENT_POSITION_FOLLOWING).length + 1 });
+    const rowInfo = mapRowToObj(getHeaderCells(tbl), [...tr.querySelectorAll('td')].map(td => cleanText(td)), link, { page: pageInfo.current, rowNumber: dataRowNumber });
     const rowUid = customerUid(rowInfo);
     // 未取得顧客の中に、このリンクに対応するものがあるか
     const tds = [...tr.querySelectorAll('td')].map(cleanText);
