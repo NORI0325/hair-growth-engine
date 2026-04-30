@@ -93,6 +93,14 @@ const PublicBooking = () => {
     load();
   }, [slug]);
 
+  // タブタイトルをサロン名に差し替え（お客様視点で自然に）
+  useEffect(() => {
+    if (salonExists && salonName) {
+      document.title = `${salonName}｜ご予約`;
+    }
+    return () => { document.title = "ご予約 — Salon Boost"; };
+  }, [salonExists, salonName]);
+
   const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
   const minDate = tomorrow.toISOString().split("T")[0];
 
