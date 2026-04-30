@@ -49,12 +49,12 @@ const Auth = () => {
           <p className="eyebrow text-primary-foreground/50">— A New Chapter —</p>
           <h2 className="display text-4xl leading-snug">
             眠ったお客様を、<br />
-            <span className="font-serif-en italic text-gold">最も美しい形で</span><br />
+            <span className="font-serif-en italic text-gold">おもてなしで</span><br />
             呼び戻す。
           </h2>
           <div className="hairline w-16 opacity-60" />
           <p className="text-sm text-primary-foreground/60 leading-loose">
-            Salon Boostは、選ばれ続けるサロンのための、静かで力強いCRM。
+            Salon Boostは、選ばれ続けるサロンのためにつくられた、　　　　　最強のCRM。
           </p>
         </div>
         <div className="text-xs text-primary-foreground/40 tracking-luxury">EST. 2026</div>
