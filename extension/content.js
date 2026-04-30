@@ -187,7 +187,7 @@ function findNextPageLink() {
 
 // 現在ページ / 総ページ / 件数を抽出
 function getPageInfo() {
-  const txt = document.body.innerText.replace(/\s+/g, ' ');
+  const txt = (document.body.innerText || document.body.textContent || '').replace(/\s+/g, ' ');
   let current = 1, total = 1, totalCount = null;
   let m = txt.match(/(\d+)\s*\/\s*(\d+)\s*ページ/) || txt.match(/(\d+)\s*\/\s*(\d+)\s*ﾍﾟｰｼﾞ/);
   if (m) { current = parseInt(m[1]); total = parseInt(m[2]); }
