@@ -559,11 +559,11 @@ async function autoContinueDetailJob() {
       sendStatus(`${ok ? '📥 詳細取得' : '⚠️ 詳細読取失敗'}: ${customers[idx].full_name || customers[idx].kana || '(名前不明)'} [${doneCount}/${job.totalTargets}]`);
     } else {
       // 保存先不明 → snapshot/expectUid を使って強制マーク（無限ループ防止）
-      const fallbackUid = job.currentUid || (job.currentSnapshot && job.currentSnapshot.export_uid);
+      const fallbackUid = lock?.uid || job.currentUid || (job.currentSnapshot && job.currentSnapshot.export_uid);
       if (fallbackUid) {
         const ok = hasUsefulDetail(detail);
         const newEntry = {
-          ...(job.currentSnapshot || {}),
+          ...(lock?.snapshot || job.currentSnapshot || {}),
           ...detail,
           export_uid: fallbackUid,
           detail_fetched: ok,
