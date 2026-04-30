@@ -512,7 +512,26 @@ async function autoContinueDetailJob() {
       const doneCount = customers.filter(c => c.detail_fetched || c.detail_status === 'skipped').length;
       sendStatus(`${ok ? '📥 詳細取得' : '⚠️ 詳細読取失敗'}: ${customers[idx].full_name || customers[idx].kana || '(名前不明)'} [${doneCount}/${job.totalTargets}]`);
     } else {
-      sendStatus(`⚠️ 保存先を特定できません。次の顧客へ進みます(${detail.full_name || job.currentSnapshot?.full_name || '?'})`);
+      // 保存先不明 → snapshot/expectUid を使って強制マーク（無限ループ防止）
+      const fallbackUid = job.currentUid || (job.currentSnapshot && job.currentSnapshot.export_uid);
+      if (fallbackUid) {
+        const ok = hasUsefulDetail(detail);
+        const newEntry = {
+          ...(job.currentSnapshot || {}),
+          ...detail,
+          export_uid: fallbackUid,
+          detail_fetched: ok,
+          detail_status: ok ? 'fetched' : 'skipped',
+          detail_error: ok ? '' : '保存先の顧客を特定できなかったため新規追加・スキップ扱いとしました',
+          detail_fetched_at: new Date().toISOString(),
+          detail_url: location.href,
+        };
+        customers.push(newEntry);
+        await saveStored(customers);
+        sendStatus(`⚠️ 保存先を特定できないため強制保存: ${newEntry.full_name || newEntry.kana || fallbackUid}`);
+      } else {
+        sendStatus(`⚠️ 保存先を特定できません。次の顧客へ進みます(${detail.full_name || job.currentSnapshot?.full_name || '?'})`);
+      }
     }
 
     job.processed = (await getStored()).filter(c => c.detail_fetched || c.detail_status === 'skipped').length;
