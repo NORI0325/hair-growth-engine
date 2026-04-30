@@ -537,10 +537,12 @@ async function autoContinueDetailJob() {
     await sleep(800); // レンダー完了待ち
     const detail = extractDetailInfoFromBody();
     const customers = withCustomerUids(await getStored());
+    const lock = await getDetailTargetLock();
 
     // 対象顧客を特定: クリック前に固定したUID/配列位置を最優先（氏名パース失敗でもループしない）
     const expectUid = job.currentUid;
-    const idx = resolveDetailCustomerIndex(customers, job, detail);
+    let idx = Number.isInteger(lock?.index) && customers[lock.index] ? lock.index : -1;
+    if (idx < 0) idx = resolveDetailCustomerIndex(customers, job, detail);
     if (idx >= 0) {
       const ok = hasUsefulDetail(detail);
       const mergedDetail = mergeDetailForSave(customers[idx], detail);
@@ -585,6 +587,8 @@ async function autoContinueDetailJob() {
     job.currentIndex = null;
     job.currentSnapshot = null;
     await setDetailJob(job);
+    clearSessionDetailTarget();
+    await clearDetailTargetLock();
 
     await sleep(job.delay || 2500);
     // 一覧へ戻る
