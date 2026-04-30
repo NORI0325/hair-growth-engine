@@ -293,17 +293,10 @@ async function autoContinueListJob() {
 function mergeCustomers(existing, fresh) {
   const map = new Map();
   [...existing, ...fresh].forEach(c => {
-    const customerNo = normalizeValue(c.customer_no);
-    const key = customerNo
-      ? `no:${customerNo}`
-      : c.detail_key
-        ? `detail:${c.detail_key}`
-        : c.detail_url
-          ? `url:${c.detail_url}`
-          : `name:${normalizeValue(c.kana)}|${normalizeValue(c.full_name)}|${normalizeValue(c.last_visit_date)}|${normalizeValue(c.visit_count)}|p${c.scan_page || ''}r${c.scan_row || ''}`;
+    const key = c.export_uid || customerUid(c);
     if (!key || key === 'name:||||p r') return;
     const prev = map.get(key) || {};
-    map.set(key, { ...prev, ...c });
+    map.set(key, { ...prev, ...c, export_uid: key });
   });
   return [...map.values()];
 }
