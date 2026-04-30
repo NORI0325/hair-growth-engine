@@ -47,7 +47,7 @@ $('downloadCsv').addEventListener('click', async () => {
     'address', 'postcard', 'visit_trigger',
     'visit_count', 'first_visit_date', 'last_visit_date',
     'memo', 'warning_flag', 'other1', 'other2', 'other3',
-    'detail_fetched', 'detail_url'
+    'detail_fetched', 'detail_status', 'detail_attempts', 'detail_error', 'detail_url'
   ];
   const escapeJson = (v) => {
     if (v == null) return '';
