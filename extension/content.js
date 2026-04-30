@@ -479,23 +479,14 @@ async function autoContinueDetailJob() {
     const detail = extractDetailInfoFromBody();
     const customers = withCustomerUids(await getStored());
 
-    // 対象顧客を特定: クリック前に固定したUIDを最優先（同姓同名・空番号でもループしない）
-    const expectKey = job.currentKey;
+    // 対象顧客を特定: クリック前に固定したUID/配列位置を最優先（氏名パース失敗でもループしない）
     const expectUid = job.currentUid;
-    const idx = customers.findIndex(c => {
-      if (expectUid && c.export_uid === expectUid) return true;
-      if (expectKey && (c.detail_key === expectKey || c.customer_no === expectKey)) return true;
-      if (detail.detail_key && c.detail_key === detail.detail_key) return true;
-      if (detail.customer_no && c.customer_no === detail.customer_no) return true;
-      if (detail.full_name && c.full_name === detail.full_name && c.kana === detail.kana) return true;
-      return false;
-    });
+    const idx = resolveDetailCustomerIndex(customers, job, detail);
     if (idx >= 0) {
       const ok = hasUsefulDetail(detail);
+      const mergedDetail = mergeDetailForSave(customers[idx], detail);
       customers[idx] = {
-        ...customers[idx],
-        ...detail,
-        export_uid: customers[idx].export_uid,
+        ...mergedDetail,
         detail_fetched: ok,
         detail_status: ok ? 'fetched' : (Number(customers[idx].detail_attempts || 0) >= MAX_DETAIL_ATTEMPTS ? 'skipped' : 'pending'),
         detail_error: ok ? '' : '詳細ページは開けましたが、必要項目を読み取れませんでした',
@@ -504,15 +495,17 @@ async function autoContinueDetailJob() {
       };
       await saveStored(customers);
       const doneCount = customers.filter(c => c.detail_fetched || c.detail_status === 'skipped').length;
-      sendStatus(`${ok ? '📥 詳細取得' : '⚠️ 詳細読取失敗'}: ${detail.full_name || customers[idx].full_name || '(名前不明)'} [${doneCount}/${job.totalTargets}]`);
+      sendStatus(`${ok ? '📥 詳細取得' : '⚠️ 詳細読取失敗'}: ${customers[idx].full_name || customers[idx].kana || '(名前不明)'} [${doneCount}/${job.totalTargets}]`);
     } else {
-      sendStatus(`⚠️ 一致する顧客が見つかりません(${detail.full_name || '?'})`);
+      sendStatus(`⚠️ 保存先を特定できません。次の顧客へ進みます(${detail.full_name || job.currentSnapshot?.full_name || '?'})`);
     }
 
     job.processed = (await getStored()).filter(c => c.detail_fetched || c.detail_status === 'skipped').length;
     job.lastUid = expectUid || null;
     job.currentKey = null;
     job.currentUid = null;
+    job.currentIndex = null;
+    job.currentSnapshot = null;
     await setDetailJob(job);
 
     await sleep(job.delay || 2500);
