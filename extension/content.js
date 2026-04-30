@@ -74,6 +74,20 @@ function clearSessionDetailTarget() {
   try { sessionStorage.removeItem(CURRENT_TARGET_SESSION_KEY); } catch (e) {}
 }
 
+function normalizeUrlForCompare(url) {
+  try {
+    const u = new URL(url, location.href);
+    u.hash = '';
+    return u.href;
+  } catch (e) {
+    return String(url || '').split('#')[0];
+  }
+}
+
+function isSameUrl(a, b) {
+  return normalizeUrlForCompare(a) === normalizeUrlForCompare(b);
+}
+
 function customerUid(c, index = 0) {
   const customerNo = normalizeValue(c.customer_no);
   if (customerNo) return `no:${customerNo}`;
