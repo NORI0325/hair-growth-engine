@@ -24,6 +24,10 @@ $('scanList').addEventListener('click', async () => {
   await send('scanList', { startPage, endPage, delay });
 });
 
+$('stopScan').addEventListener('click', async () => {
+  await send('stopScan');
+});
+
 $('scanDetails').addEventListener('click', async () => {
   const delay = parseInt($('delay').value) || 2500;
   setStatus('詳細スキャン開始…');
