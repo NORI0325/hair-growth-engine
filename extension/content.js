@@ -587,7 +587,7 @@ async function autoContinueDetailJob() {
     } else {
       // 保存先不明 → snapshot/expectUid を使って強制マーク（無限ループ防止）
       const fallbackUid = lock?.uid || job.currentUid || (job.currentSnapshot && job.currentSnapshot.export_uid);
-      const fallbackIdx = fallbackUid ? customers.findIndex(c => c.export_uid === fallbackUid) : customers.findIndex(c => c.detail_status === 'processing' || (allowed.has(c.export_uid) && isDetailPending(c)));
+      const fallbackIdx = fallbackUid ? customers.findIndex(c => c.export_uid === fallbackUid) : customers.findIndex(c => c.detail_status === 'processing' || isDetailPending(c));
       if (fallbackIdx >= 0) {
         const ok = hasUsefulDetail(detail);
         const mergedDetail = mergeDetailForSave(customers[fallbackIdx], detail);
@@ -885,4 +885,4 @@ if (document.readyState === 'complete') {
   window.addEventListener('load', () => setTimeout(bootAutoContinue, 1000));
 }
 
-console.log('[Salon Board Exporter] v6 ready');
+console.log('[Salon Board Exporter] v8 ready');
