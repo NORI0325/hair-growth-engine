@@ -82,7 +82,105 @@ async function generateAutoReplyAI(
   } catch (e) {
     console.error("[auto-reply AI] error:", e);
     return null;
+}
+
+// 連携済み顧客向け：会話に応じた温かいAI返答
+async function generateLinkedCustomerReply(
+  text: string,
+  customerName: string,
+  salonName: string,
+  isOutsideHours: boolean,
+  openTime?: string,
+  closeTime?: string,
+): Promise<string | null> {
+  const apiKey = Deno.env.get("LOVABLE_API_KEY");
+  if (!apiKey) return null;
+  const hoursText = openTime && closeTime ? `${openTime.slice(0,5)}〜${closeTime.slice(0,5)}` : "営業時間内";
+  const timeContext = isOutsideHours
+    ? `現在は営業時間外（営業時間：${hoursText}）。営業時間内に改めてスタッフからご連絡することを伝える。`
+    : `現在は営業時間内。スタッフが順次確認するため少しお待ちいただくよう伝える。`;
+  try {
+    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash-lite",
+        messages: [
+          {
+            role: "system",
+            content: `あなたは${salonName}の品格あるコンシェルジュです。常連のお客様（${customerName}様）からのLINEに、温かく一次返信します。
+【状況】${timeContext}
+【ルール】
+- 必ず「${customerName}様」で始める
+- お客様のメッセージ内容に短く触れて共感や感謝を示す
+- 予約変更・キャンセルの相談なら「予約する」ボタンへ案内
+- 質問や雑談なら、スタッフが確認してご連絡する旨を伝える
+- 「こんにちは」「ありがとう」など挨拶には、温かく挨拶を返す
+- 100〜140文字、絵文字は1〜2個まで上品に
+- 末尾に「— ${salonName}」を付ける
+- 本文のみ出力（前置き・説明・「了解しました」等は禁止）`,
+          },
+          { role: "user", content: text.slice(0, 500) },
+        ],
+      }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const result = data?.choices?.[0]?.message?.content?.trim();
+    return result || null;
+  } catch (e) {
+    console.error("[linked reply AI] error:", e);
+    return null;
   }
+}
+
+// 未連携の挨拶判定（電話番号送信を促す前に温かい一言を返したい）
+function isGreetingOrSimpleText(text: string): boolean {
+  const t = text.trim();
+  if (t.length > 30) return false;
+  return /^(こんにちは|こんばんは|おはよう|はじめまして|よろしく|ありがとう|すみません|hello|hi|hey|？|\?|質問|問い合わせ|営業|何時|いつ)/i.test(t);
+}
+
+// 重複返信抑制：直近 windowMs 以内に同オーナー×同ユーザーへ同種返信を送ったか
+async function wasRecentlyReplied(
+  supabase: any,
+  ownerId: string,
+  lineUserId: string,
+  jobType: string,
+  windowMs: number,
+): Promise<boolean> {
+  const since = new Date(Date.now() - windowMs).toISOString();
+  const { data } = await supabase
+    .from("line_message_log")
+    .select("id")
+    .eq("owner_id", ownerId)
+    .eq("line_user_id", lineUserId)
+    .eq("job_type", jobType)
+    .gte("created_at", since)
+    .limit(1);
+  return !!(data && data.length > 0);
+}
+
+// ログ記録ヘルパー
+async function logLineReply(
+  supabase: any,
+  ownerId: string,
+  customerId: string | null,
+  lineUserId: string,
+  jobType: string,
+  message: string,
+  status: "sent" | "failed" = "sent",
+  error?: string,
+) {
+  await supabase.from("line_message_log").insert({
+    owner_id: ownerId,
+    customer_id: customerId,
+    line_user_id: lineUserId,
+    job_type: jobType,
+    message: message.slice(0, 4000),
+    status,
+    error: error || null,
+  });
 }
 
 Deno.serve(async (req) => {
