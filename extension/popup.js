@@ -41,11 +41,19 @@ $('downloadCsv').addEventListener('click', async () => {
   
   // CSVヘッダ（インポート用に整形）
   const headers = [
-    'full_name', 'kana', 'customer_no', 'gender', 'occupation',
-    'visit_count', 'last_visit_date', 'first_visit_date',
-    'phone', 'phone2', 'email', 'email_mobile', 'birthday', 'blood_type',
-    'address', 'memo', 'detail_url'
+    'full_name', 'kana', 'customer_no', 'detail_key',
+    'gender', 'occupation', 'birthday', 'blood_type',
+    'phone', 'phone2', 'email', 'email_mobile',
+    'address', 'postcard', 'visit_trigger',
+    'visit_count', 'first_visit_date', 'last_visit_date',
+    'memo', 'warning_flag', 'other1', 'other2', 'other3',
+    'detail_fetched', 'detail_url'
   ];
+  const escapeJson = (v) => {
+    if (v == null) return '';
+    if (typeof v === 'object') return JSON.stringify(v);
+    return v;
+  };
   const escape = (v) => {
     if (v == null) return '';
     const s = String(v).replace(/"/g, '""');
