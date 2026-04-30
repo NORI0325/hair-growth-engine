@@ -623,6 +623,8 @@ async function autoContinueDetailJob() {
     job.currentIndex = null;
     job.currentSnapshot = null;
     await setDetailJob(job);
+    clearSessionDetailTarget();
+    await clearDetailTargetLock();
     customers = withCustomerUids(await getStored());
   }
 
