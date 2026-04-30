@@ -603,19 +603,31 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       sendStatus('⏸ スキャン(一覧/詳細)を停止しました');
     } else if (msg.action === 'scanDetails') {
       await clearJob();
-      const customers = await getStored();
-      const targets = customers.filter(c => !c.detail_fetched);
+      const customers = withCustomerUids(await getStored()).map(c => c.detail_fetched ? c : {
+        ...c,
+        detail_status: 'pending',
+        detail_attempts: 0,
+        detail_error: '',
+      });
+      await saveStored(customers);
+      const targets = customers.filter(c => isDetailPending(c));
       if (!targets.length) {
         sendStatus('対象がありません(全件取得済み)。「クリア」してから再スキャンするか、未取得が出る条件を確認してください');
         return;
       }
+      const page = getPageInfo();
       await setDetailJob({
         active: true,
         delay: msg.delay || 2500,
         totalTargets: targets.length,
         processed: 0,
+        targetUids: targets.map(c => c.export_uid),
         currentKey: null,
+        currentUid: null,
         listUrl: location.href, // 開始時の一覧URLを戻り先に
+        startListUrl: location.href,
+        forceFirstPage: page.current > 1,
+        didRestartFromFirst: page.current <= 1,
         startedAt: Date.now(),
       });
       sendStatus(`詳細スキャン開始: ${targets.length}件を1件ずつ実画面で開きます`);
