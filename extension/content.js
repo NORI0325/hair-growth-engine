@@ -126,31 +126,41 @@ function parseListPage() {
   if (!table) return { rows: [], debug: 'table_not_found', tableCount: document.querySelectorAll('table').length };
 
   const headerCells = getHeaderCells(table);
+  const pageInfo = getPageInfo();
   const rows = [];
   const allTrs = [...table.querySelectorAll('tbody tr')];
   const trs = allTrs.length ? allTrs : [...table.querySelectorAll('tr')];
+  let dataRowNumber = 0;
 
   for (const tr of trs) {
+    if (tr.querySelectorAll('th').length > 0) continue;
     const tds = tr.querySelectorAll('td');
-    if (tds.length < 2) continue;
-    // ヘッダー行をスキップ
-    if (tr.querySelectorAll('th').length > 0 && tds.length === 0) continue;
-    const cells = [...tds].map(cleanText);
-    // 全部空 or "-" だけの行はスキップ
-    const nonEmpty = cells.filter(c => c && c !== '-' && c !== '－').length;
+    if (tds.length < 5) continue;
+    const cells = [...tds].map(td => cleanText(td));
+    const normalized = cells.map(normalizeValue);
+    const nonEmpty = normalized.filter(Boolean).length;
     if (nonEmpty < 2) continue;
 
     const link = tr.querySelector('a[href], a[onclick]');
-    const obj = mapRowToObj(headerCells, cells, link);
+    if (!link && !normalized.some(c => /[ァ-ヶー]|[一-龯]/.test(c))) continue;
+    dataRowNumber += 1;
+    const obj = mapRowToObj(headerCells, cells, link, { page: pageInfo.current, rowNumber: dataRowNumber });
 
-    // ヘッダーが取れなかった場合の位置ベース fallback
-    if (!obj.kana && !obj.full_name && cells.length >= 3) {
-      // サロンボードの典型: [チェックボックス, お客様番号, カナ, 漢字, ...]
-      // または [お客様番号, カナ, 漢字, ...]
-      const startIdx = cells[0].length === 0 || cells[0] === '□' ? 1 : 0;
-      obj.customer_no = obj.customer_no || cells[startIdx];
-      obj.kana = obj.kana || cells[startIdx + 1];
-      obj.full_name = obj.full_name || cells[startIdx + 2];
+    // 添付画面の実構造: [氏名(カナ), 氏名(漢字), お客様番号, 性別, 職業, 来店回数, 前回来店日]
+    // ヘッダー取得がずれても、この並びで必ず補完する
+    if (cells.length >= 7) {
+      obj.kana = obj.kana || normalized[0] || cleanText(link);
+      obj.full_name = obj.full_name || normalized[1];
+      obj.customer_no = obj.customer_no || normalized[2];
+      obj.gender = obj.gender || normalized[3];
+      obj.occupation = obj.occupation || normalized[4];
+      obj.visit_count = obj.visit_count || normalized[5];
+      obj.last_visit_date = obj.last_visit_date || normalized[6];
+    } else if (!obj.kana && !obj.full_name && cells.length >= 3) {
+      const startIdx = normalized[0] ? 0 : 1;
+      obj.customer_no = obj.customer_no || normalized[startIdx];
+      obj.kana = obj.kana || normalized[startIdx + 1];
+      obj.full_name = obj.full_name || normalized[startIdx + 2];
     }
     if (obj.kana || obj.full_name || obj.customer_no) rows.push(obj);
   }
