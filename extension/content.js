@@ -42,6 +42,16 @@ async function setDetailJob(job) {
 async function clearDetailJob() {
   await chrome.storage.local.remove('sb_detail_job');
 }
+async function getDetailTargetLock() {
+  const { sb_detail_target_lock = null } = await chrome.storage.local.get('sb_detail_target_lock');
+  return sb_detail_target_lock;
+}
+async function setDetailTargetLock(lock) {
+  await chrome.storage.local.set({ sb_detail_target_lock: lock });
+}
+async function clearDetailTargetLock() {
+  await chrome.storage.local.remove('sb_detail_target_lock');
+}
 
 const MAX_DETAIL_ATTEMPTS = 2;
 const DETAIL_NAVIGATION_TIMEOUT_MS = 12000;
