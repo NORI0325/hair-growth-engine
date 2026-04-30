@@ -121,12 +121,32 @@
     font-family: "Inter", "Noto Serif JP", -apple-system, BlinkMacSystemFont, sans-serif;
     font-feature-settings: "palt", "kern";
     letter-spacing: 0.01em;
+    /* 日本語の自然な折り返し（文節単位） + 禁則処理 */
+    word-break: auto-phrase;
+    line-break: strict;
+    overflow-wrap: anywhere;
+    hanging-punctuation: allow-end;
+  }
+
+  /* auto-phrase 未対応ブラウザ向けフォールバック */
+  @supports not (word-break: auto-phrase) {
+    body { word-break: normal; }
   }
 
   h1, h2, h3, h4, h5 {
     font-family: "Noto Serif JP", "Cormorant Garamond", serif;
     font-weight: 500;
     letter-spacing: 0.02em;
+    /* 見出しも文節で折り返し、行末バランスを整える */
+    word-break: auto-phrase;
+    text-wrap: balance;
+    line-height: 1.4;
+  }
+
+  p {
+    /* 本文は行頭折り返しを綺麗に */
+    text-wrap: pretty;
+    line-height: 1.85;
   }
 
   .font-serif-en {
@@ -173,12 +193,24 @@
     background-size: 100% 100%;
   }
 
-  /* セリフ大見出し */
+  /* セリフ大見出し（流体タイポグラフィ：全デバイスで滑らかにスケール） */
   .display {
     font-family: "Noto Serif JP", serif;
     font-weight: 400;
     letter-spacing: 0.02em;
-    line-height: 1.25;
+    line-height: 1.3;
+    font-size: clamp(1.75rem, 2.2vw + 1rem, 3rem);
+    text-wrap: balance;
+    word-break: auto-phrase;
+  }
+
+  /* 日本語本文の最適コンテナ：1行35〜45文字を維持 */
+  .prose-jp {
+    max-width: 38rem;
+    margin-inline: auto;
+    font-size: clamp(0.95rem, 0.4vw + 0.85rem, 1.05rem);
+    line-height: 1.9;
+    text-wrap: pretty;
   }
 }
 
@@ -192,6 +224,12 @@
   .border-gold {
     border-color: hsl(var(--gold));
   }
+
+  /* 改行制御ヘルパー */
+  .nowrap { white-space: nowrap; }
+  .keep-together { display: inline-block; }
+  .text-balance { text-wrap: balance; }
+  .text-pretty { text-wrap: pretty; }
 
   @keyframes fade-up {
     from { opacity: 0; transform: translateY(16px); }
