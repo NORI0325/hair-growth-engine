@@ -225,6 +225,12 @@
     border-color: hsl(var(--gold));
   }
 
+  /* 改行制御ヘルパー */
+  .nowrap { white-space: nowrap; }
+  .keep-together { display: inline-block; }
+  .text-balance { text-wrap: balance; }
+  .text-pretty { text-wrap: pretty; }
+
   @keyframes fade-up {
     from { opacity: 0; transform: translateY(16px); }
     to { opacity: 1; transform: translateY(0); }
