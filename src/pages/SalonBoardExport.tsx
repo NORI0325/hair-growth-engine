@@ -37,7 +37,7 @@ const SalonBoardExport = () => {
           <p className="text-sm text-muted-foreground leading-relaxed mb-6">
             Chrome / Edge / Brave などの Chromium 系ブラウザで動作する専用拡張機能です。
             サロンボードにログインした状態のあなたのブラウザ内で動作するため、
-            安全に顧客データを抽出できます。
+            安全に顧客データを抽出できます。最新版は <strong>v1.3.0</strong> です。
           </p>
           <Button
             onClick={downloadExtension}
@@ -90,9 +90,10 @@ const SalonBoardExport = () => {
               <ol className="space-y-2 ml-4 text-muted-foreground">
                 <li>1. サロンボードにログインし「お客様管理 → お客様一覧」を開く</li>
                 <li>2. 拡張機能のアイコンをクリック</li>
-                <li>3.「一覧をスキャン開始」を押す</li>
-                <li>4. 全26ページを自動巡回（約1〜2分）</li>
-                <li>5. 完了後「CSVダウンロード」で基本情報を取得</li>
+                <li>3. まず「現在ページを診断」を押し、「50行抽出」と出ることを確認</li>
+                <li>4.「一覧をスキャン開始」を押す（保存済みデータは自動クリア）</li>
+                <li>5. 全26ページを自動巡回（約1〜2分）</li>
+                <li>6. 完了後「CSVダウンロード」で基本情報を取得</li>
               </ol>
             </div>
 
