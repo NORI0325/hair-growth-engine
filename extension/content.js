@@ -1,4 +1,4 @@
-// Salon Board Customer Exporter - Content Script v5
+// Salon Board Customer Exporter - Content Script v6
 // 戦略:
 //  ① 一覧スキャン: 実画面遷移で全ページ巡回。各行の「名前リンクのクリック識別子」も保存
 //  ② 詳細スキャン: 未取得顧客を1人ずつ実画面で開き、詳細を読み取り→一覧に戻る を繰り返す
@@ -699,4 +699,4 @@ if (document.readyState === 'complete') {
   window.addEventListener('load', () => setTimeout(bootAutoContinue, 1000));
 }
 
-console.log('[Salon Board Exporter] v5 ready');
+console.log('[Salon Board Exporter] v6 ready');
