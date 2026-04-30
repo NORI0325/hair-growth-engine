@@ -44,6 +44,7 @@ async function clearDetailJob() {
 }
 
 const MAX_DETAIL_ATTEMPTS = 2;
+const DETAIL_NAVIGATION_TIMEOUT_MS = 12000;
 
 function customerUid(c, index = 0) {
   const customerNo = normalizeValue(c.customer_no);
@@ -72,10 +73,52 @@ function isDetailPending(c) {
 
 function hasUsefulDetail(detail) {
   return Boolean(
-    detail.customer_no || detail.full_name || detail.kana || detail.phone || detail.phone2 ||
+    detail.customer_no || detail.detail_key || detail.phone || detail.phone2 ||
     detail.email || detail.email_mobile || detail.birthday || detail.address || detail.memo ||
     detail.blood_type || detail.visit_trigger || (detail.visit_history && detail.visit_history.length)
   );
+}
+
+function looksLikeLabelOnly(value) {
+  const s = normalizeValue(value);
+  if (!s) return true;
+  if (/^[^：:]{1,24}[：:]$/.test(s)) return true;
+  return /^(誕生日|生年月日|電話番号|住所|血液型|性別|E-?MAIL|メール|お客様番号|顧客番号|メモ|来店|職業)[：:]?$/.test(s);
+}
+
+function resolveDetailCustomerIndex(customers, job, detail = {}) {
+  const expectKey = job.currentKey;
+  const expectUid = job.currentUid;
+  const expectIndex = Number.isInteger(job.currentIndex) ? job.currentIndex : -1;
+  const snapshot = job.currentSnapshot || {};
+
+  let idx = customers.findIndex(c => {
+    if (expectUid && c.export_uid === expectUid) return true;
+    if (expectKey && (c.detail_key === expectKey || c.customer_no === expectKey || c.export_uid === expectKey)) return true;
+    if (detail.detail_key && c.detail_key === detail.detail_key) return true;
+    if (detail.customer_no && c.customer_no === detail.customer_no) return true;
+    if (detail.full_name && detail.kana && c.full_name === detail.full_name && c.kana === detail.kana) return true;
+    return false;
+  });
+  if (idx >= 0) return idx;
+  if (expectIndex >= 0 && customers[expectIndex] && (!expectUid || customers[expectIndex].export_uid === expectUid)) return expectIndex;
+  idx = customers.findIndex(c => c.detail_status === 'processing');
+  if (idx >= 0) return idx;
+  if (snapshot.full_name || snapshot.kana || snapshot.scan_page || snapshot.scan_row) {
+    idx = customers.findIndex(c =>
+      (snapshot.export_uid && c.export_uid === snapshot.export_uid) ||
+      (snapshot.scan_page && snapshot.scan_row && c.scan_page === snapshot.scan_page && c.scan_row === snapshot.scan_row) ||
+      (snapshot.full_name && snapshot.kana && c.full_name === snapshot.full_name && c.kana === snapshot.kana)
+    );
+  }
+  return idx;
+}
+
+function mergeDetailForSave(base, detail) {
+  const safe = { ...detail };
+  if (base.full_name && looksLikeLabelOnly(safe.full_name)) delete safe.full_name;
+  if (base.kana && looksLikeLabelOnly(safe.kana)) delete safe.kana;
+  return { ...base, ...safe, export_uid: base.export_uid };
 }
 
 // ============ テーブル探索 ============
