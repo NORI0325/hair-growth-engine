@@ -92,26 +92,41 @@ function resolveDetailCustomerIndex(customers, job, detail = {}) {
   const expectIndex = Number.isInteger(job.currentIndex) ? job.currentIndex : -1;
   const snapshot = job.currentSnapshot || {};
 
-  let idx = customers.findIndex(c => {
-    if (expectUid && c.export_uid === expectUid) return true;
-    if (expectKey && (c.detail_key === expectKey || c.customer_no === expectKey || c.export_uid === expectKey)) return true;
-    if (detail.detail_key && c.detail_key === detail.detail_key) return true;
-    if (detail.customer_no && c.customer_no === detail.customer_no) return true;
-    if (detail.full_name && detail.kana && c.full_name === detail.full_name && c.kana === detail.kana) return true;
-    return false;
-  });
-  if (idx >= 0) return idx;
-  if (expectIndex >= 0 && customers[expectIndex] && (!expectUid || customers[expectIndex].export_uid === expectUid)) return expectIndex;
-  idx = customers.findIndex(c => c.detail_status === 'processing');
-  if (idx >= 0) return idx;
-  if (snapshot.full_name || snapshot.kana || snapshot.scan_page || snapshot.scan_row) {
-    idx = customers.findIndex(c =>
-      (snapshot.export_uid && c.export_uid === snapshot.export_uid) ||
-      (snapshot.scan_page && snapshot.scan_row && c.scan_page === snapshot.scan_page && c.scan_row === snapshot.scan_row) ||
-      (snapshot.full_name && snapshot.kana && c.full_name === snapshot.full_name && c.kana === snapshot.kana)
-    );
+  // ① クリック時に確定したUID（最優先・絶対）
+  if (expectUid) {
+    const i = customers.findIndex(c => c.export_uid === expectUid);
+    if (i >= 0) return i;
   }
-  return idx;
+  // ② クリック時のインデックス位置（配列が変わっていなければ）
+  if (expectIndex >= 0 && customers[expectIndex]) {
+    return expectIndex;
+  }
+  // ③ processing フラグが立っているもの
+  let idx = customers.findIndex(c => c.detail_status === 'processing');
+  if (idx >= 0) return idx;
+  // ④ snapshot による(ページ/行) または (氏名+カナ) 一致
+  if (snapshot.scan_page && snapshot.scan_row) {
+    idx = customers.findIndex(c => c.scan_page === snapshot.scan_page && c.scan_row === snapshot.scan_row);
+    if (idx >= 0) return idx;
+  }
+  if (snapshot.full_name && snapshot.kana) {
+    idx = customers.findIndex(c => c.full_name === snapshot.full_name && c.kana === snapshot.kana);
+    if (idx >= 0) return idx;
+  }
+  // ⑤ 詳細ページから読み取れた情報での一致(最後の手段)
+  if (detail.detail_key) {
+    idx = customers.findIndex(c => c.detail_key === detail.detail_key);
+    if (idx >= 0) return idx;
+  }
+  if (detail.customer_no) {
+    idx = customers.findIndex(c => c.customer_no === detail.customer_no);
+    if (idx >= 0) return idx;
+  }
+  if (expectKey) {
+    idx = customers.findIndex(c => c.detail_key === expectKey || c.customer_no === expectKey || c.export_uid === expectKey);
+    if (idx >= 0) return idx;
+  }
+  return -1;
 }
 
 function mergeDetailForSave(base, detail) {
@@ -497,7 +512,26 @@ async function autoContinueDetailJob() {
       const doneCount = customers.filter(c => c.detail_fetched || c.detail_status === 'skipped').length;
       sendStatus(`${ok ? '📥 詳細取得' : '⚠️ 詳細読取失敗'}: ${customers[idx].full_name || customers[idx].kana || '(名前不明)'} [${doneCount}/${job.totalTargets}]`);
     } else {
-      sendStatus(`⚠️ 保存先を特定できません。次の顧客へ進みます(${detail.full_name || job.currentSnapshot?.full_name || '?'})`);
+      // 保存先不明 → snapshot/expectUid を使って強制マーク（無限ループ防止）
+      const fallbackUid = job.currentUid || (job.currentSnapshot && job.currentSnapshot.export_uid);
+      if (fallbackUid) {
+        const ok = hasUsefulDetail(detail);
+        const newEntry = {
+          ...(job.currentSnapshot || {}),
+          ...detail,
+          export_uid: fallbackUid,
+          detail_fetched: ok,
+          detail_status: ok ? 'fetched' : 'skipped',
+          detail_error: ok ? '' : '保存先の顧客を特定できなかったため新規追加・スキップ扱いとしました',
+          detail_fetched_at: new Date().toISOString(),
+          detail_url: location.href,
+        };
+        customers.push(newEntry);
+        await saveStored(customers);
+        sendStatus(`⚠️ 保存先を特定できないため強制保存: ${newEntry.full_name || newEntry.kana || fallbackUid}`);
+      } else {
+        sendStatus(`⚠️ 保存先を特定できません。次の顧客へ進みます(${detail.full_name || job.currentSnapshot?.full_name || '?'})`);
+      }
     }
 
     job.processed = (await getStored()).filter(c => c.detail_fetched || c.detail_status === 'skipped').length;
