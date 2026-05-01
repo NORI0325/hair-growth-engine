@@ -4,9 +4,10 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import {
-  LayoutDashboard, Users, Upload, Megaphone, Calendar, LogOut, Share2, Settings as SettingsIcon, Mail, MessageCircle, FileText, CalendarClock, TrendingUp, Scissors, UserCog, Gift, Inbox, Download, CreditCard, Users2,
+  LayoutDashboard, Users, Upload, Megaphone, Calendar, LogOut, Share2, Settings as SettingsIcon, Mail, MessageCircle, FileText, CalendarClock, TrendingUp, Scissors, UserCog, Gift, Inbox, Download, CreditCard, Users2, Store,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { LocationSwitcher } from "@/components/LocationSwitcher";
 
 const navItems = [
   { to: "/dashboard", label: "ダッシュボード", en: "Overview", icon: LayoutDashboard },
