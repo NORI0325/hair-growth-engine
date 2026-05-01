@@ -14,6 +14,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import HolidayNoticeBroadcast from "@/components/HolidayNoticeBroadcast";
+import SalonHoursEditor from "@/components/SalonHoursEditor";
 
 const WEBHOOK_URL = "https://miyedioemkzhetphjzzg.supabase.co/functions/v1/line-webhook";
 
@@ -246,6 +247,8 @@ const Settings = () => {
           <Input value={form.salon_name} onChange={e => setForm({...form, salon_name: e.target.value})}
             className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
         </section>
+
+        <SalonHoursEditor />
 
         <section className="space-y-5 pt-8 border-t border-border">
           <div className="flex items-center gap-3">
