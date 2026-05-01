@@ -27,6 +27,8 @@ const Settings = () => {
   const [runningReactivation, setRunningReactivation] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [lineTestUserId, setLineTestUserId] = useState("");
+  const [smsTestPhone, setSmsTestPhone] = useState("");
+  const [testingSms, setTestingSms] = useState(false);
   const [inboundKey, setInboundKey] = useState<string>("");
   const [recentImports, setRecentImports] = useState<any[]>([]);
   const [form, setForm] = useState({
@@ -186,6 +188,24 @@ const Settings = () => {
       return;
     }
     toast.success("✅ LINEへテスト送信しました。トークを確認してください。");
+  };
+
+  const sendSmsTest = async () => {
+    if (!smsTestPhone.trim()) {
+      toast.error("送信先の携帯番号を入力してください");
+      return;
+    }
+    setTestingSms(true);
+    const { data, error } = await supabase.functions.invoke("sms-test-send", {
+      body: { phone: smsTestPhone.trim() },
+    });
+    setTestingSms(false);
+    if (error || !(data as any)?.success) {
+      const msg = (data as any)?.message || error?.message || "送信に失敗しました";
+      toast.error(msg, { duration: 8000 });
+      return;
+    }
+    toast.success(`✅ SMSをテスト送信しました（${(data as any)?.to}）。携帯を確認してください。`);
   };
 
   const sendTestEmail = async () => {
@@ -504,6 +524,26 @@ const Settings = () => {
               {testingLine ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> : <Send className="w-3.5 h-3.5 mr-2" />}
               LINEへテスト送信 <span className="ml-2 opacity-60 text-[10px]">TEST LINE</span>
             </Button>
+          </div>
+
+          <div className="pt-4 border-t border-border/50 space-y-3">
+            <Label className="block font-serif text-sm">📱 SMSテスト送信 <span className="eyebrow text-[9px] text-muted-foreground ml-1">Test SMS</span></Label>
+            <p className="text-[10px] text-muted-foreground">
+              Twilio接続のテスト送信です。ご自身の携帯番号を入力してください。<br/>
+              形式：<code className="text-[10px]">090-1234-5678</code> または <code className="text-[10px]">+819012345678</code><br/>
+              ⚠️ 事前にTwilio Consoleで「<strong>Geo Permissions</strong>」の日本(Japan)をONにしてください。
+            </p>
+            <Input value={smsTestPhone} onChange={e => setSmsTestPhone(e.target.value)}
+              placeholder="09012345678"
+              className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold font-mono text-xs" />
+            <Button type="button" onClick={sendSmsTest} disabled={testingSms} variant="outline"
+              className="rounded-none border-gold/40 text-xs tracking-luxury hover:bg-gold/5">
+              {testingSms ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> : <Send className="w-3.5 h-3.5 mr-2" />}
+              SMSへテスト送信 <span className="ml-2 opacity-60 text-[10px]">TEST SMS</span>
+            </Button>
+            <p className="text-[10px] text-muted-foreground/70">
+              料金目安：US番号→日本へ約11円/通
+            </p>
           </div>
         </section>
 
