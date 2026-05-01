@@ -24,14 +24,40 @@ const SalonHoursEditor = () => {
   const [loading, setLoading] = useState(true);
 
   const load = async () => {
-    if (!user || !locationId) return;
+    if (!user) { setLoading(false); return; }
+    if (!locationId) { setLoading(false); setHours([]); return; }
     setLoading(true);
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("salon_hours")
       .select("id, weekday, open_time, close_time, closed")
       .eq("location_id", locationId)
       .order("weekday");
-    setHours((data || []) as SalonHour[]);
+    if (error) {
+      console.error("salon_hours load error:", error);
+      toast.error("営業時間の読み込みに失敗しました: " + error.message);
+    }
+
+    let rows = (data || []) as SalonHour[];
+    // 初回 or 不足曜日があれば自動シード（7曜日分を保証）
+    if (rows.length < 7) {
+      const existing = new Set(rows.map(r => r.weekday));
+      const missing = [0, 1, 2, 3, 4, 5, 6].filter(w => !existing.has(w));
+      if (missing.length > 0) {
+        const seeds = missing.map(w => ({
+          location_id: locationId,
+          weekday: w,
+          open_time: "10:00:00",
+          close_time: "19:00:00",
+          closed: w === 1, // 月曜デフォ定休
+        }));
+        const { data: inserted } = await supabase
+          .from("salon_hours")
+          .insert(seeds)
+          .select("id, weekday, open_time, close_time, closed");
+        if (inserted) rows = [...rows, ...(inserted as SalonHour[])].sort((a, b) => a.weekday - b.weekday);
+      }
+    }
+    setHours(rows);
     setLoading(false);
   };
 
