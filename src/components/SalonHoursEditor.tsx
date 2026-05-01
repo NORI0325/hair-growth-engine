@@ -44,6 +44,7 @@ const SalonHoursEditor = () => {
       const missing = [0, 1, 2, 3, 4, 5, 6].filter(w => !existing.has(w));
       if (missing.length > 0) {
         const seeds = missing.map(w => ({
+          owner_id: user.id,
           location_id: locationId,
           weekday: w,
           open_time: "10:00:00",
