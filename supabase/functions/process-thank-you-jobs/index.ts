@@ -212,10 +212,26 @@ Deno.serve(async (req) => {
           templateData = { customerName: customer.full_name, salonName, bookingDate: dateStr, bookingTime: timeStr, menu, bookingLink };
           body = `🌸 明日のご予約のリマインドです\n\n${customer.full_name}様\n\n📅 ${dateStr}\n🕐 ${timeStr}\n💇 ${menu}\n\nお会いできるのを楽しみにしております。\n変更・キャンセルはこちらから：\n→ ${myBookingsLink || bookingLink}\n\n${salonName}`;
         } else if (job.job_type === "reactivation") {
-          const days = (job.payload as any)?.days_since || 90;
+          const p = (job.payload as any) || {};
+          const stage = Number(p.stage) || 1;
+          const days = p.days_since || 30;
           templateName = "reactivation";
-          templateData = { customerName: customer.full_name, salonName, bookingLink, daysSince: days };
-          body = `${customer.full_name}様\n\nお久しぶりです。前回ご来店から${days}日が経ちました。\nまた${salonName}でお会いできるのを楽しみにしております🌸\n→ ${bookingLink}`;
+          templateData = { customerName: customer.full_name, salonName, bookingLink, daysSince: days, stage };
+
+          // 段階別の文言（やわらかさ→特典強化）
+          if (stage === 1) {
+            // 30日: 特典なし、やさしいリマインド
+            body = `${customer.full_name}様\n\nいつもありがとうございます。\n前回ご来店から1ヶ月ほど経ちました🌸\n\n根元の伸び・カラーの色落ちが気になり始める時期です。\nお早めのご予約で、ご希望のお時間が選びやすくなっております。\n\n→ ${bookingLink}\n\n${salonName}`;
+          } else if (stage === 2) {
+            // 60日: 10%OFF
+            body = `${customer.full_name}様\n\nお久しぶりです。前回から約2ヶ月が経ちました。\nまたお会いできるのを楽しみにしております🌸\n\n🎁 次回ご来店 10%OFF クーポンをお贈りします\n（45日間有効）\n\n→ ${bookingLink}\n\n${salonName}`;
+          } else if (stage === 3) {
+            // 90日: 20%OFF
+            body = `${customer.full_name}様\n\n少しお時間が空いてしまいましたね。\nお元気でお過ごしでしょうか。\n\n💝 おかえりなさいクーポン 20%OFF\n（30日間限定）\n\n気分転換に、ぜひ髪の毛もリフレッシュしませんか？\n→ ${bookingLink}\n\n${salonName}`;
+          } else {
+            // 150日: 30%OFF + ヘッドスパ無料（最終オファー）
+            body = `${customer.full_name}様\n\n${salonName}です。\n大切なお客様へ、特別なご招待です。\n\n👑 30%OFF + ヘッドスパ無料\n（45日間限定・1回限り）\n\n久しぶりのご来店、心よりお待ちしております。\n→ ${bookingLink}\n\n${salonName}`;
+          }
         } else if (job.job_type === "aftercare") {
           const menu = (job.payload as any)?.menu || "";
           templateName = "aftercare";
