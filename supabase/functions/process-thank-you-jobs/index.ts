@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
+import { sendSms } from "../_shared/twilio-sms.ts";
 
 // LINE Messaging API: Push Message
 async function sendLinePush(token: string, userId: string, text: string): Promise<{ ok: boolean; err?: string }> {
@@ -25,6 +26,37 @@ async function sendLinePush(token: string, userId: string, text: string): Promis
   }
 }
 
+// JST(UTC+9)の現在時刻の「時(0-23)」を取得
+function jstHourNow(): number {
+  const utcMs = Date.now();
+  const jst = new Date(utcMs + 9 * 60 * 60 * 1000);
+  return jst.getUTCHours();
+}
+
+// 「次の朝9時(JST)」のtimestamptzを返す
+function nextJstMorning(hour = 9): Date {
+  const now = new Date();
+  const jstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  const targetJst = new Date(Date.UTC(
+    jstNow.getUTCFullYear(),
+    jstNow.getUTCMonth(),
+    jstNow.getUTCDate(),
+    hour, 0, 0, 0
+  ));
+  // 既にその時刻を過ぎていたら翌日
+  if (targetJst.getTime() <= jstNow.getTime()) {
+    targetJst.setUTCDate(targetJst.getUTCDate() + 1);
+  }
+  // JST→UTC
+  return new Date(targetJst.getTime() - 9 * 60 * 60 * 1000);
+}
+
+// 配信窓: JST 9:00〜21:00 のみ送信可
+function isWithinSendWindow(): boolean {
+  const h = jstHourNow();
+  return h >= 9 && h < 21;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -38,7 +70,7 @@ Deno.serve(async (req) => {
   try {
     const { data: jobs, error } = await supabase
       .from("scheduled_jobs")
-      .select("id, owner_id, customer_id, booking_id, job_type, payload")
+      .select("id, owner_id, customer_id, booking_id, job_type, payload, scheduled_for")
       .eq("status", "pending")
       .in("job_type", ["thank_you", "birthday", "review_request", "reminder", "reactivation", "aftercare", "next_suggestion"])
       .lte("scheduled_for", new Date().toISOString())
@@ -49,6 +81,33 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ processed: 0 }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // ====== 深夜帯ガード ======
+    // リマインダーは前日の指定時刻配信なのでガード対象外（オーナー設定どおり）
+    // それ以外のジョブで深夜帯(JST 21:00〜翌9:00)に発火したものは、次の朝9時にリスケ
+    if (!isWithinSendWindow()) {
+      const targetReschedule = nextJstMorning(9).toISOString();
+      const reschedTargets = jobs.filter(j => j.job_type !== "reminder");
+      if (reschedTargets.length > 0) {
+        const ids = reschedTargets.map(j => j.id);
+        await supabase
+          .from("scheduled_jobs")
+          .update({ scheduled_for: targetReschedule })
+          .in("id", ids);
+      }
+      // リマインダーのみ通常処理を続行
+      const reminderJobs = jobs.filter(j => j.job_type === "reminder");
+      if (reminderJobs.length === 0) {
+        return new Response(JSON.stringify({
+          processed: 0,
+          rescheduled_for_morning: reschedTargets.length,
+          note: "outside_send_window_jst",
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      // リマインダーだけ jobs を絞る
+      jobs.length = 0;
+      jobs.push(...reminderJobs);
     }
 
     let success = 0, failed = 0;
@@ -81,23 +140,30 @@ Deno.serve(async (req) => {
         const myBookingsLink = tokenRow?.token ? `${APP_ORIGIN}/my-bookings/${tokenRow.token}` : "";
         const lineToken = profile?.line_channel_access_token;
 
-        // === テンプレート上書き取得（チャネル別） ===
         const jobTypeToTemplateKey: Record<string, string> = {
           thank_you: "thank-you", birthday: "birthday", review_request: "review-request",
           reminder: "booking-reminder", reactivation: "reactivation",
           aftercare: "aftercare", next_suggestion: "next-suggestion",
         };
         const tmplKey = jobTypeToTemplateKey[job.job_type] || job.job_type;
-        const channelForOverride = (lineToken && customer.line_user_id) ? "line" : "email";
+
+        // 利用可能チャネルから優先順にoverrideを取得（line→email→sms）
+        const hasLine = !!(lineToken && customer.line_user_id);
+        const hasEmail = !!customer.email;
+        const hasPhone = !!customer.phone;
+
+        // 想定する第一チャネル（overrideのkey用）
+        const primaryChannel: "line" | "email" | "sms" =
+          hasLine ? "line" : hasEmail ? "email" : hasPhone ? "sms" : "email";
+
         const { data: override } = await supabase
           .from("template_overrides")
           .select("*")
           .eq("owner_id", job.owner_id)
-          .eq("channel", channelForOverride)
+          .eq("channel", primaryChannel === "sms" ? "email" : primaryChannel) // SMSはemailのoverrideを流用
           .eq("template_key", tmplKey)
           .maybeSingle();
 
-        // 無効化されていたらスキップ
         if (override && override.enabled === false) {
           await supabase.from("scheduled_jobs").update({ status: "skipped", error: "template_disabled" }).eq("id", job.id);
           continue;
@@ -123,11 +189,11 @@ Deno.serve(async (req) => {
         if (job.job_type === "thank_you") {
           templateName = "thank-you";
           templateData = { customerName: customer.full_name, salonName, bookingLink, menu: (job.payload as any)?.menu };
-          body = `${customer.full_name}様\n本日はご来店ありがとうございました。\n次回ご予約で20%OFFクーポンをご用意しました。\n→ ${bookingLink}\n\n${salonName}`;
+          body = `${customer.full_name}様\n\n昨日はご来店ありがとうございました。\n仕上がりはいかがでしょうか？\n\nまたお会いできるのを楽しみにしております。\n\n${salonName}`;
         } else if (job.job_type === "birthday") {
           templateName = "birthday";
           templateData = { customerName: customer.full_name, salonName, bookingLink };
-          body = `${customer.full_name}様\nお誕生月おめでとうございます🎂\n30%OFFのバースデークーポンをお贈りします。\n→ ${bookingLink}\n\n${salonName}`;
+          body = `${customer.full_name}様\nお誕生月おめでとうございます🎂\n感謝を込めてバースデークーポンをお贈りします。\n→ ${bookingLink}\n\n${salonName}`;
         } else if (job.job_type === "review_request") {
           const reviewUrl = profile?.google_review_url;
           if (!reviewUrl) {
@@ -136,7 +202,7 @@ Deno.serve(async (req) => {
           }
           templateName = "review-request";
           templateData = { customerName: customer.full_name, salonName, reviewUrl };
-          body = `${customer.full_name}様\nいつもご来店ありがとうございます。\nもしよろしければGoogleでサロンのご感想をいただけますと大変嬉しいです🙇‍♀️\n→ ${reviewUrl}\n\n${salonName}`;
+          body = `${customer.full_name}様\n\n先日はご来店ありがとうございました。\nもしよろしければ、Googleでサロンのご感想をいただけますと大変嬉しいです🙇‍♀️\n→ ${reviewUrl}\n\n${salonName}`;
         } else if (job.job_type === "reminder") {
           const p = (job.payload as any) || {};
           const dateStr = p.booking_date || "";
@@ -144,24 +210,25 @@ Deno.serve(async (req) => {
           const menu = p.menu || "";
           templateName = "booking-reminder";
           templateData = { customerName: customer.full_name, salonName, bookingDate: dateStr, bookingTime: timeStr, menu, bookingLink };
-          body = `🌸 明日のご予約のリマインドです\n\n${customer.full_name}様\n\n📅 ${dateStr}\n🕐 ${timeStr}\n💇 ${menu}\n\nお会いできるのを楽しみにしております。\n変更・キャンセルは恐れ入りますが、こちらから：\n→ ${myBookingsLink || bookingLink}\n\n${salonName}`;
+          body = `🌸 明日のご予約のリマインドです\n\n${customer.full_name}様\n\n📅 ${dateStr}\n🕐 ${timeStr}\n💇 ${menu}\n\nお会いできるのを楽しみにしております。\n変更・キャンセルはこちらから：\n→ ${myBookingsLink || bookingLink}\n\n${salonName}`;
         } else if (job.job_type === "reactivation") {
           const days = (job.payload as any)?.days_since || 90;
           templateName = "reactivation";
           templateData = { customerName: customer.full_name, salonName, bookingLink, daysSince: days };
-          body = `${customer.full_name}様\n\nお久しぶりです。前回ご来店から${days}日が経ちました。\nまた${salonName}でお会いできるのを楽しみにしております🌸\n\n【復活キャンペーン】次回ご予約で20%OFF\n→ ${bookingLink}`;
+          body = `${customer.full_name}様\n\nお久しぶりです。前回ご来店から${days}日が経ちました。\nまた${salonName}でお会いできるのを楽しみにしております🌸\n→ ${bookingLink}`;
         } else if (job.job_type === "aftercare") {
           const menu = (job.payload as any)?.menu || "";
           templateName = "aftercare";
           templateData = { customerName: customer.full_name, salonName, menu };
           body = `${customer.full_name}様\n\n先日は${menu ? `${menu}で` : ""}ご来店ありがとうございました🌸\n\nそろそろ1週間。仕上がりはいかがでしょうか？\n\n💡 美しさを長持ちさせるコツ\n・洗髪後はタオルドライ→すぐドライヤー\n・週1〜2回のヘアマスクで保湿\n・紫外線対策に洗い流さないトリートメント\n\nお気軽にご相談ください。\n${salonName}`;
         } else if (job.job_type === "next_suggestion") {
+          const days = (job.payload as any)?.days_since_visit || 30;
           templateName = "next-suggestion";
           templateData = { customerName: customer.full_name, salonName, bookingLink };
-          body = `${customer.full_name}様\n\n前回のご来店から1ヶ月が経ちました。\n根元の伸び・カラーの色落ちが気になり始める時期です✨\n\n今ご予約いただくと、ご希望のお日にちが選びやすくなっております。\n→ ${bookingLink}\n\n${salonName}`;
+          body = `${customer.full_name}様\n\n前回のご来店から約${days}日が経ちました。\n根元の伸び・カラーの色落ちが気になり始める時期です✨\n\nお早めのご予約で、ご希望のお日にちが選びやすくなっております。\n→ ${bookingLink}\n\n${salonName}`;
         }
 
-        // === オーナーカスタマイズ（上書き）適用 ===
+        // オーナーカスタマイズ上書き
         const renderVars = (s: string) => s
           .replace(/\{\{customer_name\}\}/g, customer.full_name)
           .replace(/\{\{salon_name\}\}/g, salonName)
@@ -176,21 +243,19 @@ Deno.serve(async (req) => {
           const ctaUrl = override.cta_url || bookingLink;
           const signature = override.signature || salonName;
           body = `${greeting}\n\n${customBody}${couponText}\n\n→ ${ctaLabel}: ${ctaUrl}\n\n${signature}`;
-          // メール側にも上書き内容を渡す（テンプレ側で参照可能）
           templateData = { ...templateData, override: { greeting, body: customBody, ctaLabel, ctaUrl, signature, couponText } };
         } else if (couponText) {
           body = body + couponText;
           templateData = { ...templateData, couponText };
         }
 
-        // ルール：LINE連携済み → LINEのみ / 未連携 → メールのみ
-        const hasLine = !!(lineToken && customer.line_user_id);
-        let lineErr: string | undefined;
-        let channelUsed: "line" | "email" | "none" = "none";
+        // ====== チャネル優先ロジック: LINE → メール → SMS ======
+        let channelUsed: "line" | "email" | "sms" | "none" = "none";
+        let lastErr: string | undefined;
 
-        if (hasLine) {
+        // 1) LINE
+        if (channelUsed === "none" && hasLine) {
           const r = await sendLinePush(lineToken!, customer.line_user_id!, body);
-          // ログ記録
           await supabase.from("line_message_log").insert({
             owner_id: job.owner_id,
             customer_id: customer.id,
@@ -203,24 +268,15 @@ Deno.serve(async (req) => {
           } as any);
           if (r.ok) {
             channelUsed = "line";
-            console.log(`[LINE] sent to ${customer.line_user_id}`);
+            console.log(`[LINE] ${job.job_type} → ${customer.line_user_id}`);
           } else {
-            lineErr = r.err;
-            // LINE失敗時はメールにフォールバック
-            if (customer.email && templateName) {
-              await supabase.functions.invoke("send-transactional-email", {
-                body: {
-                  templateName,
-                  recipientEmail: customer.email,
-                  idempotencyKey: `${job.job_type}-${job.id}-fallback`,
-                  templateData,
-                },
-              });
-              channelUsed = "email";
-            }
+            lastErr = `line: ${r.err}`;
           }
-        } else if (customer.email && templateName) {
-          await supabase.functions.invoke("send-transactional-email", {
+        }
+
+        // 2) メール（LINE未送信 or LINE失敗 かつ メールあり）
+        if (channelUsed === "none" && hasEmail && templateName) {
+          const { error: mailErr } = await supabase.functions.invoke("send-transactional-email", {
             body: {
               templateName,
               recipientEmail: customer.email,
@@ -228,15 +284,37 @@ Deno.serve(async (req) => {
               templateData,
             },
           });
-          channelUsed = "email";
+          if (!mailErr) {
+            channelUsed = "email";
+            console.log(`[EMAIL] ${job.job_type} → ${customer.email}`);
+          } else {
+            lastErr = `${lastErr ? lastErr + " | " : ""}email: ${mailErr.message || "unknown"}`;
+          }
+        }
+
+        // 3) SMS（LINEもメールも無理 かつ 電話番号あり）
+        if (channelUsed === "none" && hasPhone) {
+          // SMSは短く簡潔に
+          const smsBody = body.length > 300 ? body.slice(0, 280) + "…" : body;
+          const r = await sendSms(customer.phone!, smsBody);
+          if (r.ok) {
+            channelUsed = "sms";
+            console.log(`[SMS] ${job.job_type} → ${customer.phone}`);
+          } else if (r.skipped) {
+            lastErr = `${lastErr ? lastErr + " | " : ""}sms_skipped: ${r.reason}`;
+          } else {
+            lastErr = `${lastErr ? lastErr + " | " : ""}sms: ${r.err}`;
+          }
         }
 
         await supabase.from("scheduled_jobs").update({
           status: channelUsed === "none" ? "skipped" : "sent",
           sent_at: new Date().toISOString(),
-          error: lineErr || (channelUsed === "none" ? "no_channel" : null),
+          error: channelUsed === "none" ? (lastErr || "no_channel_available") : (lastErr || null),
+          payload: { ...(job.payload as any || {}), channel_used: channelUsed },
         }).eq("id", job.id);
-        success++;
+
+        if (channelUsed === "none") failed++; else success++;
       } catch (e) {
         await supabase.from("scheduled_jobs").update({
           status: "failed",
