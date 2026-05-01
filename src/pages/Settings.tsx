@@ -685,6 +685,8 @@ const Settings = () => {
           </div>
         </section>
 
+        <HolidayNoticeBroadcast />
+
         <Button onClick={save} disabled={saving}
           className="rounded-none px-12 py-6 text-xs tracking-luxury bg-primary hover:bg-primary-glow">
           {saving && <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />}
