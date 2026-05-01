@@ -5,7 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, CheckCircle2, Check, CalendarDays } from "lucide-react";
+import { Loader2, CheckCircle2, Check, CalendarDays, CalendarIcon } from "lucide-react";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { format } from "date-fns";
+import { ja } from "date-fns/locale";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 const FALLBACK_MENUS = ["カット", "カット＋カラー", "カット＋パーマ", "縮毛矯正", "ヘッドスパ", "その他"];
@@ -86,16 +91,19 @@ const Booking = () => {
     load();
   }, [token]);
 
-  // 予約可能日: リードタイム経過後の日付から / 上限日まで
+  // 予約可能日: JST基準で「今日」より過去はNG。リードタイム経過後の日付以降から
   const earliestDate = useMemo(() => {
     const d = new Date(Date.now() + leadHours * 3600_000);
-    return d.toISOString().split("T")[0];
+    const jst = new Date(d.toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
+    jst.setHours(0, 0, 0, 0);
+    return jst;
   }, [leadHours]);
   const maxDate = useMemo(() => {
     const d = new Date(Date.now() + maxDaysAhead * 86400_000);
-    return d.toISOString().split("T")[0];
+    const jst = new Date(d.toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
+    jst.setHours(23, 59, 59, 999);
+    return jst;
   }, [maxDaysAhead]);
-  const minDate = earliestDate;
 
   const { totalDuration, totalPrice } = useMemo(() => {
     let d = 0, p = 0;
