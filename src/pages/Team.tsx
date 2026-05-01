@@ -164,7 +164,13 @@ const Team = () => {
                 <div key={i.id} className="flex items-center justify-between border-b pb-3 last:border-0">
                   <div>
                     <p className="font-medium">{i.email}</p>
-                    <p className="text-xs text-muted-foreground">期限: {new Date(i.expires_at).toLocaleDateString("ja-JP")}</p>
+                    <p className="text-xs text-muted-foreground">
+                      期限: {new Date(i.expires_at).toLocaleDateString("ja-JP")}
+                      {" / "}
+                      {i.location_ids && i.location_ids.length > 0
+                        ? `${i.location_ids.length}店舗のみ`
+                        : "全店舗アクセス"}
+                    </p>
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge variant="outline">{i.role}</Badge>
