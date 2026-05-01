@@ -17,12 +17,38 @@ import { useTenantRole } from "@/hooks/useTenant";
 
 export const LocationSwitcher = () => {
   const [open, setOpen] = useState(false);
-  const { currentLocation, locations, setCurrentLocationId } = useCurrentLocation();
+  const { currentLocation, locations, setCurrentLocationId, isLoading } = useCurrentLocation();
   const role = useTenantRole();
   const navigate = useNavigate();
+  const canManage = role === "owner" || role === "super_admin";
 
+  // 店舗0件: オーナー/管理者には「店舗を追加」導線を出す。それ以外は何も表示しない。
   if (locations.length === 0) {
-    return null;
+    if (isLoading) {
+      return (
+        <div className="w-full py-3 px-4 flex items-center gap-3 text-sidebar-foreground/50">
+          <Store className="w-3.5 h-3.5 stroke-[1.5] text-gold" />
+          <div className="flex flex-col">
+            <span className="eyebrow text-[9px]">Location</span>
+            <span className="font-serif text-[13px] tracking-wider">読み込み中...</span>
+          </div>
+        </div>
+      );
+    }
+    if (!canManage) return null;
+    return (
+      <Button
+        variant="ghost"
+        onClick={() => navigate("/locations")}
+        className="w-full justify-start text-sidebar-foreground/80 hover:text-sidebar-foreground hover:bg-sidebar-accent rounded-none h-auto py-3 px-4 gap-3"
+      >
+        <Store className="w-3.5 h-3.5 stroke-[1.5] text-gold" />
+        <div className="flex flex-col items-start">
+          <span className="eyebrow text-[9px] text-sidebar-foreground/40">Location</span>
+          <span className="font-serif text-[13px] tracking-wider">店舗を追加</span>
+        </div>
+      </Button>
+    );
   }
 
   return (
@@ -39,7 +65,7 @@ export const LocationSwitcher = () => {
             <div className="flex flex-col items-start min-w-0">
               <span className="eyebrow text-[9px] text-sidebar-foreground/40">Location</span>
               <span className="font-serif text-[13px] tracking-wider truncate max-w-[140px]">
-                {currentLocation?.name ?? "選択..."}
+                {currentLocation?.name ?? locations[0]?.name ?? "選択..."}
               </span>
             </div>
           </div>
