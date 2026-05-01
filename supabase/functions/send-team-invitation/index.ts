@@ -52,9 +52,8 @@ Deno.serve(async (req) => {
     const { data: inviterProfile } = await supabase.from("profiles").select("full_name").eq("id", user.id).maybeSingle();
     const inviteUrl = `${Deno.env.get("APP_URL") ?? "https://hair-growth-engine.lovable.app"}/invite/${token}`;
 
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const { error: emailErr } = await supabase.functions.invoke("send-transactional-email", {
-      headers: { Authorization: `Bearer ${serviceKey}` },
+      headers: { Authorization: auth },
       body: {
         templateName: "team-invitation",
         recipientEmail: email,
