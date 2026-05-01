@@ -394,6 +394,7 @@ export type Database = {
           notes: string | null
           owner_id: string
           phone: string | null
+          referred_by: string | null
           total_spent: number
           updated_at: string
           visit_count: number
@@ -410,6 +411,7 @@ export type Database = {
           notes?: string | null
           owner_id: string
           phone?: string | null
+          referred_by?: string | null
           total_spent?: number
           updated_at?: string
           visit_count?: number
@@ -426,11 +428,20 @@ export type Database = {
           notes?: string | null
           owner_id?: string
           phone?: string | null
+          referred_by?: string | null
           total_spent?: number
           updated_at?: string
           visit_count?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "customers_referred_by_fkey"
+            columns: ["referred_by"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       email_send_log: {
         Row: {
@@ -1199,6 +1210,7 @@ export type Database = {
         Args: { _total_spent: number; _visit_count: number }
         Returns: string
       }
+      create_anniversary_jobs_for_today: { Args: never; Returns: number }
       create_birthday_jobs_for_month: { Args: never; Returns: number }
       create_reactivation_jobs: { Args: never; Returns: number }
       delete_email: {
