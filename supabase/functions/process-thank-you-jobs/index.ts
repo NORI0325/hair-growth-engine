@@ -245,6 +245,44 @@ Deno.serve(async (req) => {
           templateName = "next-suggestion";
           templateData = { customerName: customer.full_name, salonName, bookingLink };
           body = `${customer.full_name}様\n\n前回のご来店から約${days}日が経ちました。\n根元の伸び・カラーの色落ちが気になり始める時期です✨\n\nお早めのご予約で、ご希望のお日にちが選びやすくなっております。\n→ ${bookingLink}\n\n${salonName}`;
+        } else if (job.job_type === "welcome") {
+          templateName = "welcome-new-customer";
+          templateData = { customerName: customer.full_name, salonName, bookingLink };
+          body = `${customer.full_name}様\n\nこのたびは${salonName}にご縁をいただき、誠にありがとうございます🌸\n\nどうぞリラックスしてお過ごしいただけるよう、心を込めてお迎えいたします。\nご予約・お気軽なご相談はこちらから：\n→ ${bookingLink}\n\n${salonName}`;
+        } else if (job.job_type === "anniversary") {
+          const years = Number((job.payload as any)?.years) || 1;
+          templateName = "anniversary";
+          templateData = { customerName: customer.full_name, salonName, years, bookingLink };
+          body = `${customer.full_name}様\n\n${salonName}にお越しいただいて、本日でちょうど${years}周年です🎉\n\n大切な節目に、心からの感謝をお伝えさせてください。\nこれからも${customer.full_name}様の美しさを、丁寧にお手伝いしてまいります。\n\n→ ${bookingLink}\n\n${salonName}`;
+        } else if (job.job_type === "vip_upgrade") {
+          const tier = String((job.payload as any)?.tier || "gold");
+          const tierJa: Record<string,string> = { silver: "シルバー", gold: "ゴールド", platinum: "プラチナ" };
+          templateName = "vip-upgrade";
+          templateData = { customerName: customer.full_name, salonName, tier };
+          body = `${customer.full_name}様\n\nいつも${salonName}をご愛顧いただき、心より感謝申し上げます。\n\n👑 このたび ${tierJa[tier] || tier} メンバーへご昇格されました。\n\n${customer.full_name}様の温かなご来店があってこその節目です。\nこれからも特別なひとときをご用意してお待ちしております。\n\n${salonName}`;
+        } else if (job.job_type === "referral_thanks") {
+          // 紹介者(referrer)のcustomer_idがjob.customer_idに入っている
+          const referredId = (job.payload as any)?.referred_customer_id;
+          let referredName = "";
+          if (referredId) {
+            const { data: ref } = await supabase
+              .from("customers").select("full_name").eq("id", referredId).maybeSingle();
+            referredName = ref?.full_name || "";
+          }
+          templateName = "referral-thanks";
+          templateData = { customerName: customer.full_name, salonName, referredName, bookingLink };
+          body = `${customer.full_name}様\n\n${salonName}にご紹介いただき、誠にありがとうございました🌸\n${referredName ? `${referredName}様をご紹介いただいたこと、心より感謝申し上げます。\n\n` : ""}${customer.full_name}様からの大切なご紹介は、私たちにとって何よりの励みです。\nささやかではございますが、感謝の気持ちをお贈りいたします。\n\n→ ${bookingLink}\n\n${salonName}`;
+        } else if (job.job_type === "holiday_notice") {
+          const p = (job.payload as any) || {};
+          templateName = "holiday-notice";
+          templateData = {
+            customerName: customer.full_name, salonName,
+            noticeTitle: p.noticeTitle || "休業のお知らせ",
+            noticeBody: p.noticeBody || "",
+            startDate: p.startDate || "",
+            endDate: p.endDate || "",
+          };
+          body = `${customer.full_name}様\n\nいつも${salonName}をご利用いただき、誠にありがとうございます。\n\n${p.noticeTitle || "休業のお知らせ"}\n${p.noticeBody || ""}\n${p.startDate ? `\n期間：${p.startDate}${p.endDate ? ` 〜 ${p.endDate}` : ""}` : ""}\n\nご不便をおかけしますが、何卒よろしくお願いいたします。\n\n${salonName}`;
         }
 
         // オーナーカスタマイズ上書き
