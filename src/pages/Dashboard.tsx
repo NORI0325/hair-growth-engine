@@ -11,6 +11,7 @@ import {
   TrendingUp, Clock, ArrowRight, Crown,
 } from "lucide-react";
 import { calculateVipTier, tierInfo, type VipTier } from "@/lib/vip";
+import { useCurrentLocationId } from "@/hooks/useLocations";
 
 // --------------- 型 ---------------
 interface TodayBooking {
@@ -55,10 +56,11 @@ const todayKey = ymd(new Date());
 
 const Dashboard = () => {
   const { user } = useAuth();
+  const locationId = useCurrentLocationId();
   const [data, setData] = useState<DashboardData | null>(null);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !locationId) return;
     const load = async () => {
       const now = new Date();
       const startOfMonth = ymd(new Date(now.getFullYear(), now.getMonth(), 1));
