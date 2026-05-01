@@ -69,6 +69,10 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
           <div className="eyebrow text-[10px] text-sidebar-foreground/50 mt-1">Est. 2026</div>
         </div>
 
+        <div className="border-b border-sidebar-border/60">
+          <LocationSwitcher />
+        </div>
+
         <nav className="flex-1 px-4 py-8 space-y-1">
           {navItems.map(({ to, label, en, icon: Icon, badgeKey }: any) => (
             <NavLink
