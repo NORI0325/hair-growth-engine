@@ -56,7 +56,7 @@ const LineBroadcast = () => {
     const { data } = await supabase
       .from("line_message_log" as any)
       .select("id, job_type, message, status, error, created_at, customer_id")
-      .eq("owner_id", user.id)
+      .eq("location_id", locationId)
       .order("created_at", { ascending: false })
       .limit(50);
     setLogs((data as any) || []);
@@ -68,7 +68,7 @@ const LineBroadcast = () => {
     const { data } = await supabase
       .from("line_templates")
       .select("*")
-      .eq("owner_id", user.id)
+      .eq("location_id", locationId)
       .order("use_count", { ascending: false });
     setTemplates(data || []);
   };
@@ -77,7 +77,7 @@ const LineBroadcast = () => {
     if (!user) return;
     const { data: all } = await supabase.from("customers")
       .select("id, last_visit_date", { count: "exact" })
-      .eq("owner_id", user.id).eq("is_test", false)
+      .eq("location_id", locationId).eq("is_test", false)
       .not("line_user_id", "is", null);
     const list = all || [];
     const today = new Date();
@@ -93,7 +93,7 @@ const LineBroadcast = () => {
     });
   };
 
-  useEffect(() => { loadLogs(); loadCounts(); loadTemplates(); }, [user]);
+  useEffect(() => { loadLogs(); loadCounts(); loadTemplates(); }, [user, locationId]);
 
   const aiAssist = async (action: string) => {
     if (!message.trim()) { toast.error("本文を入力してください"); return; }

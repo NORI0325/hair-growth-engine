@@ -64,10 +64,10 @@ const Templates = () => {
 
   useEffect(() => {
     if (!user) return;
-    supabase.from("coupons").select("id, title").eq("owner_id", user.id).then(({ data }) => {
+    supabase.from("coupons").select("id, title").eq("location_id", locationId).then(({ data }) => {
       setCoupons(data || []);
     });
-    supabase.from("incentives").select("id, title, kind").eq("owner_id", user.id).eq("active", true).order("sort_order").then(({ data }) => {
+    supabase.from("incentives").select("id, title, kind").eq("location_id", locationId).eq("active", true).order("sort_order").then(({ data }) => {
       setIncentives(data || []);
     });
   }, [user]);
@@ -79,7 +79,7 @@ const Templates = () => {
     supabase
       .from("template_overrides")
       .select("*")
-      .eq("owner_id", user.id)
+      .eq("location_id", locationId)
       .eq("channel", channel)
       .eq("template_key", selectedKey)
       .maybeSingle()

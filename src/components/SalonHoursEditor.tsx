@@ -28,13 +28,13 @@ const SalonHoursEditor = () => {
     const { data } = await supabase
       .from("salon_hours")
       .select("id, weekday, open_time, close_time, closed")
-      .eq("owner_id", user.id)
+      .eq("location_id", locationId)
       .order("weekday");
     setHours((data || []) as SalonHour[]);
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, [user]);
+  useEffect(() => { load(); }, [user, locationId]);
 
   const updateHour = async (h: SalonHour, patch: Partial<SalonHour>) => {
     setHours(prev => prev.map(x => x.id === h.id ? { ...x, ...patch } : x));
