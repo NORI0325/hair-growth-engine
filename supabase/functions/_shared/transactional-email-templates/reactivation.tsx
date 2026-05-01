@@ -9,12 +9,14 @@ interface Props {
   salonName?: string
   bookingLink?: string
   daysSince?: number
+  discountPercent?: number
+  label?: string
 }
 
-const ReactivationEmail = ({ customerName, salonName = 'サロン', bookingLink, daysSince }: Props) => (
+const ReactivationEmail = ({ customerName, salonName = 'サロン', bookingLink, daysSince, discountPercent = 0, label }: Props) => (
   <Html lang="ja">
     <Head />
-    <Preview>お久しぶりです。特別なご案内をお贈りします</Preview>
+    <Preview>{label || 'お久しぶりです'}。特別なご案内をお贈りします</Preview>
     <Body style={main}>
       <Container style={container}>
         <Text style={eyebrow}>— WE MISS YOU —</Text>
@@ -24,14 +26,23 @@ const ReactivationEmail = ({ customerName, salonName = 'サロン', bookingLink,
           {daysSince ? `前回のご来店から${daysSince}日が経ちました。` : ''}
           いかがお過ごしでしょうか。
         </Text>
-        <Text style={text}>
-          またお会いできる日を心待ちにしておりまして、
-          ささやかですが <strong>20%OFF の復活クーポン</strong> をご用意いたしました。
-          季節の変わり目、ぜひ気分転換にいらしてください。
-        </Text>
+        {discountPercent > 0 ? (
+          <Text style={text}>
+            またお会いできる日を心待ちにしておりまして、
+            ささやかですが <strong>{discountPercent}%OFF{label ? `（${label}）` : ''}</strong> をご用意いたしました。
+            季節の変わり目、ぜひ気分転換にいらしてください。
+          </Text>
+        ) : (
+          <Text style={text}>
+            季節の変わり目、根元の伸びやカラーの色落ちが気になり始める時期です。
+            またお会いできる日を心待ちにしております。
+          </Text>
+        )}
         {bookingLink && (
           <Section style={{ textAlign: 'center', margin: '32px 0' }}>
-            <Button href={bookingLink} style={button}>クーポンで予約する</Button>
+            <Button href={bookingLink} style={button}>
+              {discountPercent > 0 ? 'クーポンで予約する' : 'ご予約はこちら'}
+            </Button>
           </Section>
         )}
         <Hr style={hr} />
@@ -43,9 +54,13 @@ const ReactivationEmail = ({ customerName, salonName = 'サロン', bookingLink,
 
 export const template = {
   component: ReactivationEmail,
-  subject: (d: Record<string, any>) => `${d.salonName || 'サロン'}より 特別なご案内`,
+  subject: (d: Record<string, any>) => {
+    const dp = Number(d.discountPercent) || 0
+    if (dp > 0) return `${d.salonName || 'サロン'}より ${dp}%OFFの特別ご案内`
+    return `${d.salonName || 'サロン'}より お元気ですか`
+  },
   displayName: '休眠復活クーポン',
-  previewData: { customerName: '山田 花子', salonName: 'ARUNE HAIR', bookingLink: 'https://example.com/book/x', daysSince: 95 },
+  previewData: { customerName: '山田 花子', salonName: 'ARUNE HAIR', bookingLink: 'https://example.com/book/x', daysSince: 95, discountPercent: 20, label: 'おかえりなさい' },
 } satisfies TemplateEntry
 
 const main = { backgroundColor: '#ffffff', fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }
