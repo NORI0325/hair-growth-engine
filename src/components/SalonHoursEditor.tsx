@@ -19,7 +19,7 @@ const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
 
 const SalonHoursEditor = () => {
   const { user } = useAuth();
-  const locationId = useCurrentLocationId();
+  const { currentLocation, currentLocationId: locationId, isLoading: locationsLoading } = useCurrentLocation();
   const [hours, setHours] = useState<SalonHour[]>([]);
   const [loading, setLoading] = useState(true);
 
