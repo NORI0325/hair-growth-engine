@@ -26,10 +26,15 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 const Billing = () => {
   const { data: sub, isLoading, refetch } = useSubscription();
   const tenantId = useTenantId();
+  const { data: locations = [] } = useLocations();
   const [params] = useSearchParams();
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const reason = params.get("reason");
+
+  const locationCount = Math.max(1, locations.length);
+  const additionalCount = Math.max(0, locationCount - 1);
+  const monthlyTotal = BASE_PRICE + additionalCount * ADDITIONAL_LOCATION_PRICE;
 
   const startCheckout = async () => {
     if (!tenantId) return;
