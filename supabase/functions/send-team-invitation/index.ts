@@ -47,26 +47,27 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ success: false, error: insertErr.message }), { status: 500, headers: corsHeaders });
     }
 
-    // 招待メール送信
+    // 招待メール送信（正式テンプレート使用）
     const { data: tenantProfile } = await supabase.from("profiles").select("salon_name").eq("id", tenant_id).maybeSingle();
+    const { data: inviterProfile } = await supabase.from("profiles").select("full_name").eq("id", user.id).maybeSingle();
     const inviteUrl = `${Deno.env.get("APP_URL") ?? "https://hair-growth-engine.lovable.app"}/invite/${token}`;
 
-    await supabase.functions.invoke("send-transactional-email", {
+    const { error: emailErr } = await supabase.functions.invoke("send-transactional-email", {
       body: {
-        to: email,
-        subject: `${tenantProfile?.salon_name ?? "サロン"} からの招待`,
-        html: `
-          <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:24px">
-            <h1>${tenantProfile?.salon_name ?? "サロン"} へのご招待</h1>
-            <p>${tenantProfile?.salon_name ?? "サロン"}のオーナーからスタッフ用アカウントの招待が届きました。</p>
-            <p><strong>役割:</strong> ${role === "manager" ? "マネージャー" : "スタッフ"}</p>
-            <p>下のボタンをクリックして参加してください。招待は7日間有効です。</p>
-            <p><a href="${inviteUrl}" style="display:inline-block;padding:12px 24px;background:#000;color:#fff;text-decoration:none;border-radius:4px">招待を受諾する</a></p>
-            <p style="color:#666;font-size:12px;margin-top:24px">${inviteUrl}</p>
-          </div>
-        `,
+        templateName: "team-invitation",
+        recipientEmail: email,
+        idempotencyKey: `team-invite-${invite.id}`,
+        templateData: {
+          salonName: tenantProfile?.salon_name ?? "サロン",
+          inviterName: inviterProfile?.full_name ?? null,
+          role,
+          inviteUrl,
+        },
       },
     });
+    if (emailErr) {
+      console.error("send-team-invitation email error:", emailErr);
+    }
 
     return new Response(JSON.stringify({ success: true, invite_id: invite.id }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

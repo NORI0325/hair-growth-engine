@@ -82,6 +82,17 @@ Deno.serve(async (req) => {
       stripeUpdated = true;
     }
 
+    // 同名店舗の重複防止（先回りチェック）
+    const { data: dup } = await supabase
+      .from("locations")
+      .select("id")
+      .eq("tenant_id", tenant_id)
+      .ilike("name", name.trim())
+      .maybeSingle();
+    if (dup) {
+      return new Response(JSON.stringify({ error: "duplicate_name", message: "同じ名前の店舗が既に存在します" }), { status: 409, headers: corsHeaders });
+    }
+
     // location 作成
     const slug = `salon-${tenant_id.replace(/-/g, "").substring(0, 8)}-${Date.now().toString(36)}`;
     const { data: location, error } = await supabase

@@ -28,6 +28,7 @@ import { template as referralThanks } from './referral-thanks.tsx'
 import { template as holidayNotice } from './holiday-notice.tsx'
 import { template as inquiryReceived } from './inquiry-received.tsx'
 import { template as homecareRecommendation } from './homecare-recommendation.tsx'
+import { template as teamInvitation } from './team-invitation.tsx'
 
 export const TEMPLATES: Record<string, TemplateEntry> = {
   'thank-you': thankYou,
@@ -49,4 +50,5 @@ export const TEMPLATES: Record<string, TemplateEntry> = {
   'holiday-notice': holidayNotice,
   'inquiry-received': inquiryReceived,
   'homecare-recommendation': homecareRecommendation,
+  'team-invitation': teamInvitation,
 }
