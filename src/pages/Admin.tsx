@@ -74,9 +74,10 @@ const Admin = () => {
       <div className="max-w-7xl mx-auto p-6 space-y-6">
         <h1 className="text-3xl font-bold">運営管理</h1>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <Card className="p-4"><p className="text-sm text-muted-foreground">MRR</p><p className="text-2xl font-bold">¥{mrr.toLocaleString()}</p></Card>
           <Card className="p-4"><p className="text-sm text-muted-foreground">総テナント</p><p className="text-2xl font-bold">{stats.length}</p></Card>
+          <Card className="p-4"><p className="text-sm text-muted-foreground">総店舗数</p><p className="text-2xl font-bold">{totalLocations}</p></Card>
           <Card className="p-4"><p className="text-sm text-muted-foreground">有料</p><p className="text-2xl font-bold">{stats.filter(s => s.status === "active").length}</p></Card>
           <Card className="p-4"><p className="text-sm text-muted-foreground">トライアル中</p><p className="text-2xl font-bold">{stats.filter(s => s.status === "trialing").length}</p></Card>
         </div>
@@ -86,13 +87,14 @@ const Admin = () => {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-left text-muted-foreground border-b">
-                <tr><th className="pb-2">サロン名</th><th className="pb-2">状態</th><th className="pb-2">登録日</th><th className="pb-2">顧客</th><th className="pb-2">予約</th></tr>
+                <tr><th className="pb-2">サロン名</th><th className="pb-2">状態</th><th className="pb-2">店舗</th><th className="pb-2">登録日</th><th className="pb-2">顧客</th><th className="pb-2">予約</th></tr>
               </thead>
               <tbody>
                 {stats.map((s) => (
                   <tr key={s.owner_id} className="border-b">
                     <td className="py-2">{s.salon_name}</td>
                     <td><Badge>{s.status}</Badge></td>
+                    <td>{s.location_count}</td>
                     <td>{s.created_at ? new Date(s.created_at).toLocaleDateString("ja-JP") : "-"}</td>
                     <td>{s.customer_count}</td>
                     <td>{s.booking_count}</td>
