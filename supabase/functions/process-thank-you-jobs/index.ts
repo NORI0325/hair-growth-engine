@@ -72,7 +72,7 @@ Deno.serve(async (req) => {
       .from("scheduled_jobs")
       .select("id, owner_id, customer_id, booking_id, job_type, payload, scheduled_for")
       .eq("status", "pending")
-      .in("job_type", ["thank_you", "birthday", "review_request", "reminder", "reactivation", "aftercare", "next_suggestion"])
+      .in("job_type", ["thank_you", "birthday", "review_request", "reminder", "reactivation", "aftercare", "next_suggestion", "welcome", "anniversary", "vip_upgrade", "referral_thanks", "holiday_notice"])
       .lte("scheduled_for", new Date().toISOString())
       .limit(200);
 
@@ -144,6 +144,9 @@ Deno.serve(async (req) => {
           thank_you: "thank-you", birthday: "birthday", review_request: "review-request",
           reminder: "booking-reminder", reactivation: "reactivation",
           aftercare: "aftercare", next_suggestion: "next-suggestion",
+          welcome: "welcome-new-customer", anniversary: "anniversary",
+          vip_upgrade: "vip-upgrade", referral_thanks: "referral-thanks",
+          holiday_notice: "holiday-notice",
         };
         const tmplKey = jobTypeToTemplateKey[job.job_type] || job.job_type;
 
