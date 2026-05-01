@@ -131,6 +131,8 @@ const Team = () => {
                 )}
               </div>
             )}
+          </Card>
+        )}
 
         <Card className="p-6">
           <h2 className="font-semibold mb-4">現在のメンバー</h2>
