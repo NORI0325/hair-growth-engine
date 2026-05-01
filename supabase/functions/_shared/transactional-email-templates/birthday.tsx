@@ -8,9 +8,10 @@ interface Props {
   customerName?: string
   salonName?: string
   bookingLink?: string
+  discountPercent?: number
 }
 
-const BirthdayEmail = ({ customerName, salonName = 'サロン', bookingLink }: Props) => (
+const BirthdayEmail = ({ customerName, salonName = 'サロン', bookingLink, discountPercent = 30 }: Props) => (
   <Html lang="ja">
     <Head />
     <Preview>お誕生月おめでとうございます</Preview>
@@ -23,7 +24,7 @@ const BirthdayEmail = ({ customerName, salonName = 'サロン', bookingLink }: P
           いつも{salonName}をご愛顧いただき、心より感謝申し上げます。
         </Text>
         <Text style={text}>
-          ささやかですが <strong>30%OFFのバースデークーポン</strong> をお贈りいたします。
+          ささやかですが <strong>{discountPercent}%OFFのバースデークーポン</strong> をお贈りいたします。
           特別な月を、{salonName}でお過ごしください。
         </Text>
         {bookingLink && (
@@ -42,7 +43,7 @@ export const template = {
   component: BirthdayEmail,
   subject: (d: Record<string, any>) => `${d.salonName || 'サロン'}より お誕生月おめでとうございます`,
   displayName: 'バースデーメール',
-  previewData: { customerName: '山田 花子', salonName: 'ARUNE HAIR', bookingLink: 'https://example.com/book/x' },
+  previewData: { customerName: '山田 花子', salonName: 'ARUNE HAIR', bookingLink: 'https://example.com/book/x', discountPercent: 30 },
 } satisfies TemplateEntry
 
 const main = { backgroundColor: '#ffffff', fontFamily: 'Georgia, "Hiragino Mincho ProN", serif' }

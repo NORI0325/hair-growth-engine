@@ -6,17 +6,26 @@ import PageHeader from "@/components/PageHeader";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Loader2, Star, MessageCircle, Bell, FlaskConical, Send, Trash2, Sparkles, Clock, RefreshCw, Copy, Mail, Inbox, CheckCircle2, XCircle, AlertCircle } from "lucide-react";
+import { Loader2, Star, MessageCircle, Bell, FlaskConical, Send, Trash2, Sparkles, Clock, RefreshCw, Copy, Mail, Inbox, CheckCircle2, XCircle, AlertCircle, Store, Cake } from "lucide-react";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import HolidayNoticeBroadcast from "@/components/HolidayNoticeBroadcast";
 import SalonHoursEditor from "@/components/SalonHoursEditor";
+import ReactivationStagesEditor, { type ReactivationStage } from "@/components/ReactivationStagesEditor";
 
 const WEBHOOK_URL = "https://miyedioemkzhetphjzzg.supabase.co/functions/v1/line-webhook";
+
+const DEFAULT_STAGES: ReactivationStage[] = [
+  { days: 30, discount_percent: 10, label: "お久しぶり" },
+  { days: 60, discount_percent: 15, label: "そろそろ" },
+  { days: 90, discount_percent: 20, label: "おかえりなさい" },
+  { days: 150, discount_percent: 30, label: "特別ご招待" },
+];
 
 const Settings = () => {
   const { user } = useAuth();
@@ -50,6 +59,11 @@ const Settings = () => {
     auto_reply_enabled: false,
     auto_reply_use_ai: true,
     auto_reply_message: "",
+    reactivation_stages: DEFAULT_STAGES,
+    birthday_enabled: true,
+    birthday_discount_percent: 30,
+    thank_you_delay_days: 1,
+    aftercare_delay_days: 7,
   });
 
   useEffect(() => {
@@ -57,12 +71,12 @@ const Settings = () => {
     (async () => {
       const { data } = await supabase
         .from("profiles")
-        .select("salon_name, google_review_url, line_add_friend_url, line_channel_access_token, line_channel_secret, owner_notification_email, test_mode, reminder_enabled, reactivation_enabled, reminder_hour, inbound_key, booking_lead_time_hours, booking_max_days_ahead, allow_customer_cancel, cancel_deadline_hours, auto_reply_enabled, auto_reply_use_ai, auto_reply_message")
+        .select("*")
         .eq("id", user.id)
         .maybeSingle();
       if (data) {
-        setInboundKey((data as any).inbound_key || "");
-        // 直近10件の取込履歴
+        const d = data as any;
+        setInboundKey(d.inbound_key || "");
         const { data: logs } = await supabase
           .from("external_reservation_logs")
           .select("source, status, created_at, error, parsed_data")
@@ -70,9 +84,6 @@ const Settings = () => {
           .order("created_at", { ascending: false })
           .limit(10);
         if (logs) setRecentImports(logs);
-      }
-      if (data) {
-        const d = data as any;
         setForm({
           salon_name: d.salon_name || "",
           google_review_url: d.google_review_url || "",
@@ -91,20 +102,22 @@ const Settings = () => {
           auto_reply_enabled: d.auto_reply_enabled ?? false,
           auto_reply_use_ai: d.auto_reply_use_ai ?? true,
           auto_reply_message: d.auto_reply_message || "",
+          reactivation_stages: Array.isArray(d.reactivation_stages) && d.reactivation_stages.length > 0
+            ? d.reactivation_stages : DEFAULT_STAGES,
+          birthday_enabled: d.birthday_enabled ?? true,
+          birthday_discount_percent: d.birthday_discount_percent ?? 30,
+          thank_you_delay_days: d.thank_you_delay_days ?? 1,
+          aftercare_delay_days: d.aftercare_delay_days ?? 7,
         });
       }
       setLoading(false);
     })();
   }, [user]);
 
-
   const toggleTestMode = async (v: boolean) => {
     if (!user) return;
     setForm({ ...form, test_mode: v });
-    const { error } = await supabase
-      .from("profiles")
-      .update({ test_mode: v } as any)
-      .eq("id", user.id);
+    const { error } = await supabase.from("profiles").update({ test_mode: v } as any).eq("id", user.id);
     if (error) {
       setForm({ ...form, test_mode: !v });
       toast.error("テストモードの切替に失敗しました");
@@ -115,6 +128,10 @@ const Settings = () => {
 
   const save = async () => {
     if (!user) return;
+    if (!form.reactivation_stages || form.reactivation_stages.length === 0) {
+      toast.error("離脱客ステップは最低1段階必要です");
+      return;
+    }
     setSaving(true);
     const { error } = await supabase
       .from("profiles")
@@ -136,11 +153,26 @@ const Settings = () => {
         auto_reply_enabled: form.auto_reply_enabled,
         auto_reply_use_ai: form.auto_reply_use_ai,
         auto_reply_message: form.auto_reply_message.trim() || null,
+        reactivation_stages: form.reactivation_stages,
+        birthday_enabled: form.birthday_enabled,
+        birthday_discount_percent: form.birthday_discount_percent,
+        thank_you_delay_days: form.thank_you_delay_days,
+        aftercare_delay_days: form.aftercare_delay_days,
       } as any)
       .eq("id", user.id);
+    if (error) {
+      setSaving(false);
+      toast.error("保存に失敗しました");
+      return;
+    }
+    // 段階削除時の未送信ジョブクリーンアップ
+    const { data: cancelled } = await supabase.rpc("cancel_orphan_reactivation_jobs" as any, { _owner_id: user.id });
     setSaving(false);
-    if (error) { toast.error("保存に失敗しました"); return; }
-    toast.success("設定を保存しました");
+    if (cancelled && Number(cancelled) > 0) {
+      toast.success(`設定を保存しました（削除した段階の未送信ジョブ${cancelled}件もキャンセル）`);
+    } else {
+      toast.success("設定を保存しました");
+    }
   };
 
   const setupRichMenu = async () => {
@@ -151,7 +183,7 @@ const Settings = () => {
       toast.error((data as any)?.message || error?.message || "リッチメニュー設定に失敗しました");
       return;
     }
-    toast.success("✅ リッチメニュー（予約/特典/お問合せ）を設定しました。LINEを開いて確認してください。");
+    toast.success("✅ リッチメニュー（予約/特典/お問合せ）を設定しました。");
   };
 
   const runReactivation = async () => {
@@ -168,59 +200,40 @@ const Settings = () => {
     toast.success("Webhook URLをコピーしました");
   };
 
-
   const sendLineTest = async () => {
-    if (!form.line_channel_access_token.trim()) {
-      toast.error("先にチャネルアクセストークンを保存してください");
-      return;
-    }
-    if (!lineTestUserId.trim()) {
-      toast.error("送信先のLINE UserIDを入力してください");
-      return;
-    }
+    if (!form.line_channel_access_token.trim()) { toast.error("先にチャネルアクセストークンを保存してください"); return; }
+    if (!lineTestUserId.trim()) { toast.error("送信先のLINE UserIDを入力してください"); return; }
     setTestingLine(true);
-    const { data, error } = await supabase.functions.invoke("line-test-push", {
-      body: { lineUserId: lineTestUserId.trim() },
-    });
+    const { data, error } = await supabase.functions.invoke("line-test-push", { body: { lineUserId: lineTestUserId.trim() } });
     setTestingLine(false);
     if (error || !(data as any)?.success) {
-      const msg = (data as any)?.message || error?.message || "送信に失敗しました";
-      toast.error(msg);
+      toast.error((data as any)?.message || error?.message || "送信に失敗しました");
       return;
     }
-    toast.success("✅ LINEへテスト送信しました。トークを確認してください。");
+    toast.success("✅ LINEへテスト送信しました。");
   };
 
   const sendSmsTest = async () => {
-    if (!smsTestPhone.trim()) {
-      toast.error("送信先の携帯番号を入力してください");
-      return;
-    }
+    if (!smsTestPhone.trim()) { toast.error("送信先の携帯番号を入力してください"); return; }
     setTestingSms(true);
-    const { data, error } = await supabase.functions.invoke("sms-test-send", {
-      body: { phone: smsTestPhone.trim() },
-    });
+    const { data, error } = await supabase.functions.invoke("sms-test-send", { body: { phone: smsTestPhone.trim() } });
     setTestingSms(false);
     if (error || !(data as any)?.success) {
-      const msg = (data as any)?.message || error?.message || "送信に失敗しました";
-      toast.error(msg, { duration: 8000 });
+      toast.error((data as any)?.message || error?.message || "送信に失敗しました", { duration: 8000 });
       return;
     }
-    toast.success(`✅ SMSをテスト送信しました（${(data as any)?.to}）。携帯を確認してください。`);
+    toast.success(`✅ SMSをテスト送信しました（${(data as any)?.to}）`);
   };
 
   const sendTestEmail = async () => {
-    if (!form.owner_notification_email.trim()) {
-      toast.error("先に通知の宛先メールアドレスを保存してください");
-      return;
-    }
+    if (!form.owner_notification_email.trim()) { toast.error("先に通知の宛先メールアドレスを保存してください"); return; }
     setTesting(true);
     const { error } = await supabase.functions.invoke("notify-owner-booking", {
       body: { test: true, recipientEmail: form.owner_notification_email.trim(), salonName: form.salon_name || "あなたのサロン" },
     });
     setTesting(false);
     if (error) { toast.error("テスト送信に失敗しました"); return; }
-    toast.success("テストメールを送信しました。受信箱をご確認ください。");
+    toast.success("テストメールを送信しました。");
   };
 
   const deleteTestData = async () => {
@@ -237,504 +250,519 @@ const Settings = () => {
     return <AppLayout><div className="flex justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-gold" /></div></AppLayout>;
   }
 
+  const SectionTitle = ({ icon: Icon, title, desc }: { icon: any; title: string; desc?: string }) => (
+    <div className="space-y-2">
+      <div className="flex items-center gap-3">
+        <Icon className="w-4 h-4 text-gold" />
+        <h2 className="display text-xl">{title}</h2>
+      </div>
+      {desc && <p className="text-xs text-muted-foreground leading-relaxed">{desc}</p>}
+    </div>
+  );
+
   return (
     <AppLayout>
-      <PageHeader eyebrow="— Settings —" title="サロン設定" description="Connect your salon to Google & LINE" />
+      <PageHeader eyebrow="— Settings —" title="サロン設定" description="店舗・配信・連携をすべて管理" />
 
-      <div className="max-w-2xl space-y-12">
-        <section className="space-y-5">
-          <Label className="block font-serif text-sm">サロン名 <span className="eyebrow text-[9px] text-muted-foreground ml-1">Salon Name</span></Label>
-          <Input value={form.salon_name} onChange={e => setForm({...form, salon_name: e.target.value})}
-            className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
-        </section>
+      <div className="max-w-3xl">
+        <Tabs defaultValue="store" className="w-full">
+          <TabsList className="grid w-full grid-cols-5 rounded-none bg-secondary/30 mb-8">
+            <TabsTrigger value="store" className="rounded-none text-xs tracking-luxury data-[state=active]:bg-background data-[state=active]:text-gold">
+              <Store className="w-3.5 h-3.5 mr-1.5" />店舗
+            </TabsTrigger>
+            <TabsTrigger value="messaging" className="rounded-none text-xs tracking-luxury data-[state=active]:bg-background data-[state=active]:text-gold">
+              <Sparkles className="w-3.5 h-3.5 mr-1.5" />配信
+            </TabsTrigger>
+            <TabsTrigger value="notify" className="rounded-none text-xs tracking-luxury data-[state=active]:bg-background data-[state=active]:text-gold">
+              <Bell className="w-3.5 h-3.5 mr-1.5" />通知
+            </TabsTrigger>
+            <TabsTrigger value="connect" className="rounded-none text-xs tracking-luxury data-[state=active]:bg-background data-[state=active]:text-gold">
+              <MessageCircle className="w-3.5 h-3.5 mr-1.5" />連携
+            </TabsTrigger>
+            <TabsTrigger value="dev" className="rounded-none text-xs tracking-luxury data-[state=active]:bg-background data-[state=active]:text-gold">
+              <FlaskConical className="w-3.5 h-3.5 mr-1.5" />開発
+            </TabsTrigger>
+          </TabsList>
 
-        <SalonHoursEditor />
-
-        <section className="space-y-5 pt-8 border-t border-border">
-          <div className="flex items-center gap-3">
-            <Clock className="w-4 h-4 text-gold" />
-            <h2 className="display text-xl">予約受付ルール</h2>
-          </div>
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            <strong>当日予約・直前予約・先の予約</strong>をお客様にどこまで許可するかを設定します。
-            短すぎる場合は準備が間に合わず、長すぎる場合は機会損失になります。日本のサロン平均は<strong>3〜24時間前</strong>です。
-          </p>
-          <div className="grid grid-cols-2 gap-5">
-            <div>
-              <Label className="mb-2 block font-serif text-sm">最短リードタイム <span className="eyebrow text-[9px] text-muted-foreground ml-1">Lead Time</span></Label>
-              <div className="flex items-center gap-2">
-                <Input type="number" min={0} max={168} value={form.booking_lead_time_hours}
-                  onChange={e => setForm({...form, booking_lead_time_hours: Math.max(0, parseInt(e.target.value) || 0)})}
-                  className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
-                <span className="text-xs font-serif text-muted-foreground">時間前まで受付</span>
-              </div>
-              <p className="text-[10px] text-muted-foreground mt-2">
-                {form.booking_lead_time_hours === 0 ? "当日直前まで予約可能" :
-                 form.booking_lead_time_hours < 24 ? `当日 ${24 - form.booking_lead_time_hours}時前まで予約可能` :
-                 `${Math.floor(form.booking_lead_time_hours / 24)}日前まで予約可能`}
-              </p>
-            </div>
-            <div>
-              <Label className="mb-2 block font-serif text-sm">予約可能な先日数 <span className="eyebrow text-[9px] text-muted-foreground ml-1">Max Days</span></Label>
-              <div className="flex items-center gap-2">
-                <Input type="number" min={7} max={365} value={form.booking_max_days_ahead}
-                  onChange={e => setForm({...form, booking_max_days_ahead: Math.max(7, parseInt(e.target.value) || 60)})}
-                  className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
-                <span className="text-xs font-serif text-muted-foreground">日先まで</span>
-              </div>
-              <p className="text-[10px] text-muted-foreground mt-2">推奨: 30〜90日</p>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between p-5 border border-border bg-secondary/20 mt-4">
-            <div>
-              <div className="font-serif text-sm">お客様によるオンラインキャンセル</div>
-              <div className="text-[10px] text-muted-foreground mt-1">
-                {form.allow_customer_cancel
-                  ? `✅ 許可中 — 予約${form.cancel_deadline_hours}時間前まで`
-                  : "❌ 不可 — お電話のみ受付"}
-              </div>
-            </div>
-            <Switch checked={form.allow_customer_cancel}
-              onCheckedChange={v => setForm({...form, allow_customer_cancel: v})} />
-          </div>
-
-          {form.allow_customer_cancel && (
-            <div>
-              <Label className="mb-2 block font-serif text-sm">キャンセル受付期限 <span className="eyebrow text-[9px] text-muted-foreground ml-1">Cancel Deadline</span></Label>
-              <div className="flex items-center gap-2">
-                <Input type="number" min={0} max={72} value={form.cancel_deadline_hours}
-                  onChange={e => setForm({...form, cancel_deadline_hours: Math.max(0, parseInt(e.target.value) || 0)})}
-                  className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
-                <span className="text-xs font-serif text-muted-foreground">時間前まで</span>
-              </div>
-              <p className="text-[10px] text-muted-foreground mt-2">
-                これより直前は「お電話でご連絡ください」と表示されます
-              </p>
-            </div>
-          )}
-
-          {/* === 営業時間外のLINE自動応答 === */}
-          <div className="pt-6 mt-2 border-t border-border/50">
-            <div className="eyebrow text-[10px] text-gold mb-3">— After-Hours Auto Reply —</div>
-            <div className="flex items-center justify-between p-5 border border-border bg-secondary/20">
+          {/* ========== 🏪 店舗基本情報 ========== */}
+          <TabsContent value="store" className="space-y-12">
+            <section className="space-y-5">
+              <SectionTitle icon={Store} title="サロン基本情報" />
               <div>
-                <div className="font-serif text-sm">営業時間外のLINE自動応答</div>
-                <div className="text-[10px] text-muted-foreground mt-1">
-                  {form.auto_reply_enabled
-                    ? form.auto_reply_use_ai
-                      ? "✨ AIが毎回パーソナライズされた一次返信を自動送信"
-                      : "✅ 固定文で一次返信を自動送信"
-                    : "❌ 無効 — 返信は手動のみ"}
+                <Label className="block font-serif text-sm mb-2">サロン名 <span className="eyebrow text-[9px] text-muted-foreground ml-1">Salon Name</span></Label>
+                <Input value={form.salon_name} onChange={e => setForm({...form, salon_name: e.target.value})}
+                  className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
+              </div>
+            </section>
+
+            <section className="pt-6 border-t border-border">
+              <SalonHoursEditor />
+            </section>
+
+            <section className="space-y-5 pt-6 border-t border-border">
+              <SectionTitle icon={Clock} title="予約受付ルール"
+                desc="当日予約・直前予約・先の予約をお客様にどこまで許可するかを設定します。日本のサロン平均は3〜24時間前です。" />
+              <div className="grid grid-cols-2 gap-5">
+                <div>
+                  <Label className="mb-2 block font-serif text-sm">最短リードタイム</Label>
+                  <div className="flex items-center gap-2">
+                    <Input type="number" min={0} max={168} value={form.booking_lead_time_hours}
+                      onChange={e => setForm({...form, booking_lead_time_hours: Math.max(0, parseInt(e.target.value) || 0)})}
+                      className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
+                    <span className="text-xs font-serif text-muted-foreground">時間前まで</span>
+                  </div>
+                </div>
+                <div>
+                  <Label className="mb-2 block font-serif text-sm">予約可能な先日数</Label>
+                  <div className="flex items-center gap-2">
+                    <Input type="number" min={7} max={365} value={form.booking_max_days_ahead}
+                      onChange={e => setForm({...form, booking_max_days_ahead: Math.max(7, parseInt(e.target.value) || 60)})}
+                      className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
+                    <span className="text-xs font-serif text-muted-foreground">日先まで</span>
+                  </div>
                 </div>
               </div>
-              <Switch checked={form.auto_reply_enabled}
-                onCheckedChange={v => setForm({...form, auto_reply_enabled: v})} />
-            </div>
 
-            {form.auto_reply_enabled && (
-              <>
-                <div className="flex items-center justify-between p-5 border border-border mt-3">
+              <div className="flex items-center justify-between p-5 border border-border bg-secondary/20">
+                <div>
+                  <div className="font-serif text-sm">お客様によるオンラインキャンセル</div>
+                  <div className="text-[10px] text-muted-foreground mt-1">
+                    {form.allow_customer_cancel ? `✅ 許可中 — 予約${form.cancel_deadline_hours}時間前まで` : "❌ 不可 — お電話のみ受付"}
+                  </div>
+                </div>
+                <Switch checked={form.allow_customer_cancel} onCheckedChange={v => setForm({...form, allow_customer_cancel: v})} />
+              </div>
+
+              {form.allow_customer_cancel && (
+                <div>
+                  <Label className="mb-2 block font-serif text-sm">キャンセル受付期限</Label>
+                  <div className="flex items-center gap-2">
+                    <Input type="number" min={0} max={72} value={form.cancel_deadline_hours}
+                      onChange={e => setForm({...form, cancel_deadline_hours: Math.max(0, parseInt(e.target.value) || 0)})}
+                      className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
+                    <span className="text-xs font-serif text-muted-foreground">時間前まで</span>
+                  </div>
+                </div>
+              )}
+            </section>
+          </TabsContent>
+
+          {/* ========== 📨 お客様への配信 ========== */}
+          <TabsContent value="messaging" className="space-y-12">
+            <section className="space-y-5">
+              <SectionTitle icon={Sparkles} title="お客様への自動配信"
+                desc="LINE登録済みのお客様にはLINE、未登録のお客様にはメールが自動的に送られます（重複しません）。" />
+            </section>
+
+            {/* 来店前日リマインド */}
+            <section className="space-y-4 pt-6 border-t border-border">
+              <div className="flex items-center justify-between p-5 border border-border bg-secondary/20">
+                <div className="flex items-start gap-3">
+                  <Clock className="w-4 h-4 text-gold mt-0.5" />
                   <div>
-                    <div className="font-serif text-sm">AIで毎回パーソナライズ</div>
+                    <div className="font-serif text-sm">来店前日リマインド</div>
                     <div className="text-[10px] text-muted-foreground mt-1">
-                      OFFにすると下記のカスタム文（または既定文）を毎回送信します
+                      予約日の前日{form.reminder_hour}時頃に「明日お待ちしています」を自動配信。無断キャンセル激減。
                     </div>
                   </div>
-                  <Switch checked={form.auto_reply_use_ai}
-                    onCheckedChange={v => setForm({...form, auto_reply_use_ai: v})} />
                 </div>
+                <Switch checked={form.reminder_enabled} onCheckedChange={v => setForm({...form, reminder_enabled: v})} />
+              </div>
+              {form.reminder_enabled && (
+                <div className="pl-8">
+                  <Label className="block font-serif text-xs mb-2">配信時刻</Label>
+                  <select value={form.reminder_hour} onChange={e => setForm({...form, reminder_hour: parseInt(e.target.value)})}
+                    className="bg-background border border-border px-3 py-1.5 text-xs rounded-none focus:outline-none focus:border-gold">
+                    {[10,11,12,13,14,15,16,17,18,19,20,21].map(h => <option key={h} value={h}>{h}:00</option>)}
+                  </select>
+                  <p className="text-[10px] text-muted-foreground mt-2">推奨：18〜20時（仕事帰りで一番開封されやすい時間帯）</p>
+                </div>
+              )}
+            </section>
 
-                <div className="mt-3">
-                  <Label className="mb-2 block font-serif text-sm">
-                    カスタム応答文（任意）<span className="eyebrow text-[9px] text-muted-foreground ml-1">Fallback Message</span>
-                  </Label>
-                  <textarea
-                    value={form.auto_reply_message}
-                    onChange={e => setForm({...form, auto_reply_message: e.target.value.slice(0, 500)})}
-                    rows={4}
-                    placeholder="（空欄ならサロン情報を含む既定文を使用）"
-                    className="w-full px-3 py-2 border border-border bg-background text-sm font-serif rounded-none focus:outline-none focus:border-gold"
+            {/* サンクス・アフターケア */}
+            <section className="space-y-4 pt-6 border-t border-border">
+              <SectionTitle icon={Mail} title="サンクス・アフターケアメール"
+                desc="来店後の自動フォロー。送信日数をオーナーが自由に設定できます。" />
+              <div className="grid grid-cols-2 gap-5">
+                <div>
+                  <Label className="mb-2 block font-serif text-sm">サンクスメール</Label>
+                  <div className="flex items-center gap-2">
+                    <Input type="number" min={0} max={7} value={form.thank_you_delay_days}
+                      onChange={e => setForm({...form, thank_you_delay_days: Math.max(0, Math.min(7, parseInt(e.target.value) || 0))})}
+                      className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
+                    <span className="text-xs font-serif text-muted-foreground">日後に送信</span>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-2">推奨：1日後</p>
+                </div>
+                <div>
+                  <Label className="mb-2 block font-serif text-sm">アフターケアメール</Label>
+                  <div className="flex items-center gap-2">
+                    <Input type="number" min={3} max={21} value={form.aftercare_delay_days}
+                      onChange={e => setForm({...form, aftercare_delay_days: Math.max(3, Math.min(21, parseInt(e.target.value) || 7))})}
+                      className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
+                    <span className="text-xs font-serif text-muted-foreground">日後に送信</span>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-2">推奨：7日後（ヘアケアアドバイス）</p>
+                </div>
+              </div>
+            </section>
+
+            {/* 離脱客ステップ */}
+            <section className="space-y-4 pt-6 border-t border-border">
+              <div className="flex items-center justify-between p-5 border border-border bg-secondary/20">
+                <div className="flex items-start gap-3">
+                  <RefreshCw className="w-4 h-4 text-gold mt-0.5" />
+                  <div>
+                    <div className="font-serif text-sm">離脱客の自動復活ステップ</div>
+                    <div className="text-[10px] text-muted-foreground mt-1">
+                      指定日数経過した顧客に自動でクーポンを配信。段階・割引率は自由にカスタマイズ可能。
+                    </div>
+                  </div>
+                </div>
+                <Switch checked={form.reactivation_enabled} onCheckedChange={v => setForm({...form, reactivation_enabled: v})} />
+              </div>
+
+              {form.reactivation_enabled && (
+                <div className="pl-2">
+                  <ReactivationStagesEditor
+                    value={form.reactivation_stages}
+                    onChange={stages => setForm({...form, reactivation_stages: stages})}
                   />
+                  <Button type="button" onClick={runReactivation} disabled={runningReactivation} variant="outline"
+                    className="rounded-none border-gold/40 text-xs tracking-luxury hover:bg-gold/5 mt-3">
+                    {runningReactivation ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5 mr-2" />}
+                    今すぐ抽出して送信予約 <span className="ml-2 opacity-60 text-[10px]">RUN NOW</span>
+                  </Button>
                   <p className="text-[10px] text-muted-foreground mt-2">
-                    AI生成に失敗した場合、または「AIパーソナライズOFF」時に使用されます
+                    ※ 通常は毎日自動で実行されます（保存後に有効化）。
                   </p>
                 </div>
-              </>
-            )}
-          </div>
+              )}
+            </section>
 
-          <Button onClick={save} disabled={saving} variant="outline"
-            className="rounded-none border-gold/40 text-xs tracking-luxury hover:bg-gold/5">
-            {saving ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> : null}
-            予約ルールを保存 <span className="ml-2 opacity-60 text-[10px]">SAVE</span>
-          </Button>
-        </section>
-        <section className="space-y-5 pt-8 border-t border-border">
-          <div className="flex items-center gap-3">
-            <Bell className="w-4 h-4 text-gold" />
-            <h2 className="display text-xl">予約通知メール</h2>
-          </div>
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            新規予約・キャンセルが入った瞬間に、ここで指定したメールアドレスへ即時通知が届きます。
-            スマホのメールアプリで受信すれば、予約の見逃しを防げます。
-          </p>
-          <div>
-            <Label className="mb-2 block font-serif text-sm">通知の宛先 <span className="eyebrow text-[9px] text-muted-foreground ml-1">Notification Email</span></Label>
-            <Input type="email" value={form.owner_notification_email}
-              onChange={e => setForm({...form, owner_notification_email: e.target.value})}
-              placeholder="info@arunehair.com"
-              className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
-            <p className="text-[10px] text-muted-foreground mt-2">空欄の場合は通知されません</p>
-          </div>
-          <Button type="button" onClick={sendTestEmail} disabled={testing} variant="outline"
-            className="rounded-none border-gold/40 text-xs tracking-luxury hover:bg-gold/5">
-            {testing ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> : <Send className="w-3.5 h-3.5 mr-2" />}
-            テスト通知を送信 <span className="ml-2 opacity-60 text-[10px]">TEST EMAIL</span>
-          </Button>
-          <p className="text-[10px] text-muted-foreground">
-            ※ ダミーデータでメール文面のみ送信します。データベースには何も保存されません。
-          </p>
-        </section>
-
-        <section className="space-y-5 pt-8 border-t border-border">
-          <div className="flex items-center gap-3">
-            <FlaskConical className="w-4 h-4 text-gold" />
-            <h2 className="display text-xl">テストモード</h2>
-          </div>
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            ONにすると、公開予約フォームから入った予約・顧客に「テスト」フラグが自動で付与され、<br />
-            <strong>ダッシュボードの数字（顧客数・売上・予約数）から完全に除外されます</strong>。<br />
-            予約フローの動作確認が終わったら必ずOFFに戻してください。
-          </p>
-          <div className="flex items-center justify-between p-5 border border-border bg-secondary/20">
-            <div>
-              <div className="font-serif text-sm">テストモード</div>
-              <div className="text-[10px] text-muted-foreground mt-1">
-                {form.test_mode ? "🧪 ON — テスト中の予約は集計から除外されます" : "● OFF — 通常運用中"}
-              </div>
-            </div>
-            <Switch checked={form.test_mode} onCheckedChange={toggleTestMode} />
-          </div>
-
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button type="button" variant="outline"
-                className="rounded-none border-destructive/40 text-destructive text-xs tracking-luxury hover:bg-destructive/5">
-                <Trash2 className="w-3.5 h-3.5 mr-2" />
-                テストデータを一括削除 <span className="ml-2 opacity-60 text-[10px]">PURGE</span>
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>テストデータをすべて削除しますか？</AlertDialogTitle>
-                <AlertDialogDescription>
-                  「テスト」フラグの付いた予約・顧客データを完全に削除します。<br />
-                  この操作は取り消せません。本番のお客様データには影響しません。
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>キャンセル</AlertDialogCancel>
-                <AlertDialogAction onClick={deleteTestData} disabled={deleting}
-                  className="bg-destructive hover:bg-destructive/90">
-                  {deleting && <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />}
-                  削除する
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </section>
-
-        <section className="space-y-5 pt-8 border-t border-border">
-          <div className="flex items-center gap-3">
-            <Star className="w-4 h-4 text-gold" />
-            <h2 className="display text-xl">Googleレビュー誘導</h2>
-          </div>
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            来店3日後、リピーター（2回目以降のお客様）に自動でレビュー依頼を配信します。
-            Googleビジネスプロフィールの「クチコミを書く」短縮URL（g.page/r/... 形式）を貼り付けてください。
-          </p>
-          <div>
-            <Label className="mb-2 block font-serif text-sm">レビュー投稿URL <span className="eyebrow text-[9px] text-muted-foreground ml-1">Google Review URL</span></Label>
-            <Input value={form.google_review_url} onChange={e => setForm({...form, google_review_url: e.target.value})}
-              placeholder="https://g.page/r/..."
-              className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
-          </div>
-        </section>
-
-        <section className="space-y-5 pt-8 border-t border-border">
-          <div className="flex items-center gap-3">
-            <MessageCircle className="w-4 h-4 text-gold" />
-            <h2 className="display text-xl">LINE公式アカウント連携</h2>
-          </div>
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            LINE公式アカウントを連携すると、<strong>LINE登録済みのお客様にはLINEのみ</strong>、未登録のお客様にはメールのみが届く設計です（重複しません）。
-            日本のサロン顧客の反応率が最も高い媒体です。
-          </p>
-          <div className="bg-secondary/30 p-4 border border-border space-y-2 text-[11px] text-muted-foreground leading-relaxed">
-            <div className="font-serif text-foreground text-xs mb-1">📋 セットアップ手順</div>
-            <ol className="list-decimal list-inside space-y-1">
-              <li>LINE Developers コンソール → Messaging API設定</li>
-              <li>「チャネルアクセストークン（長期）」を発行 → 下に貼り付け</li>
-              <li>「チャネル基本設定」→「チャネルシークレット」をコピー → 下に貼り付け</li>
-              <li>
-                Webhook URLに次を設定（コピーして貼り付け）：
-                <div className="mt-1 flex items-center gap-2">
-                  <code className="text-[10px] text-gold break-all flex-1">{WEBHOOK_URL}</code>
-                  <button type="button" onClick={copyWebhook} className="text-gold hover:text-gold/70" aria-label="copy">
-                    <Copy className="w-3 h-3" />
-                  </button>
-                </div>
-              </li>
-              <li>「Webhookの利用」をオン、「応答メッセージ」「あいさつメッセージ」をオフ</li>
-            </ol>
-          </div>
-          <div>
-            <Label className="mb-2 block font-serif text-sm">LINE 友だち追加URL <span className="eyebrow text-[9px] text-muted-foreground ml-1">Add Friend</span></Label>
-            <Input value={form.line_add_friend_url} onChange={e => setForm({...form, line_add_friend_url: e.target.value})}
-              placeholder="https://lin.ee/xxxxxx"
-              className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
-          </div>
-          <div>
-            <Label className="mb-2 block font-serif text-sm">チャネルアクセストークン <span className="eyebrow text-[9px] text-muted-foreground ml-1">Channel Access Token</span></Label>
-            <Input type="password" value={form.line_channel_access_token}
-              onChange={e => setForm({...form, line_channel_access_token: e.target.value})}
-              placeholder="長期トークン"
-              className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
-          </div>
-          <div>
-            <Label className="mb-2 block font-serif text-sm">チャネルシークレット <span className="eyebrow text-[9px] text-muted-foreground ml-1">Channel Secret</span></Label>
-            <Input type="password" value={form.line_channel_secret}
-              onChange={e => setForm({...form, line_channel_secret: e.target.value})}
-              placeholder="Webhook署名検証に使用します"
-              className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
-            <p className="text-[10px] text-muted-foreground mt-2">
-              友だち追加→電話番号返信での自動連携に必須です
-            </p>
-          </div>
-
-          <div className="pt-4 border-t border-border/50 space-y-3">
-            <Label className="block font-serif text-sm">🧪 LINEテスト送信 <span className="eyebrow text-[9px] text-muted-foreground ml-1">Test Push</span></Label>
-            <p className="text-[10px] text-muted-foreground">
-              ご自身のLINE UserID（U で始まる33文字）を入力してテスト送信できます。<br/>
-              ※ LINE Developers コンソール「Messaging API設定」→「Webhook URL」下の「Bot basic ID」とは別物です。「Your user ID」と書かれた箇所、または公式アカウントを友だち追加後にWebhookで受信して確認してください。
-            </p>
-            <Input value={lineTestUserId} onChange={e => setLineTestUserId(e.target.value)}
-              placeholder="U1234567890abcdef..."
-              className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold font-mono text-xs" />
-            <Button type="button" onClick={sendLineTest} disabled={testingLine} variant="outline"
-              className="rounded-none border-gold/40 text-xs tracking-luxury hover:bg-gold/5">
-              {testingLine ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> : <Send className="w-3.5 h-3.5 mr-2" />}
-              LINEへテスト送信 <span className="ml-2 opacity-60 text-[10px]">TEST LINE</span>
-            </Button>
-          </div>
-
-          <div className="pt-4 border-t border-border/50 space-y-3">
-            <Label className="block font-serif text-sm">📱 SMSテスト送信 <span className="eyebrow text-[9px] text-muted-foreground ml-1">Test SMS</span></Label>
-            <p className="text-[10px] text-muted-foreground">
-              Twilio接続のテスト送信です。ご自身の携帯番号を入力してください。<br/>
-              形式：<code className="text-[10px]">090-1234-5678</code> または <code className="text-[10px]">+819012345678</code><br/>
-              ⚠️ 事前にTwilio Consoleで「<strong>Geo Permissions</strong>」の日本(Japan)をONにしてください。
-            </p>
-            <Input value={smsTestPhone} onChange={e => setSmsTestPhone(e.target.value)}
-              placeholder="09012345678"
-              className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold font-mono text-xs" />
-            <Button type="button" onClick={sendSmsTest} disabled={testingSms} variant="outline"
-              className="rounded-none border-gold/40 text-xs tracking-luxury hover:bg-gold/5">
-              {testingSms ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> : <Send className="w-3.5 h-3.5 mr-2" />}
-              SMSへテスト送信 <span className="ml-2 opacity-60 text-[10px]">TEST SMS</span>
-            </Button>
-            <p className="text-[10px] text-muted-foreground/70">
-              料金目安：US番号→日本へ約11円/通
-            </p>
-          </div>
-        </section>
-
-        <section className="space-y-5 pt-8 border-t border-border">
-          <div className="flex items-center gap-3">
-            <Sparkles className="w-4 h-4 text-gold" />
-            <h2 className="display text-xl">LINE自動配信</h2>
-          </div>
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            日本一のサロンが必ずやっている「来店前日リマインド」「離脱客の復活」を自動化します。
-            LINE登録済みのお客様にのみ送信されます（メールには送らないので、うっとうしさゼロ）。
-          </p>
-
-          <div className="flex items-center justify-between p-5 border border-border bg-secondary/20">
-            <div className="flex items-start gap-3">
-              <Clock className="w-4 h-4 text-gold mt-0.5" />
-              <div>
-                <div className="font-serif text-sm">来店前日リマインド</div>
-                <div className="text-[10px] text-muted-foreground mt-1">
-                  予約日の前日{form.reminder_hour}時に「明日お待ちしています」を自動配信。無断キャンセル激減。
-                </div>
-              </div>
-            </div>
-            <Switch checked={form.reminder_enabled}
-              onCheckedChange={v => setForm({...form, reminder_enabled: v})} />
-          </div>
-          {form.reminder_enabled && (
-            <div className="pl-8">
-              <Label className="block font-serif text-xs mb-2">配信時刻</Label>
-              <select value={form.reminder_hour}
-                onChange={e => setForm({...form, reminder_hour: parseInt(e.target.value)})}
-                className="bg-background border border-border px-3 py-1.5 text-xs rounded-none focus:outline-none focus:border-gold">
-                {[10,11,12,13,14,15,16,17,18,19,20,21].map(h => (
-                  <option key={h} value={h}>{h}:00</option>
-                ))}
-              </select>
-              <p className="text-[10px] text-muted-foreground mt-2">推奨：18〜20時（仕事帰りで一番開封されやすい時間帯）</p>
-            </div>
-          )}
-
-          <div className="flex items-center justify-between p-5 border border-border bg-secondary/20">
-            <div className="flex items-start gap-3">
-              <RefreshCw className="w-4 h-4 text-gold mt-0.5" />
-              <div>
-                <div className="font-serif text-sm">離脱客の自動復活ステップ</div>
-                <div className="text-[10px] text-muted-foreground mt-1">
-                  最終来店から90〜120日経ったお客様に「20%OFF復活クーポン」を自動配信。
-                </div>
-              </div>
-            </div>
-            <Switch checked={form.reactivation_enabled}
-              onCheckedChange={v => setForm({...form, reactivation_enabled: v})} />
-          </div>
-
-          <Button type="button" onClick={runReactivation} disabled={runningReactivation} variant="outline"
-            className="rounded-none border-gold/40 text-xs tracking-luxury hover:bg-gold/5">
-            {runningReactivation ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5 mr-2" />}
-            離脱客を今すぐ抽出して送信予約 <span className="ml-2 opacity-60 text-[10px]">RUN NOW</span>
-          </Button>
-          <p className="text-[10px] text-muted-foreground">
-            ※ 通常は毎日自動で実行されます（保存後に有効化）。今すぐ動作確認したいときに使ってください。
-          </p>
-
-          <div className="pt-6 border-t border-border/50 space-y-3">
-            <Label className="block font-serif text-sm">📱 リッチメニュー一発設定 <span className="eyebrow text-[9px] text-muted-foreground ml-1">Rich Menu</span></Label>
-            <p className="text-[10px] text-muted-foreground leading-relaxed">
-              LINEトーク画面の下に常設される「予約 / 特典 / お問合せ」3ボタンメニューを自動セットアップします。
-              友だち追加した瞬間から、お客様がワンタップで予約できる導線が完成します。
-            </p>
-            <div className="p-3 border border-gold/30 bg-gold/5 text-[10px] leading-relaxed space-y-1">
-              <p className="font-serif text-gold">各ボタンの動作・編集場所</p>
-              <p>・<strong className="text-foreground">「予約する」</strong> → サロン公開予約ページ（このページ上部の<strong>公開URL</strong>）に遷移</p>
-              <p>・<strong className="text-foreground">「特典」</strong> → <a href="/incentives" className="text-gold underline">特典マスター</a>で「有効」にした特典がお客様のセグメント別に自動表示されます</p>
-              <p>・<strong className="text-foreground">「お問合せ」</strong> → 自動応答メッセージ（下記の自動応答設定で編集可）</p>
-            </div>
-            <Button type="button" onClick={setupRichMenu} disabled={settingMenu} variant="outline"
-              className="rounded-none border-gold/40 text-xs tracking-luxury hover:bg-gold/5">
-              {settingMenu ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> : <Sparkles className="w-3.5 h-3.5 mr-2" />}
-              リッチメニューを設定する <span className="ml-2 opacity-60 text-[10px]">SETUP</span>
-            </Button>
-            <p className="text-[10px] text-muted-foreground">
-              ※ チャネルアクセストークンの保存と、サロン公開URLが必要です。設定後、LINEアプリを一度閉じて開き直すと反映されます。
-            </p>
-          </div>
-        </section>
-
-        {/* 外部予約サイト連携（ホットペッパー / minimo / 楽天Beauty） */}
-        <section className="space-y-6 p-8 border border-border bg-card">
-          <div>
-            <p className="eyebrow mb-2 text-gold">— External Reservations —</p>
-            <h3 className="display text-lg flex items-center gap-2">
-              <Inbox className="w-4 h-4 text-gold" /> 外部予約サイト自動連携
-            </h3>
-            <p className="text-[10px] text-muted-foreground mt-2 leading-relaxed">
-              ホットペッパー / minimo / 楽天Beautyの予約通知メールを、店舗のメールから下記アドレスに「自動転送」設定するだけで、
-              予約・顧客がリアルタイムにこのアプリに自動登録されます。リマインダー・サンクス・LINE通知も自動発火します。
-            </p>
-          </div>
-
-          {[
-            { code: "hp", label: "ホットペッパービューティー", color: "text-orange-400" },
-            { code: "mn", label: "minimo（ミニモ）", color: "text-pink-400" },
-            { code: "rb", label: "楽天ビューティ", color: "text-red-400" },
-          ].map(site => {
-            const addr = inboundKey ? `${site.code}-${inboundKey}@inbound.arunehair.com` : "（保存後に発行されます）";
-            return (
-              <div key={site.code} className="border border-border/50 p-4 bg-secondary/10">
-                <div className={`font-serif text-sm ${site.color} mb-2`}>{site.label}</div>
-                <div className="flex items-center gap-2">
-                  <Input value={addr} readOnly
-                    className="rounded-none border-x-0 border-t-0 px-0 text-xs font-mono bg-transparent" />
-                  <Button type="button" variant="outline" size="sm"
-                    onClick={() => { navigator.clipboard.writeText(addr); toast.success("コピーしました"); }}
-                    disabled={!inboundKey}
-                    className="rounded-none border-gold/40 text-[10px] tracking-luxury">
-                    <Copy className="w-3 h-3 mr-1" /> COPY
-                  </Button>
-                </div>
-              </div>
-            );
-          })}
-
-          <details className="border border-border/40 p-4 bg-secondary/5">
-            <summary className="cursor-pointer font-serif text-sm flex items-center gap-2">
-              <Mail className="w-3.5 h-3.5 text-gold" /> 設定手順を見る（Gmailの場合）
-            </summary>
-            <ol className="mt-4 text-[11px] text-muted-foreground space-y-2 leading-relaxed list-decimal list-inside">
-              <li>店舗のGmailを開き、右上の歯車 → 「すべての設定を表示」</li>
-              <li>「メール転送と POP/IMAP」タブ → 「転送先アドレスを追加」</li>
-              <li>上記の専用アドレスを貼り付け → 確認メールに記載のコードを承認</li>
-              <li>「フィルタとブロック中のアドレス」→「新しいフィルタを作成」</li>
-              <li>「From」欄に各サイトのアドレスを入力（例: ホットペッパー→ <code>hotpepper-beauty@beauty.hotpepper.jp</code>）</li>
-              <li>「次のアドレスに転送する」を選択 → 専用アドレスを指定 → 完了</li>
-            </ol>
-            <p className="mt-3 text-[10px] text-amber-400/80">
-              ⚠️ Resend Inbound Webhookの設定が完了するまで取込は動きません（Lovable側で設定要）
-            </p>
-          </details>
-
-          <div className="pt-4 border-t border-border/30">
-            <div className="font-serif text-sm mb-3 flex items-center gap-2">
-              <Clock className="w-3.5 h-3.5 text-gold" /> 直近の取込履歴（最大10件）
-            </div>
-            {recentImports.length === 0 ? (
-              <p className="text-[10px] text-muted-foreground italic">まだ取込履歴はありません</p>
-            ) : (
-              <div className="space-y-1.5">
-                {recentImports.map((log, i) => {
-                  const Icon = log.status === "created" ? CheckCircle2
-                    : log.status === "duplicate" ? AlertCircle
-                    : log.status === "skipped" ? AlertCircle
-                    : XCircle;
-                  const color = log.status === "created" ? "text-emerald-400"
-                    : log.status === "failed" ? "text-red-400"
-                    : "text-amber-400";
-                  return (
-                    <div key={i} className="flex items-start gap-2 text-[11px] py-1.5 border-b border-border/20">
-                      <Icon className={`w-3 h-3 mt-0.5 ${color} flex-shrink-0`} />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-muted-foreground">{log.source}</span>
-                          <span className={color}>{log.status}</span>
-                          <span className="text-muted-foreground/60 text-[9px] ml-auto">
-                            {new Date(log.created_at).toLocaleString("ja-JP", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
-                          </span>
-                        </div>
-                        {log.parsed_data?.customer_name && (
-                          <div className="text-muted-foreground/80 truncate">
-                            {log.parsed_data.customer_name} / {log.parsed_data.booking_date} {log.parsed_data.booking_time} / {log.parsed_data.menu}
-                          </div>
-                        )}
-                        {log.error && <div className="text-red-400/80 text-[10px] truncate">{log.error}</div>}
-                      </div>
+            {/* 誕生日クーポン */}
+            <section className="space-y-4 pt-6 border-t border-border">
+              <div className="flex items-center justify-between p-5 border border-border bg-secondary/20">
+                <div className="flex items-start gap-3">
+                  <Cake className="w-4 h-4 text-gold mt-0.5" />
+                  <div>
+                    <div className="font-serif text-sm">お誕生月クーポン</div>
+                    <div className="text-[10px] text-muted-foreground mt-1">
+                      お客様の誕生月に{form.birthday_discount_percent}%OFFクーポンを自動配信。
                     </div>
-                  );
-                })}
+                  </div>
+                </div>
+                <Switch checked={form.birthday_enabled} onCheckedChange={v => setForm({...form, birthday_enabled: v})} />
               </div>
-            )}
-          </div>
-        </section>
+              {form.birthday_enabled && (
+                <div className="pl-8">
+                  <Label className="block font-serif text-xs mb-2">割引率</Label>
+                  <select value={form.birthday_discount_percent} onChange={e => setForm({...form, birthday_discount_percent: parseInt(e.target.value)})}
+                    className="bg-background border border-border px-3 py-1.5 text-xs rounded-none focus:outline-none focus:border-gold">
+                    {[10, 15, 20, 25, 30, 40, 50].map(d => <option key={d} value={d}>{d}%OFF</option>)}
+                  </select>
+                </div>
+              )}
+            </section>
 
-        <HolidayNoticeBroadcast />
+            {/* 営業時間外のLINE自動応答 */}
+            <section className="space-y-4 pt-6 border-t border-border">
+              <SectionTitle icon={MessageCircle} title="営業時間外のLINE自動応答"
+                desc="営業時間外に来たLINEメッセージへAIが自動で一次返信。" />
+              <div className="flex items-center justify-between p-5 border border-border bg-secondary/20">
+                <div>
+                  <div className="font-serif text-sm">自動応答</div>
+                  <div className="text-[10px] text-muted-foreground mt-1">
+                    {form.auto_reply_enabled
+                      ? form.auto_reply_use_ai ? "✨ AIが毎回パーソナライズ返信" : "✅ 固定文で返信"
+                      : "❌ 無効 — 手動のみ"}
+                  </div>
+                </div>
+                <Switch checked={form.auto_reply_enabled} onCheckedChange={v => setForm({...form, auto_reply_enabled: v})} />
+              </div>
+              {form.auto_reply_enabled && (
+                <>
+                  <div className="flex items-center justify-between p-5 border border-border">
+                    <div>
+                      <div className="font-serif text-sm">AIで毎回パーソナライズ</div>
+                      <div className="text-[10px] text-muted-foreground mt-1">OFFにすると下記の固定文を毎回送信</div>
+                    </div>
+                    <Switch checked={form.auto_reply_use_ai} onCheckedChange={v => setForm({...form, auto_reply_use_ai: v})} />
+                  </div>
+                  <div>
+                    <Label className="mb-2 block font-serif text-sm">カスタム応答文（任意）</Label>
+                    <textarea value={form.auto_reply_message}
+                      onChange={e => setForm({...form, auto_reply_message: e.target.value.slice(0, 500)})}
+                      rows={4} placeholder="（空欄ならサロン情報を含む既定文を使用）"
+                      className="w-full px-3 py-2 border border-border bg-background text-sm font-serif rounded-none focus:outline-none focus:border-gold" />
+                  </div>
+                </>
+              )}
+            </section>
+          </TabsContent>
 
-        <Button onClick={save} disabled={saving}
-          className="rounded-none px-12 py-6 text-xs tracking-luxury bg-primary hover:bg-primary-glow">
-          {saving && <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />}
-          設定を保存する <span className="ml-2 opacity-60 text-[10px]">SAVE</span>
-        </Button>
+          {/* ========== 🔔 オーナー通知 ========== */}
+          <TabsContent value="notify" className="space-y-12">
+            <section className="space-y-5">
+              <SectionTitle icon={Bell} title="予約通知メール"
+                desc="新規予約・キャンセルが入った瞬間に、ここで指定したメールアドレスへ即時通知が届きます。" />
+              <div>
+                <Label className="mb-2 block font-serif text-sm">通知の宛先</Label>
+                <Input type="email" value={form.owner_notification_email}
+                  onChange={e => setForm({...form, owner_notification_email: e.target.value})}
+                  placeholder="info@arunehair.com"
+                  className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
+                <p className="text-[10px] text-muted-foreground mt-2">空欄の場合は通知されません</p>
+              </div>
+              <Button type="button" onClick={sendTestEmail} disabled={testing} variant="outline"
+                className="rounded-none border-gold/40 text-xs tracking-luxury hover:bg-gold/5">
+                {testing ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> : <Send className="w-3.5 h-3.5 mr-2" />}
+                テスト通知を送信
+              </Button>
+            </section>
+          </TabsContent>
+
+          {/* ========== 🔗 連携 ========== */}
+          <TabsContent value="connect" className="space-y-12">
+            {/* Google */}
+            <section className="space-y-5">
+              <SectionTitle icon={Star} title="Googleレビュー誘導"
+                desc="来店後、リピーター（2回目以降のお客様）に自動でレビュー依頼を配信します。" />
+              <div>
+                <Label className="mb-2 block font-serif text-sm">レビュー投稿URL</Label>
+                <Input value={form.google_review_url} onChange={e => setForm({...form, google_review_url: e.target.value})}
+                  placeholder="https://g.page/r/..."
+                  className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
+              </div>
+            </section>
+
+            {/* LINE */}
+            <section className="space-y-5 pt-6 border-t border-border">
+              <SectionTitle icon={MessageCircle} title="LINE公式アカウント連携"
+                desc="LINE登録済みのお客様にはLINEのみ、未登録のお客様にはメールのみが届く設計です（重複しません）。" />
+
+              <div className="bg-secondary/30 p-4 border border-border space-y-2 text-[11px] text-muted-foreground leading-relaxed">
+                <div className="font-serif text-foreground text-xs mb-1">📋 セットアップ手順</div>
+                <ol className="list-decimal list-inside space-y-1">
+                  <li>LINE Developers コンソール → Messaging API設定</li>
+                  <li>「チャネルアクセストークン（長期）」を発行 → 下に貼り付け</li>
+                  <li>「チャネル基本設定」→「チャネルシークレット」をコピー → 下に貼り付け</li>
+                  <li>
+                    Webhook URLに次を設定：
+                    <div className="mt-1 flex items-center gap-2">
+                      <code className="text-[10px] text-gold break-all flex-1">{WEBHOOK_URL}</code>
+                      <button type="button" onClick={copyWebhook} className="text-gold hover:text-gold/70" aria-label="copy">
+                        <Copy className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </li>
+                  <li>「Webhookの利用」をオン、「応答メッセージ」「あいさつメッセージ」をオフ</li>
+                </ol>
+              </div>
+
+              <div>
+                <Label className="mb-2 block font-serif text-sm">LINE 友だち追加URL</Label>
+                <Input value={form.line_add_friend_url} onChange={e => setForm({...form, line_add_friend_url: e.target.value})}
+                  placeholder="https://lin.ee/xxxxxx"
+                  className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
+              </div>
+              <div>
+                <Label className="mb-2 block font-serif text-sm">チャネルアクセストークン</Label>
+                <Input type="password" value={form.line_channel_access_token}
+                  onChange={e => setForm({...form, line_channel_access_token: e.target.value})}
+                  placeholder="長期トークン"
+                  className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
+              </div>
+              <div>
+                <Label className="mb-2 block font-serif text-sm">チャネルシークレット</Label>
+                <Input type="password" value={form.line_channel_secret}
+                  onChange={e => setForm({...form, line_channel_secret: e.target.value})}
+                  placeholder="Webhook署名検証に使用"
+                  className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
+              </div>
+
+              <div className="pt-4 border-t border-border/50 space-y-3">
+                <Label className="block font-serif text-sm">🧪 LINEテスト送信</Label>
+                <p className="text-[10px] text-muted-foreground">ご自身のLINE UserID（U で始まる33文字）を入力してテスト送信</p>
+                <Input value={lineTestUserId} onChange={e => setLineTestUserId(e.target.value)}
+                  placeholder="U1234567890abcdef..."
+                  className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold font-mono text-xs" />
+                <Button type="button" onClick={sendLineTest} disabled={testingLine} variant="outline"
+                  className="rounded-none border-gold/40 text-xs tracking-luxury hover:bg-gold/5">
+                  {testingLine ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> : <Send className="w-3.5 h-3.5 mr-2" />}
+                  LINEへテスト送信
+                </Button>
+              </div>
+
+              <div className="pt-4 border-t border-border/50 space-y-3">
+                <Label className="block font-serif text-sm">📱 SMSテスト送信</Label>
+                <p className="text-[10px] text-muted-foreground">
+                  Twilio接続のテスト。事前にTwilio Consoleで「Geo Permissions」の日本(Japan)をONにしてください。
+                </p>
+                <Input value={smsTestPhone} onChange={e => setSmsTestPhone(e.target.value)}
+                  placeholder="09012345678"
+                  className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold font-mono text-xs" />
+                <Button type="button" onClick={sendSmsTest} disabled={testingSms} variant="outline"
+                  className="rounded-none border-gold/40 text-xs tracking-luxury hover:bg-gold/5">
+                  {testingSms ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> : <Send className="w-3.5 h-3.5 mr-2" />}
+                  SMSへテスト送信
+                </Button>
+              </div>
+
+              <div className="pt-4 border-t border-border/50 space-y-3">
+                <Label className="block font-serif text-sm">📱 リッチメニュー一発設定</Label>
+                <p className="text-[10px] text-muted-foreground leading-relaxed">
+                  LINEトーク画面下に「予約 / 特典 / お問合せ」3ボタンを自動セットアップ。
+                </p>
+                <Button type="button" onClick={setupRichMenu} disabled={settingMenu} variant="outline"
+                  className="rounded-none border-gold/40 text-xs tracking-luxury hover:bg-gold/5">
+                  {settingMenu ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> : <Sparkles className="w-3.5 h-3.5 mr-2" />}
+                  リッチメニューを設定
+                </Button>
+              </div>
+            </section>
+
+            {/* 外部予約サイト */}
+            <section className="space-y-5 pt-6 border-t border-border">
+              <SectionTitle icon={Inbox} title="外部予約サイト自動連携"
+                desc="ホットペッパー / minimo / 楽天Beautyの予約通知メールを自動転送するだけで、予約・顧客が自動登録されます。" />
+
+              {[
+                { code: "hp", label: "ホットペッパービューティー", color: "text-orange-400" },
+                { code: "mn", label: "minimo（ミニモ）", color: "text-pink-400" },
+                { code: "rb", label: "楽天ビューティ", color: "text-red-400" },
+              ].map(site => {
+                const addr = inboundKey ? `${site.code}-${inboundKey}@inbound.arunehair.com` : "（保存後に発行されます）";
+                return (
+                  <div key={site.code} className="border border-border/50 p-4 bg-secondary/10">
+                    <div className={`font-serif text-sm ${site.color} mb-2`}>{site.label}</div>
+                    <div className="flex items-center gap-2">
+                      <Input value={addr} readOnly className="rounded-none border-x-0 border-t-0 px-0 text-xs font-mono bg-transparent" />
+                      <Button type="button" variant="outline" size="sm"
+                        onClick={() => { navigator.clipboard.writeText(addr); toast.success("コピーしました"); }}
+                        disabled={!inboundKey}
+                        className="rounded-none border-gold/40 text-[10px] tracking-luxury">
+                        <Copy className="w-3 h-3 mr-1" /> COPY
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+
+              <details className="border border-border/40 p-4 bg-secondary/5">
+                <summary className="cursor-pointer font-serif text-sm flex items-center gap-2">
+                  <Mail className="w-3.5 h-3.5 text-gold" /> 設定手順を見る（Gmail）
+                </summary>
+                <ol className="mt-4 text-[11px] text-muted-foreground space-y-2 leading-relaxed list-decimal list-inside">
+                  <li>店舗のGmailを開き、右上の歯車 →「すべての設定を表示」</li>
+                  <li>「メール転送と POP/IMAP」→「転送先アドレスを追加」</li>
+                  <li>上記の専用アドレスを貼り付け → 確認メール承認</li>
+                  <li>「フィルタとブロック中のアドレス」→「新しいフィルタを作成」</li>
+                  <li>「From」欄に各サイトのアドレスを入力</li>
+                  <li>「次のアドレスに転送する」を選択 → 専用アドレスを指定 → 完了</li>
+                </ol>
+              </details>
+
+              <div className="pt-4 border-t border-border/30">
+                <div className="font-serif text-sm mb-3 flex items-center gap-2">
+                  <Clock className="w-3.5 h-3.5 text-gold" /> 直近の取込履歴（最大10件）
+                </div>
+                {recentImports.length === 0 ? (
+                  <p className="text-[10px] text-muted-foreground italic">まだ取込履歴はありません</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {recentImports.map((log, i) => {
+                      const Icon = log.status === "created" ? CheckCircle2 : log.status === "duplicate" || log.status === "skipped" ? AlertCircle : XCircle;
+                      const color = log.status === "created" ? "text-emerald-400" : log.status === "failed" ? "text-red-400" : "text-amber-400";
+                      return (
+                        <div key={i} className="flex items-start gap-2 text-[11px] py-1.5 border-b border-border/20">
+                          <Icon className={`w-3 h-3 mt-0.5 ${color} flex-shrink-0`} />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-muted-foreground">{log.source}</span>
+                              <span className={color}>{log.status}</span>
+                              <span className="text-muted-foreground/60 text-[9px] ml-auto">
+                                {new Date(log.created_at).toLocaleString("ja-JP", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                              </span>
+                            </div>
+                            {log.parsed_data?.customer_name && (
+                              <div className="text-muted-foreground/80 truncate">
+                                {log.parsed_data.customer_name} / {log.parsed_data.booking_date} {log.parsed_data.booking_time} / {log.parsed_data.menu}
+                              </div>
+                            )}
+                            {log.error && <div className="text-red-400/80 text-[10px] truncate">{log.error}</div>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </section>
+
+            {/* 休業のお知らせ */}
+            <section className="pt-6 border-t border-border">
+              <HolidayNoticeBroadcast />
+            </section>
+          </TabsContent>
+
+          {/* ========== 🛠️ 開発者ツール ========== */}
+          <TabsContent value="dev" className="space-y-12">
+            <div className="p-4 border border-amber-500/40 bg-amber-500/5 text-[11px] text-amber-200 leading-relaxed">
+              ⚠️ <strong>注意：このタブの操作は本番データに影響します。</strong>動作確認以外の用途では触らないでください。
+            </div>
+
+            <section className="space-y-5">
+              <SectionTitle icon={FlaskConical} title="テストモード"
+                desc="ONにすると、公開予約フォームから入った予約・顧客に「テスト」フラグが自動付与され、ダッシュボードの集計から完全に除外されます。" />
+              <div className="flex items-center justify-between p-5 border border-border bg-secondary/20">
+                <div>
+                  <div className="font-serif text-sm">テストモード</div>
+                  <div className="text-[10px] text-muted-foreground mt-1">
+                    {form.test_mode ? "🧪 ON — テスト中の予約は集計から除外" : "● OFF — 通常運用中"}
+                  </div>
+                </div>
+                <Switch checked={form.test_mode} onCheckedChange={toggleTestMode} />
+              </div>
+
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button type="button" variant="outline"
+                    className="rounded-none border-destructive/40 text-destructive text-xs tracking-luxury hover:bg-destructive/5">
+                    <Trash2 className="w-3.5 h-3.5 mr-2" />
+                    テストデータを一括削除
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>テストデータをすべて削除しますか？</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      「テスト」フラグの付いた予約・顧客データを完全に削除します。<br />
+                      この操作は取り消せません。本番データには影響しません。
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>キャンセル</AlertDialogCancel>
+                    <AlertDialogAction onClick={deleteTestData} disabled={deleting} className="bg-destructive hover:bg-destructive/90">
+                      {deleting && <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />}
+                      削除する
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </section>
+          </TabsContent>
+        </Tabs>
+
+        {/* 共通保存ボタン */}
+        <div className="sticky bottom-0 bg-background/95 backdrop-blur border-t border-border mt-12 py-4 z-10">
+          <Button onClick={save} disabled={saving}
+            className="rounded-none px-12 py-6 text-xs tracking-luxury bg-primary hover:bg-primary-glow w-full sm:w-auto">
+            {saving && <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />}
+            すべての設定を保存 <span className="ml-2 opacity-60 text-[10px]">SAVE ALL</span>
+          </Button>
+        </div>
       </div>
     </AppLayout>
   );
