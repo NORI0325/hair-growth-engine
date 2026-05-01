@@ -27,6 +27,8 @@ const Settings = () => {
   const [runningReactivation, setRunningReactivation] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [lineTestUserId, setLineTestUserId] = useState("");
+  const [smsTestPhone, setSmsTestPhone] = useState("");
+  const [testingSms, setTestingSms] = useState(false);
   const [inboundKey, setInboundKey] = useState<string>("");
   const [recentImports, setRecentImports] = useState<any[]>([]);
   const [form, setForm] = useState({
@@ -186,6 +188,24 @@ const Settings = () => {
       return;
     }
     toast.success("✅ LINEへテスト送信しました。トークを確認してください。");
+  };
+
+  const sendSmsTest = async () => {
+    if (!smsTestPhone.trim()) {
+      toast.error("送信先の携帯番号を入力してください");
+      return;
+    }
+    setTestingSms(true);
+    const { data, error } = await supabase.functions.invoke("sms-test-send", {
+      body: { phone: smsTestPhone.trim() },
+    });
+    setTestingSms(false);
+    if (error || !(data as any)?.success) {
+      const msg = (data as any)?.message || error?.message || "送信に失敗しました";
+      toast.error(msg, { duration: 8000 });
+      return;
+    }
+    toast.success(`✅ SMSをテスト送信しました（${(data as any)?.to}）。携帯を確認してください。`);
   };
 
   const sendTestEmail = async () => {
