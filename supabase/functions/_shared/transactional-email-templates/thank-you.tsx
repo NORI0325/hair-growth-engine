@@ -20,8 +20,8 @@ const ThankYouEmail = ({ customerName, salonName = 'サロン', bookingLink, men
         <Text style={eyebrow}>— THANK YOU —</Text>
         <Heading style={h1}>{customerName ? `${customerName} 様` : 'お客様'}</Heading>
         <Text style={text}>
-          本日は{salonName}にご来店いただき、誠にありがとうございました。
-          {menu ? `「${menu}」の` : ''}仕上がりはいかがでしたでしょうか。
+          昨日は{salonName}にご来店いただき、誠にありがとうございました。
+          {menu ? `「${menu}」の` : ''}仕上がりはいかがでしょうか。
         </Text>
         <Text style={text}>
           またお会いできる日を心よりお待ちしております。
