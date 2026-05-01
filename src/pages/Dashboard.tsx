@@ -80,39 +80,39 @@ const Dashboard = () => {
         // 今日の予約
         supabase.from("bookings")
           .select("id, booking_time, menu, status, revenue, total_price, customers(full_name)")
-          .eq("owner_id", user.id).eq("is_test", false)
+          .eq("location_id", locationId).eq("is_test", false)
           .eq("booking_date", todayKey)
           .order("booking_time", { ascending: true }),
         // 今月の予約数
         supabase.from("bookings").select("id", { count: "exact", head: true })
-          .eq("owner_id", user.id).eq("is_test", false).gte("booking_date", startOfMonth),
+          .eq("location_id", locationId).eq("is_test", false).gte("booking_date", startOfMonth),
         // 過去30日の売上トレンド用
         supabase.from("bookings").select("booking_date, revenue, status")
-          .eq("owner_id", user.id).eq("is_test", false)
+          .eq("location_id", locationId).eq("is_test", false)
           .gte("booking_date", trendStartKey).lte("booking_date", todayKey),
         // 未読LINE
         supabase.from("line_inbound_messages").select("id", { count: "exact", head: true })
-          .eq("owner_id", user.id).eq("handled", false),
+          .eq("location_id", locationId).eq("handled", false),
         // 未連携LINE友だち
         supabase.from("line_pending_friends").select("id", { count: "exact", head: true })
-          .eq("owner_id", user.id),
+          .eq("location_id", locationId),
         // 離脱予備軍
         supabase.from("customers")
           .select("id, full_name, last_visit_date, total_spent", { count: "exact" })
-          .eq("owner_id", user.id).eq("is_test", false)
+          .eq("location_id", locationId).eq("is_test", false)
           .gte("last_visit_date", atRiskFromKey).lt("last_visit_date", atRiskToKey)
           .order("total_spent", { ascending: false }).limit(5),
         // 全顧客（VIP & 誕生日抽出用）
         supabase.from("customers")
           .select("id, full_name, visit_count, total_spent, birthday")
-          .eq("owner_id", user.id).eq("is_test", false).limit(5000),
+          .eq("location_id", locationId).eq("is_test", false).limit(5000),
         // 配信経由予約
         supabase.from("bookings").select("id", { count: "exact", head: true })
-          .eq("owner_id", user.id).eq("is_test", false)
+          .eq("location_id", locationId).eq("is_test", false)
           .not("campaign_id", "is", null).gte("booking_date", startOfMonth),
         // 来週の予約ヒートマップ
         supabase.from("bookings").select("booking_date, status")
-          .eq("owner_id", user.id).eq("is_test", false)
+          .eq("location_id", locationId).eq("is_test", false)
           .gte("booking_date", todayKey).lte("booking_date", weekEndKey)
           .neq("status", "cancelled"),
       ]);
@@ -203,7 +203,7 @@ const Dashboard = () => {
       });
     };
     load();
-  }, [user]);
+  }, [user, locationId]);
 
   const maxRevenue = useMemo(() => {
     if (!data) return 1;
