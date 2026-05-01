@@ -71,8 +71,10 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
       const primary = locations.find((l) => l.is_primary) ?? locations[0];
       setCurrentLocationIdState(primary.id);
       localStorage.setItem(STORAGE_KEY, primary.id);
+      // フォールバック発動時も依存クエリを再フェッチさせる
+      queryClient.invalidateQueries();
     }
-  }, [locations, currentLocationId]);
+  }, [locations, currentLocationId, queryClient]);
 
   const setCurrentLocationId = (id: string) => {
     setCurrentLocationIdState(id);
