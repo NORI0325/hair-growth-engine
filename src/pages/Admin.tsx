@@ -15,6 +15,7 @@ interface TenantStat {
   created_at: string;
   customer_count: number;
   booking_count: number;
+  location_count: number;
 }
 
 const Admin = () => {
@@ -22,6 +23,7 @@ const Admin = () => {
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const [stats, setStats] = useState<TenantStat[]>([]);
   const [mrr, setMrr] = useState(0);
+  const [totalLocations, setTotalLocations] = useState(0);
 
   useEffect(() => {
     if (!user) return;
@@ -39,21 +41,28 @@ const Admin = () => {
         .select("owner_id, status, trial_ends_at, profiles!inner(salon_name, created_at)");
       const tenants: TenantStat[] = [];
       let activeMrr = 0;
+      let locTotal = 0;
       for (const s of (subs as any) ?? []) {
-        if (s.status === "active") activeMrr += 9800;
-        const [{ count: cc }, { count: bc }] = await Promise.all([
+        const [{ count: cc }, { count: bc }, { count: lc }] = await Promise.all([
           supabase.from("customers").select("*", { count: "exact", head: true }).eq("owner_id", s.owner_id),
           supabase.from("bookings").select("*", { count: "exact", head: true }).eq("owner_id", s.owner_id),
+          supabase.from("locations").select("*", { count: "exact", head: true }).eq("tenant_id", s.owner_id),
         ]);
+        const locCount = lc ?? 0;
+        // 1店舗目: ¥9,800、2店舗目以降: ¥7,800
+        if (s.status === "active") activeMrr += 9800 + Math.max(0, locCount - 1) * 7800;
+        locTotal += locCount;
         tenants.push({
           owner_id: s.owner_id, salon_name: s.profiles?.salon_name ?? "—",
           status: s.status, trial_ends_at: s.trial_ends_at,
           created_at: s.profiles?.created_at ?? "",
           customer_count: cc ?? 0, booking_count: bc ?? 0,
+          location_count: locCount,
         });
       }
       setStats(tenants);
       setMrr(activeMrr);
+      setTotalLocations(locTotal);
     })();
   }, [isAdmin]);
 
