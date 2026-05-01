@@ -850,10 +850,13 @@ export type Database = {
       }
       profiles: {
         Row: {
+          aftercare_delay_days: number
           allow_customer_cancel: boolean
           auto_reply_enabled: boolean
           auto_reply_message: string | null
           auto_reply_use_ai: boolean
+          birthday_discount_percent: number
+          birthday_enabled: boolean
           booking_lead_time_hours: number
           booking_max_days_ahead: number
           cancel_deadline_hours: number
@@ -871,17 +874,22 @@ export type Database = {
           public_menus: string[] | null
           public_slug: string | null
           reactivation_enabled: boolean
+          reactivation_stages: Json
           reminder_enabled: boolean
           reminder_hour: number
           salon_name: string | null
           test_mode: boolean
+          thank_you_delay_days: number
           updated_at: string
         }
         Insert: {
+          aftercare_delay_days?: number
           allow_customer_cancel?: boolean
           auto_reply_enabled?: boolean
           auto_reply_message?: string | null
           auto_reply_use_ai?: boolean
+          birthday_discount_percent?: number
+          birthday_enabled?: boolean
           booking_lead_time_hours?: number
           booking_max_days_ahead?: number
           cancel_deadline_hours?: number
@@ -899,17 +907,22 @@ export type Database = {
           public_menus?: string[] | null
           public_slug?: string | null
           reactivation_enabled?: boolean
+          reactivation_stages?: Json
           reminder_enabled?: boolean
           reminder_hour?: number
           salon_name?: string | null
           test_mode?: boolean
+          thank_you_delay_days?: number
           updated_at?: string
         }
         Update: {
+          aftercare_delay_days?: number
           allow_customer_cancel?: boolean
           auto_reply_enabled?: boolean
           auto_reply_message?: string | null
           auto_reply_use_ai?: boolean
+          birthday_discount_percent?: number
+          birthday_enabled?: boolean
           booking_lead_time_hours?: number
           booking_max_days_ahead?: number
           cancel_deadline_hours?: number
@@ -927,10 +940,12 @@ export type Database = {
           public_menus?: string[] | null
           public_slug?: string | null
           reactivation_enabled?: boolean
+          reactivation_stages?: Json
           reminder_enabled?: boolean
           reminder_hour?: number
           salon_name?: string | null
           test_mode?: boolean
+          thank_you_delay_days?: number
           updated_at?: string
         }
         Relationships: []
@@ -1242,6 +1257,10 @@ export type Database = {
       calculate_vip_tier: {
         Args: { _total_spent: number; _visit_count: number }
         Returns: string
+      }
+      cancel_orphan_reactivation_jobs: {
+        Args: { _owner_id: string }
+        Returns: number
       }
       create_anniversary_jobs_for_today: { Args: never; Returns: number }
       create_birthday_jobs_for_month: { Args: never; Returns: number }
