@@ -1,14 +1,18 @@
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useSubscription, trialDaysRemaining } from "@/hooks/useSubscription";
 import { useTenantId } from "@/hooks/useTenant";
+import { useLocations } from "@/hooks/useLocations";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useState } from "react";
-import { Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Loader2, AlertCircle, CheckCircle2, Store } from "lucide-react";
 import { toast } from "sonner";
 import AppLayout from "@/components/AppLayout";
+
+const BASE_PRICE = 9800;
+const ADDITIONAL_LOCATION_PRICE = 7800;
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   trialing: { label: "無料トライアル中", color: "bg-blue-100 text-blue-700" },
