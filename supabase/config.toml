@@ -41,5 +41,7 @@ project_id = "miyedioemkzhetphjzzg"
     verify_jwt = false
   [functions.send-transactional-email]
     verify_jwt = true
+  [functions.sms-test-send]
+    verify_jwt = true
   [functions.verify-booking-token]
     verify_jwt = false
