@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Loader2, Clock } from "lucide-react";
 import { toast } from "sonner";
-import { useCurrentLocationId } from "@/hooks/useLocations";
+import { useCurrentLocation } from "@/hooks/useLocations";
 
 interface SalonHour {
   id: string;
@@ -19,19 +19,46 @@ const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
 
 const SalonHoursEditor = () => {
   const { user } = useAuth();
-  const locationId = useCurrentLocationId();
+  const { currentLocation, currentLocationId: locationId, isLoading: locationsLoading } = useCurrentLocation();
   const [hours, setHours] = useState<SalonHour[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = async () => {
-    if (!user || !locationId) return;
+    if (!user) { setLoading(false); return; }
+    if (!locationId) { setLoading(false); setHours([]); return; }
     setLoading(true);
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("salon_hours")
       .select("id, weekday, open_time, close_time, closed")
       .eq("location_id", locationId)
       .order("weekday");
-    setHours((data || []) as SalonHour[]);
+    if (error) {
+      console.error("salon_hours load error:", error);
+      toast.error("営業時間の読み込みに失敗しました: " + error.message);
+    }
+
+    let rows = (data || []) as SalonHour[];
+    // 初回 or 不足曜日があれば自動シード（7曜日分を保証）
+    if (rows.length < 7) {
+      const existing = new Set(rows.map(r => r.weekday));
+      const missing = [0, 1, 2, 3, 4, 5, 6].filter(w => !existing.has(w));
+      if (missing.length > 0) {
+        const seeds = missing.map(w => ({
+          owner_id: user.id,
+          location_id: locationId,
+          weekday: w,
+          open_time: "10:00:00",
+          close_time: "19:00:00",
+          closed: w === 1, // 月曜デフォ定休
+        }));
+        const { data: inserted } = await supabase
+          .from("salon_hours")
+          .insert(seeds)
+          .select("id, weekday, open_time, close_time, closed");
+        if (inserted) rows = [...rows, ...(inserted as SalonHour[])].sort((a, b) => a.weekday - b.weekday);
+      }
+    }
+    setHours(rows);
     setLoading(false);
   };
 
@@ -53,14 +80,23 @@ const SalonHoursEditor = () => {
       <div className="eyebrow mb-2 text-[10px] flex items-center gap-2">
         <Clock className="w-3 h-3" />— Salon Business Hours —
       </div>
-      <h2 className="display text-xl mb-2">営業時間 / 定休日</h2>
+      <h2 className="display text-xl mb-2">
+        営業時間 / 定休日
+        {currentLocation && (
+          <span className="ml-3 text-xs font-sans text-gold tracking-wider">— {currentLocation.name}</span>
+        )}
+      </h2>
       <p className="text-xs text-muted-foreground mb-6 leading-loose">
         曜日ごとに営業時間と定休日を設定できます。<br />
         定休日に設定された曜日は、予約画面に空き枠が表示されません。
       </p>
 
-      {loading ? (
+      {locationsLoading || loading ? (
         <div className="py-12 text-center"><Loader2 className="w-5 h-5 animate-spin mx-auto text-gold" /></div>
+      ) : !locationId ? (
+        <div className="py-12 text-center text-sm text-muted-foreground">
+          店舗が見つかりません。サイドバーで店舗を選択してください。
+        </div>
       ) : (
         <div className="space-y-2">
           {WEEKDAYS.map((label, w) => {
