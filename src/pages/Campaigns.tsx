@@ -117,7 +117,7 @@ const Campaigns = () => {
     setCampaigns(enriched as Campaign[]);
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [locationId]);
 
   const applyTemplate = (idx: number) => {
     const t = TEMPLATES[idx];
