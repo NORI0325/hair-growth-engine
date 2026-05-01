@@ -68,6 +68,7 @@ Deno.serve(async (req) => {
     });
     if (emailErr) {
       console.error("send-team-invitation email error:", emailErr);
+      await supabase.from("tenant_invitations").delete().eq("id", invite.id);
       return new Response(JSON.stringify({ success: false, error: "email_send_failed", detail: String(emailErr?.message ?? emailErr) }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
