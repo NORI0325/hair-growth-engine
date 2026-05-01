@@ -27,6 +27,7 @@ const navItems = [
   { to: "/email-logs", label: "メール履歴", en: "Email Logs", icon: Mail },
   { to: "/share", label: "公開URL", en: "Share", icon: Share2 },
   { to: "/team", label: "チーム", en: "Team", icon: Users2 },
+  { to: "/locations", label: "店舗管理", en: "Locations", icon: Store },
   { to: "/billing", label: "契約・支払い", en: "Billing", icon: CreditCard },
   { to: "/settings", label: "設定", en: "Settings", icon: SettingsIcon },
 ];
