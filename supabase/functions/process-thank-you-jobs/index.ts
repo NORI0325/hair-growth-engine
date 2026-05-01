@@ -218,23 +218,24 @@ Deno.serve(async (req) => {
           const p = (job.payload as any) || {};
           const stage = Number(p.stage) || 1;
           const days = p.days_since || 30;
+          const discount = Number(p.discount_percent) || 0;
+          const label = String(p.label || "").trim();
           templateName = "reactivation";
-          templateData = { customerName: customer.full_name, salonName, bookingLink, daysSince: days, stage };
+          templateData = { customerName: customer.full_name, salonName, bookingLink, daysSince: days, stage, discountPercent: discount, label };
 
-          // 段階別の文言（やわらかさ→特典強化）
-          if (stage === 1) {
-            // 30日: 特典なし、やさしいリマインド
-            body = `${customer.full_name}様\n\nいつもありがとうございます。\n前回ご来店から1ヶ月ほど経ちました🌸\n\n根元の伸び・カラーの色落ちが気になり始める時期です。\nお早めのご予約で、ご希望のお時間が選びやすくなっております。\n\n→ ${bookingLink}\n\n${salonName}`;
-          } else if (stage === 2) {
-            // 60日: 10%OFF
-            body = `${customer.full_name}様\n\nお久しぶりです。前回から約2ヶ月が経ちました。\nまたお会いできるのを楽しみにしております🌸\n\n🎁 次回ご来店 10%OFF クーポンをお贈りします\n（45日間有効）\n\n→ ${bookingLink}\n\n${salonName}`;
-          } else if (stage === 3) {
-            // 90日: 20%OFF
-            body = `${customer.full_name}様\n\n少しお時間が空いてしまいましたね。\nお元気でお過ごしでしょうか。\n\n💝 おかえりなさいクーポン 20%OFF\n（30日間限定）\n\n気分転換に、ぜひ髪の毛もリフレッシュしませんか？\n→ ${bookingLink}\n\n${salonName}`;
-          } else {
-            // 150日: 30%OFF + ヘッドスパ無料（最終オファー）
-            body = `${customer.full_name}様\n\n${salonName}です。\n大切なお客様へ、特別なご招待です。\n\n👑 30%OFF + ヘッドスパ無料\n（45日間限定・1回限り）\n\n久しぶりのご来店、心よりお待ちしております。\n→ ${bookingLink}\n\n${salonName}`;
-          }
+          // 段階別の文言（オーナー設定の割引率を動的に反映）
+          const monthsSince = Math.round(days / 30);
+          const couponLine = discount > 0
+            ? `\n\n🎁 ${label || "ご愛顧感謝"} クーポン ${discount}%OFF\n（45日間限定）`
+            : "";
+          const intro = days <= 35
+            ? `いつもありがとうございます。\n前回ご来店から約${monthsSince}ヶ月ほど経ちました🌸`
+            : days <= 70
+              ? `お久しぶりです。前回から約${monthsSince}ヶ月が経ちました。\nまたお会いできるのを楽しみにしております🌸`
+              : days <= 120
+                ? `少しお時間が空いてしまいましたね。\nお元気でお過ごしでしょうか。`
+                : `${salonName}です。\n大切なお客様へ、特別なご案内をお贈りします。`;
+          body = `${customer.full_name}様\n\n${intro}${couponLine}\n\n→ ${bookingLink}\n\n${salonName}`;
         } else if (job.job_type === "aftercare") {
           const menu = (job.payload as any)?.menu || "";
           templateName = "aftercare";
