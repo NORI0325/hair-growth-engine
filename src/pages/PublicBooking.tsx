@@ -58,33 +58,74 @@ const PublicBooking = () => {
   useEffect(() => {
     const load = async () => {
       if (!slug) { setLoading(false); return; }
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("id, salon_name, public_menus, open_time, close_time")
+
+      // まず locations.public_slug で探す（マルチ店舗対応）
+      const { data: location } = await supabase
+        .from("locations")
+        .select("id, tenant_id, name, open_time, close_time")
         .eq("public_slug", slug)
         .maybeSingle();
-      if (profile) {
-        setSalonExists(true);
-        setSalonName(profile.salon_name || "Salon");
-        setFallbackMenus(profile.public_menus || []);
-        if (profile.open_time) setOpenTime(String(profile.open_time).slice(0, 5));
-        if (profile.close_time) setCloseTime(String(profile.close_time).slice(0, 5));
 
-        const { data: items } = await supabase
+      let ownerId: string | null = null;
+      let locationId: string | null = null;
+      let displayName = "Salon";
+      let pubMenus: string[] = [];
+
+      if (location) {
+        ownerId = location.tenant_id;
+        locationId = location.id;
+        displayName = location.name || "Salon";
+        if (location.open_time) setOpenTime(String(location.open_time).slice(0, 5));
+        if (location.close_time) setCloseTime(String(location.close_time).slice(0, 5));
+
+        // tenant の public_menus フォールバック取得
+        const { data: prof } = await supabase
+          .from("profiles")
+          .select("public_menus")
+          .eq("id", location.tenant_id)
+          .maybeSingle();
+        pubMenus = prof?.public_menus || [];
+      } else {
+        // 後方互換: profiles.public_slug で探す
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("id, salon_name, public_menus, open_time, close_time")
+          .eq("public_slug", slug)
+          .maybeSingle();
+        if (profile) {
+          ownerId = profile.id;
+          displayName = profile.salon_name || "Salon";
+          pubMenus = profile.public_menus || [];
+          if (profile.open_time) setOpenTime(String(profile.open_time).slice(0, 5));
+          if (profile.close_time) setCloseTime(String(profile.close_time).slice(0, 5));
+        }
+      }
+
+      if (ownerId) {
+        setSalonExists(true);
+        setSalonName(displayName);
+        setFallbackMenus(pubMenus);
+
+        let menusQuery = supabase
           .from("menu_items")
           .select("id, name, duration_minutes, price")
-          .eq("owner_id", profile.id)
+          .eq("owner_id", ownerId)
           .eq("active", true)
           .order("sort_order", { ascending: true });
-        setMenuItems(items || []);
-
-        // スタッフが1人以上いるか確認（いれば動的空き枠モード）
-        const { count } = await supabase
+        let staffQuery = supabase
           .from("staff")
           .select("id", { count: "exact", head: true })
-          .eq("owner_id", profile.id)
+          .eq("owner_id", ownerId)
           .eq("active", true)
           .eq("bookable", true);
+        if (locationId) {
+          menusQuery = menusQuery.eq("location_id", locationId);
+          staffQuery = staffQuery.eq("location_id", locationId);
+        }
+        const { data: items } = await menusQuery;
+        setMenuItems(items || []);
+
+        const { count } = await staffQuery;
         setHasStaff((count || 0) > 0);
         setMaxStaffCount(Math.max(1, count || 1));
       }

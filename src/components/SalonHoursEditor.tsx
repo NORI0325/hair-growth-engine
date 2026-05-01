@@ -19,11 +19,12 @@ const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
 
 const SalonHoursEditor = () => {
   const { user } = useAuth();
+  const locationId = useCurrentLocationId();
   const [hours, setHours] = useState<SalonHour[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = async () => {
-    if (!user) return;
+    if (!user || !locationId) return;
     setLoading(true);
     const { data } = await supabase
       .from("salon_hours")

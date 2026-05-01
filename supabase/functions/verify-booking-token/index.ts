@@ -35,7 +35,7 @@ Deno.serve(async (req) => {
 
     const { data: customer } = await supabase
       .from("customers")
-      .select("id, full_name, owner_id")
+      .select("id, full_name, owner_id, location_id")
       .eq("id", tokenRow.customer_id)
       .maybeSingle();
 
@@ -44,6 +44,17 @@ Deno.serve(async (req) => {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // 店舗別の設定を優先取得（location_id があれば）。なければ profiles にフォールバック
+    let locationData: any = null;
+    if (customer.location_id) {
+      const { data: loc } = await supabase
+        .from("locations")
+        .select("id, name, public_slug, open_time, close_time")
+        .eq("id", customer.location_id)
+        .maybeSingle();
+      locationData = loc;
     }
 
     const { data: profile } = await supabase
@@ -56,10 +67,11 @@ Deno.serve(async (req) => {
       JSON.stringify({
         customer: { id: customer.id, full_name: customer.full_name },
         owner_id: customer.owner_id,
-        salon_name: profile?.salon_name || "Salon",
-        public_slug: profile?.public_slug || null,
-        open_time: profile?.open_time || "10:00:00",
-        close_time: profile?.close_time || "19:00:00",
+        location_id: customer.location_id || null,
+        salon_name: locationData?.name || profile?.salon_name || "Salon",
+        public_slug: locationData?.public_slug || profile?.public_slug || null,
+        open_time: locationData?.open_time || profile?.open_time || "10:00:00",
+        close_time: locationData?.close_time || profile?.close_time || "19:00:00",
         booking_lead_time_hours: (profile as any)?.booking_lead_time_hours ?? 24,
         booking_max_days_ahead: (profile as any)?.booking_max_days_ahead ?? 60,
         allow_customer_cancel: (profile as any)?.allow_customer_cancel ?? true,

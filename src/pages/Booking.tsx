@@ -63,23 +63,26 @@ const Booking = () => {
         setLeadHours(data.booking_lead_time_hours ?? 24);
         setMaxDaysAhead(data.booking_max_days_ahead ?? 60);
 
-        // メニュー & スタッフ取得
+        // メニュー & スタッフ取得（location_id があれば店舗単位で絞り込み）
         if (data.owner_id) {
-          const [menusRes, staffRes] = await Promise.all([
-            supabase
-              .from("menu_items")
-              .select("id, name, duration_minutes, price, image_url")
-              .eq("owner_id", data.owner_id)
-              .eq("active", true)
-              .order("sort_order", { ascending: true }),
-            supabase
-              .from("staff")
-              .select("id, name, display_color, note")
-              .eq("owner_id", data.owner_id)
-              .eq("active", true)
-              .eq("bookable", true)
-              .order("sort_order", { ascending: true }),
-          ]);
+          let menusQuery = supabase
+            .from("menu_items")
+            .select("id, name, duration_minutes, price, image_url")
+            .eq("owner_id", data.owner_id)
+            .eq("active", true)
+            .order("sort_order", { ascending: true });
+          let staffQuery = supabase
+            .from("staff")
+            .select("id, name, display_color, note")
+            .eq("owner_id", data.owner_id)
+            .eq("active", true)
+            .eq("bookable", true)
+            .order("sort_order", { ascending: true });
+          if (data.location_id) {
+            menusQuery = menusQuery.eq("location_id", data.location_id);
+            staffQuery = staffQuery.eq("location_id", data.location_id);
+          }
+          const [menusRes, staffRes] = await Promise.all([menusQuery, staffQuery]);
           setMenuItems(menusRes.data || []);
           setStaffList(staffRes.data || []);
         }
