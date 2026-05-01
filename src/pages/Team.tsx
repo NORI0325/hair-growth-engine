@@ -108,8 +108,29 @@ const Team = () => {
             <p className="text-xs text-muted-foreground">
               スタッフ：日常業務のみ / マネージャー：設定変更まで可能
             </p>
-          </Card>
-        )}
+            {locations.length > 1 && (
+              <div className="space-y-2 pt-2 border-t">
+                <Label className="text-sm font-medium">アクセスを許可する店舗</Label>
+                <div className="flex items-center gap-2">
+                  <Checkbox id="all-locs" checked={allLocations} onCheckedChange={(v) => setAllLocations(!!v)} />
+                  <label htmlFor="all-locs" className="text-sm cursor-pointer">全店舗にアクセス可</label>
+                </div>
+                {!allLocations && (
+                  <div className="space-y-2 pl-6">
+                    {locations.map((loc) => (
+                      <div key={loc.id} className="flex items-center gap-2">
+                        <Checkbox
+                          id={`loc-${loc.id}`}
+                          checked={selectedLocationIds.includes(loc.id)}
+                          onCheckedChange={() => toggleLocation(loc.id)}
+                        />
+                        <label htmlFor={`loc-${loc.id}`} className="text-sm cursor-pointer">{loc.name}</label>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
         <Card className="p-6">
           <h2 className="font-semibold mb-4">現在のメンバー</h2>
