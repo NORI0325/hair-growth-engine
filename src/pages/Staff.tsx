@@ -224,19 +224,17 @@ const StaffPage = () => {
                             <div className="flex items-center justify-center mb-2">
                               <Switch checked={sc.active} onCheckedChange={() => updateSchedule(sc, { active: !sc.active })} />
                             </div>
-                            {sc.active && (
-                              <div className="space-y-1">
-                                <Input type="time" value={sc.start_time.slice(0, 5)}
-                                  onChange={e => updateSchedule(sc, { start_time: e.target.value + ":00" })}
-                                  className="rounded-none text-xs h-7" />
-                                <Input type="time" value={sc.end_time.slice(0, 5)}
-                                  onChange={e => updateSchedule(sc, { end_time: e.target.value + ":00" })}
-                                  className="rounded-none text-xs h-7" />
-                              </div>
-                            )}
+                            <div className={`space-y-1 ${sc.active ? "" : "opacity-40"}`}>
+                              <Input type="time" value={sc.start_time.slice(0, 5)} disabled={!sc.active}
+                                onChange={e => updateSchedule(sc, { start_time: e.target.value + ":00" })}
+                                className="rounded-none text-xs h-7" />
+                              <Input type="time" value={sc.end_time.slice(0, 5)} disabled={!sc.active}
+                                onChange={e => updateSchedule(sc, { end_time: e.target.value + ":00" })}
+                                className="rounded-none text-xs h-7" />
+                            </div>
                           </>
                         ) : (
-                          <div className="text-xs text-muted-foreground text-center">休</div>
+                          <div className="text-xs text-muted-foreground text-center py-2">—</div>
                         )}
                       </div>
                     ))}
