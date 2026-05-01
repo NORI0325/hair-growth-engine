@@ -1,0 +1,1 @@
+ALTER TABLE public.tenant_invitations ADD COLUMN IF NOT EXISTS location_ids uuid[] DEFAULT NULL;

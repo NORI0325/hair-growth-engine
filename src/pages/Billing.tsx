@@ -1,14 +1,18 @@
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useSubscription, trialDaysRemaining } from "@/hooks/useSubscription";
 import { useTenantId } from "@/hooks/useTenant";
+import { useLocations } from "@/hooks/useLocations";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useState } from "react";
-import { Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Loader2, AlertCircle, CheckCircle2, Store } from "lucide-react";
 import { toast } from "sonner";
 import AppLayout from "@/components/AppLayout";
+
+const BASE_PRICE = 9800;
+const ADDITIONAL_LOCATION_PRICE = 7800;
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   trialing: { label: "無料トライアル中", color: "bg-blue-100 text-blue-700" },
@@ -22,10 +26,15 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 const Billing = () => {
   const { data: sub, isLoading, refetch } = useSubscription();
   const tenantId = useTenantId();
+  const { data: locations = [] } = useLocations();
   const [params] = useSearchParams();
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const reason = params.get("reason");
+
+  const locationCount = Math.max(1, locations.length);
+  const additionalCount = Math.max(0, locationCount - 1);
+  const monthlyTotal = BASE_PRICE + additionalCount * ADDITIONAL_LOCATION_PRICE;
 
   const startCheckout = async () => {
     if (!tenantId) return;
@@ -84,6 +93,35 @@ const Billing = () => {
               )}
             </>
           )}
+        </Card>
+
+        <Card className="p-6 space-y-4">
+          <div className="flex items-center gap-2">
+            <Store className="w-5 h-5 text-primary" />
+            <h2 className="text-xl font-semibold">店舗数と料金内訳</h2>
+          </div>
+          <div className="space-y-2 text-sm">
+            <div className="flex items-center justify-between">
+              <span>1店舗目（Standard）</span>
+              <span className="font-medium">¥{BASE_PRICE.toLocaleString()}</span>
+            </div>
+            {additionalCount > 0 && (
+              <div className="flex items-center justify-between">
+                <span>追加店舗 ¥{ADDITIONAL_LOCATION_PRICE.toLocaleString()} × {additionalCount}店</span>
+                <span className="font-medium">¥{(ADDITIONAL_LOCATION_PRICE * additionalCount).toLocaleString()}</span>
+              </div>
+            )}
+            <div className="border-t pt-2 mt-2 flex items-center justify-between">
+              <span className="font-semibold">月額合計（{locationCount}店舗）</span>
+              <span className="text-2xl font-bold text-primary">¥{monthlyTotal.toLocaleString()}</span>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            店舗を追加・削除すると次回請求から自動的に反映されます。
+          </p>
+          <Button variant="outline" size="sm" className="w-full" onClick={() => navigate("/locations")}>
+            店舗を管理する
+          </Button>
         </Card>
 
         <Card className="p-6 space-y-4">
