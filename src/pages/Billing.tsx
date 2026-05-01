@@ -96,6 +96,35 @@ const Billing = () => {
         </Card>
 
         <Card className="p-6 space-y-4">
+          <div className="flex items-center gap-2">
+            <Store className="w-5 h-5 text-primary" />
+            <h2 className="text-xl font-semibold">店舗数と料金内訳</h2>
+          </div>
+          <div className="space-y-2 text-sm">
+            <div className="flex items-center justify-between">
+              <span>1店舗目（Standard）</span>
+              <span className="font-medium">¥{BASE_PRICE.toLocaleString()}</span>
+            </div>
+            {additionalCount > 0 && (
+              <div className="flex items-center justify-between">
+                <span>追加店舗 ¥{ADDITIONAL_LOCATION_PRICE.toLocaleString()} × {additionalCount}店</span>
+                <span className="font-medium">¥{(ADDITIONAL_LOCATION_PRICE * additionalCount).toLocaleString()}</span>
+              </div>
+            )}
+            <div className="border-t pt-2 mt-2 flex items-center justify-between">
+              <span className="font-semibold">月額合計（{locationCount}店舗）</span>
+              <span className="text-2xl font-bold text-primary">¥{monthlyTotal.toLocaleString()}</span>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            店舗を追加・削除すると次回請求から自動的に反映されます。
+          </p>
+          <Button variant="outline" size="sm" className="w-full" onClick={() => navigate("/locations")}>
+            店舗を管理する
+          </Button>
+        </Card>
+
+        <Card className="p-6 space-y-4">
           <div>
             <p className="eyebrow text-xs mb-2">— Standard Plan —</p>
             <div className="flex items-baseline gap-2">
