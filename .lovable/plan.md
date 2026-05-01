@@ -1,279 +1,160 @@
-# Phase 1：SaaS化 完全実装計画
-
-このアプリを「自社専用ツール」から「全国のサロンが使える月額SaaS」に進化させる、最初の本格実装フェーズです。
-
----
-
 ## 🎯 ゴール
-
-新規サロンオーナーがランディングページから登録 → 2ヶ月無料で全機能利用 → 自動またはメール案内で月額¥9,800の課金開始 → スタッフを招待してチームで運用、までを完全自動化する。
-
-あなた自身（arunehair）は1テナントとして使い続けながら、マルチテナント化の最初のリアルユーザーになる。
+1ユーザー（オーナー）が複数店舗を1ログインで管理できるようにし、店舗数に応じた段階的課金を実現する。
 
 ---
 
-## 📋 実装内容
+## 📐 アーキテクチャ変更の核心
 
-### 1. マルチテナント基盤の整備
+### 現状の問題
+現在は `profiles.id = auth.users.id = tenant_id` という1対1の構造で、「テナント = 店舗 = ユーザー」が完全に同義。複数店舗を持てない。
 
-**サブスクリプション管理テーブル新設**
-`subscriptions` テーブルを作り、各オーナーの契約状態を管理する。
-- `owner_id`、`status`（trialing / active / past_due / canceled / paused）
-- `trial_ends_at`、`current_period_end`
-- `stripe_customer_id`、`stripe_subscription_id`
-- `plan`（最初は "standard" のみ）
-
-`status` を見て、画面とAPIで機能制限をかける。
-
-**トライアル自動付与**
-新規ユーザー登録時のトリガー（既存 `handle_new_user`）を拡張し、`subscriptions` レコードを自動作成する。`trial_ends_at = now() + 60 days` で開始。
-
-**グローバル状態の整理**
-`email_send_state`（id=1の単一行）はメール配信のレート制御用なので、SaaS化後もグローバル共有でOK。ただしテナント別の送信上限カウンタを別途追加する：
-- 新テーブル `tenant_usage_counters`（owner_id, period_start, emails_sent, sms_sent, line_sent）
-- 月次でリセット、超過時は `process-thank-you-jobs` 等が拒否
-
-**読み取り専用モード（"locked"）**
-未払い・キャンセル後の閲覧専用モードを実装。RLSは変えず、エッジ関数とフロント側で書き込み系操作をブロック。データは消さない（再開時に即復旧）。
-
----
-
-### 2. 3階層スタッフ権限
-
-既存の `user_roles` テーブル + `app_role` enum を拡張する。
-
-**役割定義**
-- `owner`：契約者本人。全機能 + 課金 + メンバー招待 + 削除
-- `manager`：店長クラス。設定変更・売上分析・全テンプレ編集は可、課金とメンバー削除は不可
-- `staff`：日常業務のみ。予約閲覧/作成、自分担当の顧客閲覧、メッセージ送信のみ
-
-**新テーブル `tenant_members`**
-- `tenant_id`（= オーナーのowner_id）、`user_id`、`role`、`invited_at`、`accepted_at`
-- これがあると「同じサロンの複数アカウント」が成立する
-
-**RLSの大幅改修**
-今までは `auth.uid() = owner_id` 一発で済んでいたが、これからは「自分が所属するテナントのデータか」で判定する必要がある。SECURITY DEFINER関数 `is_tenant_member(_tenant_id, _user_id)` を作り、全テーブルのRLSを書き換える。
-
-**権限チェック関数**
-- `has_tenant_role(_tenant_id, _user_id, _role)` で「○○できるか」を判定
-- フロント側は `useTenantRole()` フックで現在のロールを取得し、ボタン/タブを出し分け
-
-**招待フロー**
-オーナーがメンバーのメールアドレスを入力 → 招待メール送信 → 受信者が登録/ログイン → 自動でテナントに参加。
-
----
-
-### 3. セルフサーブ登録
-
-**`Auth.tsx` の刷新**
-現在のログイン専用画面を「ログイン / 新規登録」のタブ式に変更。
-
-**新規登録フォーム**
-- メールアドレス、パスワード、サロン名、オーナー氏名
-- Google認証も併設
-- 登録直後に確認メール、確認後にダッシュボードへ
-- メール認証は有効化（auto_confirm_email = false）
-
-**初回ログイン後のオンボーディング**
-新規オーナーは強制的に5ステップウィザードに誘導：
-1. サロン基本情報（営業時間・住所）
-2. メニュー登録（最低3つ）
-3. スタッフ登録
-4. LINE連携（スキップ可、後でいつでも）
-5. 公開予約URLの確認とコピー
-
-完了率を `profiles.onboarding_progress`（jsonb）で記録、ダッシュボード上部に進捗バー。
-
----
-
-### 4. Stripe決済（Lovable built-in）
-
-**enable_stripe_payments で接続**
-Lovableの組み込みStripeを有効化。テスト環境が即座に立ち上がるので、本番運用前に十分テストできる。
-
-**プランは1つ：standard ¥9,800/月**
-Stripe側にProductとPriceを1つだけ作成。シンプル。
-
-**ハイブリッド・トライアル動線**
-- 登録時：「クレカ登録」ボタン（任意）と「あとで登録」ボタンの両方を提示
-- クレカ登録済み：トライアル終了時に自動課金（Stripe trial機能を使用）
-- クレカ未登録：終了7日前に「もうすぐ無料期間が終わります」メール、終了時に「locked」状態に移行 → 課金画面で再開可能
-
-**Webhook処理**
-`stripe-webhook` エッジ関数を作成し、`invoice.paid`、`customer.subscription.deleted`、`invoice.payment_failed` を処理して `subscriptions.status` を更新。
-
-**支払い失敗時のリカバリー**
-- 1回目失敗：`past_due` 状態、警告メール
-- 3日後再試行 → ダメなら `locked`
-- 30日経過で `canceled`、データは保持（90日後に削除予告メール）
-
----
-
-### 5. 管理者ダッシュボード（あなた専用）
-
-**新ページ `/admin`**
-あなた（特定のuser_idまたは新role `super_admin`）のみアクセス可能。
-- 全テナント一覧（サロン名、契約状態、MRR、最終ログイン、メール送信数）
-- 月次MRR推移グラフ
-- 解約率、トライアル→有料転換率
-- 個別テナントの「成り代わりログイン」（サポート用）
-
-これがないと「誰が困っているか」が見えず、初期サポートで詰みます。
-
----
-
-### 6. 法務まわりの最低限
-
-**新ページ**
-- `/terms`（利用規約）
-- `/privacy`（プライバシーポリシー）
-- `/tokushoho`（特定商取引法に基づく表記）
-
-雛形を生成して配置。実際の内容（事業者名・住所等）はあなたが後で埋める前提。
-
-新規登録フォームに「利用規約に同意」チェックボックス必須。
-
----
-
-## 🔧 技術詳細
-
-### データベース変更（マイグレーション1本）
-
-```sql
--- サブスクリプション
-CREATE TABLE subscriptions (
-  owner_id UUID PRIMARY KEY REFERENCES auth.users ON DELETE CASCADE,
-  status TEXT NOT NULL DEFAULT 'trialing',
-  plan TEXT NOT NULL DEFAULT 'standard',
-  trial_ends_at TIMESTAMPTZ,
-  current_period_end TIMESTAMPTZ,
-  stripe_customer_id TEXT,
-  stripe_subscription_id TEXT,
-  ...
-);
-
--- テナントメンバー
-CREATE TABLE tenant_members (
-  tenant_id UUID NOT NULL,  -- オーナーのID
-  user_id UUID NOT NULL,
-  role app_role NOT NULL,
-  invited_at TIMESTAMPTZ,
-  accepted_at TIMESTAMPTZ,
-  PRIMARY KEY (tenant_id, user_id)
-);
-
--- 招待トークン
-CREATE TABLE tenant_invitations (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id UUID NOT NULL,
-  email TEXT NOT NULL,
-  role app_role NOT NULL,
-  token TEXT UNIQUE NOT NULL,
-  expires_at TIMESTAMPTZ NOT NULL DEFAULT (now() + INTERVAL '7 days'),
-  accepted_at TIMESTAMPTZ
-);
-
--- 使用量カウンター
-CREATE TABLE tenant_usage_counters (
-  owner_id UUID NOT NULL,
-  period_start DATE NOT NULL,
-  emails_sent INT DEFAULT 0,
-  sms_sent INT DEFAULT 0,
-  line_sent INT DEFAULT 0,
-  PRIMARY KEY (owner_id, period_start)
-);
-
--- app_role enum 拡張
-ALTER TYPE app_role ADD VALUE 'manager';
-ALTER TYPE app_role ADD VALUE 'staff';
-ALTER TYPE app_role ADD VALUE 'super_admin';
-
--- 既存テーブル群のRLSを is_tenant_member() ベースに書き換え
+### 新構造
+```text
+auth.users (オーナー個人)
+    │
+    └─ tenant_members (所属関係)
+            │
+            └─ tenants (組織) ← 新規テーブル ⭐
+                  │
+                  └─ locations (店舗) ← 新規テーブル ⭐
+                        │
+                        ├─ customers, bookings, staff, menu_items 等
+                        │   (全て location_id を持つ)
+                        └─ subscriptions は tenants 単位
 ```
 
-### RLS書き換え対象テーブル
-`bookings`, `customers`, `coupons`, `incentives`, `staff`, `staff_schedules`, `staff_time_off`, `salon_hours`, `menu_items`, `customer_message_templates`, `template_overrides`, `line_templates`, `campaigns`, `customer_ai_insights`, `line_inbound_messages`, `line_pending_friends` — 全部 `is_tenant_member(owner_id, auth.uid())` ベースに変更。
-
-### 新規エッジ関数
-- `stripe-webhook`：Stripe イベント受信
-- `create-checkout-session`：契約開始用Checkout
-- `create-portal-session`：契約管理画面へのリダイレクト
-- `accept-tenant-invitation`：招待トークン検証 + メンバー追加
-- `cron-trial-reminder`：トライアル終了7日前/1日前通知
-- `cron-trial-expiry`：終了時のlocked移行
-
-### 新規フロントページ
-- `/landing`（製品紹介LP、SEO対応）
-- `/signup`（新規登録）
-- `/onboarding`（5ステップウィザード）
-- `/billing`（契約・支払い管理）
-- `/team`（メンバー招待・管理）
-- `/admin`（あなた専用ダッシュボード）
-- `/invite/:token`（招待受諾）
-- `/terms`, `/privacy`, `/tokushoho`
-
-### 新規フックとガード
-- `useTenant()`：現在のテナントID（オーナーIDと同じか、所属先）
-- `useTenantRole()`：自分のロール
-- `useSubscription()`：契約状態
-- `<RequireRole role="manager">`：権限ベースのコンポーネントガード
-- `<RequireActiveSubscription>`：未払い時はlocked画面へ
+**重要な決定**:
+- `subscriptions` は **tenant単位**（オーナー1人が払う）
+- `customers`, `bookings`, `staff`, `menu_items`, `coupons`, `incentives`, `salon_hours`, `staff_schedules`, `campaigns` などの業務データは **location単位**
+- `profiles` は legacy として残しつつ、新しい `locations` に主要設定を引き継ぐ
 
 ---
 
-## 📦 実装順序（このプランの中での進行順）
+## 🗄️ DB マイグレーション
 
-1. **マイグレーション**（DB全部いっぺんに） — 既存データ無傷で `tenant_members` に owner_id を自己参照で投入、RLS切り替え
-2. **types.ts 更新待ち + フック群作成** — useTenant, useTenantRole, useSubscription
-3. **権限ガード実装 + 既存ページの読み取りロール対応** — Settings, Templates, Performance はmanager以上、Billing/Teamはownerのみ
-4. **新規登録 + オンボーディング** — Auth刷新、Wizard追加
-5. **Stripe接続 + Checkout/Webhook/Portal**
-6. **トライアル監視Cron + Locked画面**
-7. **チーム招待フロー**
-8. **管理者ダッシュボード `/admin`**
-9. **ランディング + 法務ページ**
-10. **既存データ移行確認**（あなたのデータが全部見えること、機能が動くこと）
+### Phase A: テーブル新設
+1. **`tenants`** — 組織（会社・個人事業主）
+   - `id`, `name`, `owner_user_id`, `created_at`
+2. **`locations`** — 店舗
+   - `id`, `tenant_id`, `name`, `public_slug`, `salon_settings...`（profilesから引き継ぐ営業時間・LINE設定等）
+   - `is_primary` フラグ（最初の店舗）
+3. **`location_members`** — 店舗別スタッフ権限
+   - `location_id`, `user_id`, `role`（マネージャーは特定店舗のみ管理可能等）
+   - **オーナーは tenant_members 経由で全店アクセス**
 
----
+### Phase B: 既存テーブルへの `location_id` 追加
+- `customers`, `bookings`, `staff`, `menu_items`, `coupons`, `incentives`, `salon_hours`, `staff_schedules`, `campaigns`, `line_templates`, `template_overrides`, `customer_message_templates`, `line_inbound_messages`, `line_pending_friends`, `external_reservation_logs`, `scheduled_jobs`, `staff_time_off`, `customer_ai_insights`, `booking_tokens`, `tenant_usage_counters` に `location_id uuid` を追加。
 
-## ⚠️ リスクと対策
+### Phase C: 既存データ移行
+- 既存の各 `profiles` レコードに対し、対応する `tenants` + `locations`（is_primary=true）を1件ずつ作成
+- 既存業務データの `owner_id` から `location_id` を逆引きして埋める
+- `tenant_members.tenant_id` を新 `tenants.id` に張り替え
 
-**リスク1：RLS書き換えで既存データが見えなくなる**
-→ マイグレーション内でまず `tenant_members` に既存全オーナーを `owner` ロールで自己登録 → 新RLS適用、の順で実行。テスト的に1テーブルずつ切り替えるのではなく、トランザクションで全部一気にやる。
+### Phase D: スキーマ調整
+- `subscriptions` を `tenant_id` ベースに変更（`owner_id` → `tenant_id`）
+- RLS ポリシーを全面改訂：
+  - `is_tenant_member(tenant_id, user_id)` を維持
+  - 新規 `is_location_accessible(location_id, user_id)` を追加（オーナー＝全店、マネージャー＝指定店、スタッフ＝指定店）
+- 全業務テーブルの RLS を `is_location_accessible(location_id, auth.uid())` に変更
 
-**リスク2：Stripe Webhook の署名検証ミスで不正リクエスト受付**
-→ `STRIPE_WEBHOOK_SECRET` を必須化、署名検証失敗時は400で即返却。
-
-**リスク3：あなた自身がlocked状態になる**
-→ あなたのowner_idは `subscriptions.status = 'active'` で永続フリー、または `super_admin` ロール持ちは課金チェックをスキップする例外を入れる。
-
-**リスク4：招待メールがスパム判定**
-→ 既存の `send-transactional-email` 経由で Resend から送る。専用テンプレートを `_shared/transactional-email-templates/team-invitation.tsx` で作成。
-
----
-
-## 📝 このフェーズで「やらないこと」（次フェーズ送り）
-
-- アフィリエイト・紹介機能
-- 公開ランディングのSEO最適化深堀り（最低限のページだけ作る）
-- LINE OAuth による Channel Token 自動取得（手入力のまま）
-- 解約防止アンケート
-- カスタムドメイン対応（各サロンが独自ドメインで予約ページを持つ）
-- 2要素認証
-
-これらは Phase 2 で対応。今は「セルフサーブで売れる最小構成」に集中。
+### Phase E: DB関数の更新
+- `public_create_booking_v3` などの予約系関数に `location_slug` パラメータを追加（または `location_public_slug` で切り替え）
+- `handle_new_user()` を「tenant + 1店舗目を自動作成」に変更
+- `current_tenant_id()` は維持
 
 ---
 
-## 💰 想定コスト構造（あなた側）
+## 💰 課金変更（段階的料金）
 
-- Lovable Cloud：使用量ベース、現状の延長
-- Stripe：3.6% + ¥0/件
-- Resend：3,000通まで無料、以降従量
-- 1契約あたりのあなたの粗利：¥9,800 - 約¥500（インフラ） = **約¥9,300/契約/月**
+### 価格構造
+- **1店舗目**: ¥9,800/月（既存 `salon_boost_standard` 流用）
+- **2店舗目以降**: ¥7,800/月（新規プロダクト `salon_boost_additional_location`）
 
-50契約で月¥465,000、200契約で月¥1,860,000。十分な事業規模になります。
+### 実装方法
+Stripe の **メータード課金 or サブスク数量** を使用：
+- 1つの Subscription に2つのプロダクトを line_items として乗せる
+- `salon_boost_standard` × 1（固定）
+- `salon_boost_additional_location` × N（N = 店舗数 - 1、店舗追加時に `subscription.update` で数量変更）
+
+### Edge Function 更新
+- `create-checkout-session`: 初回チェックアウトは Standard×1 のみ
+- 新規 `add-location`: 店舗追加 → Stripe サブスクの additional_location 数量を +1 → DB に locations 追加
+- 新規 `remove-location`: 店舗削除 → Stripe 数量を -1
+- `payments-webhook`: line_items の各 quantity を読み取り `tenants.location_quota` を同期
 
 ---
 
-承認いただければ、まず**マイグレーション1本**から着手します（既存データを壊さない設計で慎重に）。それをユーザーに承認いただいた後、コード側の実装を一気に進めます。
+## 🎨 UI 変更
+
+### 1. 店舗切り替えドロップダウン（AppLayout）
+ヘッダー左上に現在の店舗名を表示し、クリックで他店舗に切り替え。`useCurrentLocation()` フックで全画面が自動的に該当店舗のデータを表示。
+
+### 2. 店舗管理ページ `/locations` （新規）
+- 店舗一覧（カード表示）
+- 「+ 店舗を追加」ボタン → モーダルで店舗名入力 → Stripe数量更新 → 新店舗作成
+- 店舗削除（確認ダイアログ＋データ移行/削除選択）
+- オーナーのみアクセス可能
+
+### 3. オンボーディング更新
+- 「店舗名」入力時に「複数店舗をお持ちですか？」のチェックを追加（後で追加も可能と明記）
+
+### 4. チーム管理 `/team` 拡張
+- スタッフ招待時に「アクセス可能な店舗」を選択（複数選択可）
+- マネージャーは特定店舗のみ、オーナーは自動的に全店
+
+### 5. 請求ページ `/billing` 更新
+- 現在の店舗数と次回請求額を表示
+- 内訳: 「Standard ¥9,800 + 追加店舗 ¥7,800 × N = 合計」
+
+### 6. 公開予約ページ
+- URL を `/book/{tenant_slug}/{location_slug}` に変更（または `/book/{location_slug}` で全店ユニーク）
+- 既存 `public_slug` は location 単位に移行
+
+---
+
+## 🔧 React側のコード変更
+
+### 新規フック
+- `useCurrentLocation()`: localStorage に現在選択中の location_id を保存、Context経由で全画面に提供
+- `useLocations()`: ユーザーがアクセス可能な店舗一覧を取得
+
+### 既存クエリの更新
+全ての `.eq("owner_id", ...)` を `.eq("location_id", currentLocationId)` に置き換え（顧客、予約、メニュー、スタッフ、クーポン、キャンペーン、AI insight、テンプレート）。
+
+### 影響を受ける主要ファイル
+- `src/hooks/useTenant.tsx` → `useTenant` + `useCurrentLocation` に分割
+- `src/components/AppLayout.tsx` → 店舗切替ドロップダウン追加
+- `src/pages/Customers.tsx`, `Bookings.tsx`, `Calendar.tsx`, `Menu.tsx`, `Staff.tsx`, `Campaigns.tsx`, `Coupons.tsx` 他、ほぼ全画面
+- 公開予約ページ `BookingPublic.tsx` のスラッグ解決ロジック
+
+---
+
+## 📋 実装フェーズ（推奨実行順）
+
+| # | フェーズ | 内容 | 所要 |
+|---|---------|------|------|
+| 1 | **DB基盤** | tenants/locations テーブル新設、location_id追加、データ移行、RLS刷新 | 大 |
+| 2 | **DB関数** | 予約RPC、handle_new_user、ヘルパー関数の更新 | 中 |
+| 3 | **Stripe課金** | 追加店舗プロダクト作成、Checkout/Webhook更新 | 中 |
+| 4 | **Reactフック** | useCurrentLocation, useLocations, Context整備 | 中 |
+| 5 | **UI: 店舗切替** | AppLayoutドロップダウン | 小 |
+| 6 | **UI: 店舗管理** | /locations ページ + 追加/削除モーダル | 中 |
+| 7 | **UI: 既存画面移行** | 全画面のクエリを location_id ベースに | 大 |
+| 8 | **UI: チーム/請求** | スタッフ店舗権限、料金内訳表示 | 中 |
+| 9 | **公開予約** | location_slug ベースに変更 | 小 |
+
+---
+
+## ⚠️ リスク & 注意
+
+1. **既存データのマイグレーション失敗リスク**: 必ずトランザクション内で実行し、ロールバック可能に
+2. **RLS刷新による一時的なアクセス不能**: 関数を先にデプロイし、ポリシーを段階的に切り替え
+3. **公開予約URLの変更**: 既存の `/book/{old-slug}` を新URLにリダイレクトする互換性レイヤを設置
+4. **Stripeの請求タイミング**: 店舗追加は即時、削除は期末処理（pro-ration設定）
+
+---
+
+## ✅ 承認後の進め方
+このプランは規模が大きいため、**Phase 1（DB基盤）から順次マイグレーションを提示**し、各段階で承認をいただきながら進めます。一度に全てを変更するとロールバックが困難になるためです。
+
+承認いただければ、まず **Phase 1: tenants/locations テーブル新設とデータ移行のマイグレーション** を提示します。

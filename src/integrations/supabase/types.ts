@@ -55,6 +55,7 @@ export type Database = {
           external_source: string | null
           id: string
           is_test: boolean
+          location_id: string | null
           menu: string
           menus: string[] | null
           notes: string | null
@@ -79,6 +80,7 @@ export type Database = {
           external_source?: string | null
           id?: string
           is_test?: boolean
+          location_id?: string | null
           menu: string
           menus?: string[] | null
           notes?: string | null
@@ -103,6 +105,7 @@ export type Database = {
           external_source?: string | null
           id?: string
           is_test?: boolean
+          location_id?: string | null
           menu?: string
           menus?: string[] | null
           notes?: string | null
@@ -211,6 +214,7 @@ export type Database = {
           email_body: string
           email_subject: string
           id: string
+          location_id: string | null
           owner_id: string
           scheduled_at: string | null
           send_email: boolean
@@ -229,6 +233,7 @@ export type Database = {
           email_body: string
           email_subject: string
           id?: string
+          location_id?: string | null
           owner_id: string
           scheduled_at?: string | null
           send_email?: boolean
@@ -249,6 +254,7 @@ export type Database = {
           email_body?: string
           email_subject?: string
           id?: string
+          location_id?: string | null
           owner_id?: string
           scheduled_at?: string | null
           send_email?: boolean
@@ -281,6 +287,7 @@ export type Database = {
           discount_value: number
           expires_at: string | null
           id: string
+          location_id: string | null
           owner_id: string
           title: string
         }
@@ -291,6 +298,7 @@ export type Database = {
           discount_value?: number
           expires_at?: string | null
           id?: string
+          location_id?: string | null
           owner_id: string
           title: string
         }
@@ -301,6 +309,7 @@ export type Database = {
           discount_value?: number
           expires_at?: string | null
           id?: string
+          location_id?: string | null
           owner_id?: string
           title?: string
         }
@@ -312,6 +321,7 @@ export type Database = {
           customer_id: string
           generated_at: string
           id: string
+          location_id: string | null
           next_visit_suggestion: string | null
           owner_id: string
           preferred_tone: string | null
@@ -324,6 +334,7 @@ export type Database = {
           customer_id: string
           generated_at?: string
           id?: string
+          location_id?: string | null
           next_visit_suggestion?: string | null
           owner_id: string
           preferred_tone?: string | null
@@ -336,6 +347,7 @@ export type Database = {
           customer_id?: string
           generated_at?: string
           id?: string
+          location_id?: string | null
           next_visit_suggestion?: string | null
           owner_id?: string
           preferred_tone?: string | null
@@ -352,6 +364,7 @@ export type Database = {
           created_at: string
           id: string
           kind: string
+          location_id: string | null
           owner_id: string
           sort_order: number
           title: string
@@ -363,6 +376,7 @@ export type Database = {
           created_at?: string
           id?: string
           kind?: string
+          location_id?: string | null
           owner_id: string
           sort_order?: number
           title: string
@@ -374,6 +388,7 @@ export type Database = {
           created_at?: string
           id?: string
           kind?: string
+          location_id?: string | null
           owner_id?: string
           sort_order?: number
           title?: string
@@ -391,6 +406,7 @@ export type Database = {
           is_test: boolean
           last_visit_date: string | null
           line_user_id: string | null
+          location_id: string | null
           notes: string | null
           owner_id: string
           phone: string | null
@@ -408,6 +424,7 @@ export type Database = {
           is_test?: boolean
           last_visit_date?: string | null
           line_user_id?: string | null
+          location_id?: string | null
           notes?: string | null
           owner_id: string
           phone?: string | null
@@ -425,6 +442,7 @@ export type Database = {
           is_test?: boolean
           last_visit_date?: string | null
           line_user_id?: string | null
+          location_id?: string | null
           notes?: string | null
           owner_id?: string
           phone?: string | null
@@ -536,6 +554,7 @@ export type Database = {
           created_booking_id: string | null
           error: string | null
           id: string
+          location_id: string | null
           matched_customer_id: string | null
           owner_id: string | null
           parsed_data: Json | null
@@ -551,6 +570,7 @@ export type Database = {
           created_booking_id?: string | null
           error?: string | null
           id?: string
+          location_id?: string | null
           matched_customer_id?: string | null
           owner_id?: string | null
           parsed_data?: Json | null
@@ -566,6 +586,7 @@ export type Database = {
           created_booking_id?: string | null
           error?: string | null
           id?: string
+          location_id?: string | null
           matched_customer_id?: string | null
           owner_id?: string | null
           parsed_data?: Json | null
@@ -586,6 +607,7 @@ export type Database = {
           estimated_cost: number | null
           id: string
           kind: string
+          location_id: string | null
           owner_id: string
           sort_order: number
           target_segment: string | null
@@ -604,6 +626,7 @@ export type Database = {
           estimated_cost?: number | null
           id?: string
           kind?: string
+          location_id?: string | null
           owner_id: string
           sort_order?: number
           target_segment?: string | null
@@ -622,6 +645,7 @@ export type Database = {
           estimated_cost?: number | null
           id?: string
           kind?: string
+          location_id?: string | null
           owner_id?: string
           sort_order?: number
           target_segment?: string | null
@@ -647,6 +671,7 @@ export type Database = {
           id: string
           intent: string | null
           line_user_id: string
+          location_id: string | null
           message_text: string
           owner_id: string
           suggested_action: string | null
@@ -664,6 +689,7 @@ export type Database = {
           id?: string
           intent?: string | null
           line_user_id: string
+          location_id?: string | null
           message_text: string
           owner_id: string
           suggested_action?: string | null
@@ -681,6 +707,7 @@ export type Database = {
           id?: string
           intent?: string | null
           line_user_id?: string
+          location_id?: string | null
           message_text?: string
           owner_id?: string
           suggested_action?: string | null
@@ -738,6 +765,7 @@ export type Database = {
           id: string
           last_message: string | null
           line_user_id: string
+          location_id: string | null
           owner_id: string
           updated_at: string
         }
@@ -747,6 +775,7 @@ export type Database = {
           id?: string
           last_message?: string | null
           line_user_id: string
+          location_id?: string | null
           owner_id: string
           updated_at?: string
         }
@@ -756,6 +785,7 @@ export type Database = {
           id?: string
           last_message?: string | null
           line_user_id?: string
+          location_id?: string | null
           owner_id?: string
           updated_at?: string
         }
@@ -769,6 +799,7 @@ export type Database = {
           cta_url: string | null
           id: string
           image_url: string | null
+          location_id: string | null
           message: string
           owner_id: string
           title: string
@@ -782,6 +813,7 @@ export type Database = {
           cta_url?: string | null
           id?: string
           image_url?: string | null
+          location_id?: string | null
           message: string
           owner_id: string
           title: string
@@ -795,6 +827,7 @@ export type Database = {
           cta_url?: string | null
           id?: string
           image_url?: string | null
+          location_id?: string | null
           message?: string
           owner_id?: string
           title?: string
@@ -802,6 +835,109 @@ export type Database = {
           use_count?: number
         }
         Relationships: []
+      }
+      location_members: {
+        Row: {
+          created_at: string
+          id: string
+          location_id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          location_id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          location_id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "location_members_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      locations: {
+        Row: {
+          close_time: string | null
+          created_at: string
+          google_review_url: string | null
+          id: string
+          inbound_key: string | null
+          is_primary: boolean
+          line_add_friend_url: string | null
+          line_channel_access_token: string | null
+          line_channel_secret: string | null
+          name: string
+          open_time: string | null
+          owner_notification_email: string | null
+          public_slug: string | null
+          reminder_enabled: boolean
+          reminder_hour: number
+          tenant_id: string
+          test_mode: boolean
+          updated_at: string
+        }
+        Insert: {
+          close_time?: string | null
+          created_at?: string
+          google_review_url?: string | null
+          id?: string
+          inbound_key?: string | null
+          is_primary?: boolean
+          line_add_friend_url?: string | null
+          line_channel_access_token?: string | null
+          line_channel_secret?: string | null
+          name: string
+          open_time?: string | null
+          owner_notification_email?: string | null
+          public_slug?: string | null
+          reminder_enabled?: boolean
+          reminder_hour?: number
+          tenant_id: string
+          test_mode?: boolean
+          updated_at?: string
+        }
+        Update: {
+          close_time?: string | null
+          created_at?: string
+          google_review_url?: string | null
+          id?: string
+          inbound_key?: string | null
+          is_primary?: boolean
+          line_add_friend_url?: string | null
+          line_channel_access_token?: string | null
+          line_channel_secret?: string | null
+          name?: string
+          open_time?: string | null
+          owner_notification_email?: string | null
+          public_slug?: string | null
+          reminder_enabled?: boolean
+          reminder_hour?: number
+          tenant_id?: string
+          test_mode?: boolean
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "locations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       menu_items: {
         Row: {
@@ -812,6 +948,7 @@ export type Database = {
           duration_minutes: number
           id: string
           image_url: string | null
+          location_id: string | null
           name: string
           owner_id: string
           price: number
@@ -826,6 +963,7 @@ export type Database = {
           duration_minutes?: number
           id?: string
           image_url?: string | null
+          location_id?: string | null
           name: string
           owner_id: string
           price?: number
@@ -840,6 +978,7 @@ export type Database = {
           duration_minutes?: number
           id?: string
           image_url?: string | null
+          location_id?: string | null
           name?: string
           owner_id?: string
           price?: number
@@ -962,6 +1101,7 @@ export type Database = {
           closed: boolean
           created_at: string
           id: string
+          location_id: string | null
           open_time: string
           owner_id: string
           updated_at: string
@@ -972,6 +1112,7 @@ export type Database = {
           closed?: boolean
           created_at?: string
           id?: string
+          location_id?: string | null
           open_time?: string
           owner_id: string
           updated_at?: string
@@ -982,6 +1123,7 @@ export type Database = {
           closed?: boolean
           created_at?: string
           id?: string
+          location_id?: string | null
           open_time?: string
           owner_id?: string
           updated_at?: string
@@ -997,6 +1139,7 @@ export type Database = {
           error: string | null
           id: string
           job_type: string
+          location_id: string | null
           owner_id: string
           payload: Json | null
           scheduled_for: string
@@ -1010,6 +1153,7 @@ export type Database = {
           error?: string | null
           id?: string
           job_type: string
+          location_id?: string | null
           owner_id: string
           payload?: Json | null
           scheduled_for: string
@@ -1023,6 +1167,7 @@ export type Database = {
           error?: string | null
           id?: string
           job_type?: string
+          location_id?: string | null
           owner_id?: string
           payload?: Json | null
           scheduled_for?: string
@@ -1038,6 +1183,7 @@ export type Database = {
           created_at: string
           display_color: string
           id: string
+          location_id: string | null
           name: string
           note: string | null
           owner_id: string
@@ -1050,6 +1196,7 @@ export type Database = {
           created_at?: string
           display_color?: string
           id?: string
+          location_id?: string | null
           name: string
           note?: string | null
           owner_id: string
@@ -1062,6 +1209,7 @@ export type Database = {
           created_at?: string
           display_color?: string
           id?: string
+          location_id?: string | null
           name?: string
           note?: string | null
           owner_id?: string
@@ -1076,6 +1224,7 @@ export type Database = {
           created_at: string
           end_time: string
           id: string
+          location_id: string | null
           owner_id: string
           staff_id: string
           start_time: string
@@ -1087,6 +1236,7 @@ export type Database = {
           created_at?: string
           end_time?: string
           id?: string
+          location_id?: string | null
           owner_id: string
           staff_id: string
           start_time?: string
@@ -1098,6 +1248,7 @@ export type Database = {
           created_at?: string
           end_time?: string
           id?: string
+          location_id?: string | null
           owner_id?: string
           staff_id?: string
           start_time?: string
@@ -1119,6 +1270,7 @@ export type Database = {
           created_at: string
           end_at: string
           id: string
+          location_id: string | null
           owner_id: string
           reason: string | null
           staff_id: string
@@ -1128,6 +1280,7 @@ export type Database = {
           created_at?: string
           end_at: string
           id?: string
+          location_id?: string | null
           owner_id: string
           reason?: string | null
           staff_id: string
@@ -1137,6 +1290,7 @@ export type Database = {
           created_at?: string
           end_at?: string
           id?: string
+          location_id?: string | null
           owner_id?: string
           reason?: string | null
           staff_id?: string
@@ -1163,6 +1317,7 @@ export type Database = {
           status: string
           stripe_customer_id: string | null
           stripe_subscription_id: string | null
+          tenant_id: string | null
           trial_ends_at: string | null
           updated_at: string
         }
@@ -1176,6 +1331,7 @@ export type Database = {
           status?: string
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
+          tenant_id?: string | null
           trial_ends_at?: string | null
           updated_at?: string
         }
@@ -1189,6 +1345,7 @@ export type Database = {
           status?: string
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
+          tenant_id?: string | null
           trial_ends_at?: string | null
           updated_at?: string
         }
@@ -1230,6 +1387,7 @@ export type Database = {
           greeting: string | null
           id: string
           incentive_id: string | null
+          location_id: string | null
           owner_id: string
           signature: string | null
           subject: string | null
@@ -1247,6 +1405,7 @@ export type Database = {
           greeting?: string | null
           id?: string
           incentive_id?: string | null
+          location_id?: string | null
           owner_id: string
           signature?: string | null
           subject?: string | null
@@ -1264,6 +1423,7 @@ export type Database = {
           greeting?: string | null
           id?: string
           incentive_id?: string | null
+          location_id?: string | null
           owner_id?: string
           signature?: string | null
           subject?: string | null
@@ -1339,6 +1499,7 @@ export type Database = {
         Row: {
           emails_sent: number
           line_sent: number
+          location_id: string | null
           owner_id: string
           period_start: string
           sms_sent: number
@@ -1347,6 +1508,7 @@ export type Database = {
         Insert: {
           emails_sent?: number
           line_sent?: number
+          location_id?: string | null
           owner_id: string
           period_start: string
           sms_sent?: number
@@ -1355,9 +1517,37 @@ export type Database = {
         Update: {
           emails_sent?: number
           line_sent?: number
+          location_id?: string | null
           owner_id?: string
           period_start?: string
           sms_sent?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      tenants: {
+        Row: {
+          created_at: string
+          id: string
+          location_quota: number
+          name: string
+          owner_user_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          location_quota?: number
+          name: string
+          owner_user_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          location_quota?: number
+          name?: string
+          owner_user_id?: string
           updated_at?: string
         }
         Relationships: []
@@ -1456,6 +1646,14 @@ export type Database = {
           total_price: number
         }[]
       }
+      has_location_role: {
+        Args: {
+          _location_id: string
+          _min_role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -1469,6 +1667,10 @@ export type Database = {
           _tenant_id: string
           _user_id: string
         }
+        Returns: boolean
+      }
+      is_location_accessible: {
+        Args: { _location_id: string; _user_id: string }
         Returns: boolean
       }
       is_tenant_member: {
@@ -1531,6 +1733,7 @@ export type Database = {
           read_ct: number
         }[]
       }
+      user_tenant_id: { Args: { _user_id: string }; Returns: string }
     }
     Enums: {
       app_role: "owner" | "staff" | "manager" | "super_admin"
