@@ -47,6 +47,20 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ success: false, error: memberErr.message }), { status: 500, headers: corsHeaders });
     }
 
+    // location_members へ追加（指定があれば指定店舗のみ、なければ全店舗）
+    let targetLocationIds: string[] = invite.location_ids ?? [];
+    if (targetLocationIds.length === 0) {
+      const { data: allLocs } = await supabase
+        .from("locations").select("id").eq("tenant_id", invite.tenant_id);
+      targetLocationIds = (allLocs ?? []).map((l: any) => l.id);
+    }
+    if (targetLocationIds.length > 0) {
+      await supabase.from("location_members").upsert(
+        targetLocationIds.map((lid) => ({ location_id: lid, user_id: user.id, role: invite.role })),
+        { onConflict: "location_id,user_id" }
+      );
+    }
+
     await supabase.from("tenant_invitations").update({ accepted_at: new Date().toISOString() }).eq("id", invite.id);
 
     return new Response(JSON.stringify({ success: true, tenant_id: invite.tenant_id, role: invite.role }), {

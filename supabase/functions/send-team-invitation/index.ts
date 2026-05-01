@@ -18,10 +18,11 @@ Deno.serve(async (req) => {
     const { data: { user } } = await supabase.auth.getUser(auth.replace("Bearer ", ""));
     if (!user) return new Response(JSON.stringify({ success: false, error: "unauthorized" }), { status: 401, headers: corsHeaders });
 
-    const { email, role, tenant_id } = await req.json();
+    const { email, role, tenant_id, location_ids } = await req.json();
     if (!email || !role || !tenant_id) {
       return new Response(JSON.stringify({ success: false, error: "missing_params" }), { status: 400, headers: corsHeaders });
     }
+    const locIds: string[] | null = Array.isArray(location_ids) && location_ids.length > 0 ? location_ids : null;
 
     // 権限チェック：オーナーのみ
     const { data: ownerCheck } = await supabase
@@ -39,7 +40,7 @@ Deno.serve(async (req) => {
     const token = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
 
     const { data: invite, error: insertErr } = await supabase.from("tenant_invitations").insert({
-      tenant_id, email: email.toLowerCase(), role, token, invited_by: user.id,
+      tenant_id, email: email.toLowerCase(), role, token, invited_by: user.id, location_ids: locIds,
     }).select().single();
 
     if (insertErr) {
