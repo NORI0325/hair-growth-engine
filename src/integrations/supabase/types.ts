@@ -935,6 +935,39 @@ export type Database = {
         }
         Relationships: []
       }
+      salon_hours: {
+        Row: {
+          close_time: string
+          closed: boolean
+          created_at: string
+          id: string
+          open_time: string
+          owner_id: string
+          updated_at: string
+          weekday: number
+        }
+        Insert: {
+          close_time?: string
+          closed?: boolean
+          created_at?: string
+          id?: string
+          open_time?: string
+          owner_id: string
+          updated_at?: string
+          weekday: number
+        }
+        Update: {
+          close_time?: string
+          closed?: boolean
+          created_at?: string
+          id?: string
+          open_time?: string
+          owner_id?: string
+          updated_at?: string
+          weekday?: number
+        }
+        Relationships: []
+      }
       scheduled_jobs: {
         Row: {
           booking_id: string | null
