@@ -80,14 +80,23 @@ const SalonHoursEditor = () => {
       <div className="eyebrow mb-2 text-[10px] flex items-center gap-2">
         <Clock className="w-3 h-3" />— Salon Business Hours —
       </div>
-      <h2 className="display text-xl mb-2">営業時間 / 定休日</h2>
+      <h2 className="display text-xl mb-2">
+        営業時間 / 定休日
+        {currentLocation && (
+          <span className="ml-3 text-xs font-sans text-gold tracking-wider">— {currentLocation.name}</span>
+        )}
+      </h2>
       <p className="text-xs text-muted-foreground mb-6 leading-loose">
         曜日ごとに営業時間と定休日を設定できます。<br />
         定休日に設定された曜日は、予約画面に空き枠が表示されません。
       </p>
 
-      {loading ? (
+      {locationsLoading || loading ? (
         <div className="py-12 text-center"><Loader2 className="w-5 h-5 animate-spin mx-auto text-gold" /></div>
+      ) : !locationId ? (
+        <div className="py-12 text-center text-sm text-muted-foreground">
+          店舗が見つかりません。サイドバーで店舗を選択してください。
+        </div>
       ) : (
         <div className="space-y-2">
           {WEEKDAYS.map((label, w) => {
