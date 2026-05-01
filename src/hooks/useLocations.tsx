@@ -25,16 +25,18 @@ export const useLocations = () => {
 
   return useQuery({
     queryKey: ["locations", tenantId, user?.id],
-    enabled: !!user && !!tenantId,
+    // tenantId 取得を待たず、ユーザーがログインしていれば実行する。
+    // RLS 側で「自分が所属するテナント / location_members に紐づく店舗」を返してくれる。
+    enabled: !!user,
     queryFn: async (): Promise<Location[]> => {
-      if (!tenantId) return [];
-      // RLS が「テナント所属者は閲覧可能」なので tenant_id でフィルタ
-      const { data, error } = await supabase
+      let query = supabase
         .from("locations")
         .select("id, tenant_id, name, public_slug, is_primary, created_at")
-        .eq("tenant_id", tenantId)
         .order("is_primary", { ascending: false })
         .order("created_at", { ascending: true });
+      // tenantId が分かっているなら絞り込む（複数テナント所属時のノイズ防止）
+      if (tenantId) query = query.eq("tenant_id", tenantId);
+      const { data, error } = await query;
       if (error) throw error;
       return (data ?? []) as Location[];
     },
