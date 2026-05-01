@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { useCurrentLocationId } from "@/hooks/useLocations";
 
 const schema = z.object({
   full_name: z.string().trim().min(1, "お名前は必須です").max(100),
@@ -28,17 +29,20 @@ interface Props {
 
 const AddCustomerDialog = ({ open, onOpenChange, onAdded }: Props) => {
   const { user } = useAuth();
+  const locationId = useCurrentLocationId();
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({ full_name: "", phone: "", email: "", birthday: "", last_visit_date: "", visit_count: "0", total_spent: "0", line_user_id: "" });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
+    if (!locationId) { toast.error("店舗が選択されていません"); return; }
     const parsed = schema.safeParse(form);
     if (!parsed.success) { toast.error(parsed.error.errors[0].message); return; }
     setLoading(true);
     const { error } = await supabase.from("customers").insert({
       owner_id: user.id,
+      location_id: locationId,
       full_name: parsed.data.full_name,
       phone: parsed.data.phone || null,
       email: parsed.data.email || null,
