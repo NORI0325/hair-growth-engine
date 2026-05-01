@@ -258,8 +258,37 @@ const Booking = () => {
                 （最短 {leadHours}時間後 〜 {maxDaysAhead}日先まで）
               </span>
             </p>
-            <Input id="date" type="date" min={minDate} max={maxDate} value={date} onChange={e => setDate(e.target.value)}
-              className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    "w-full justify-start text-left font-serif rounded-none border-x-0 border-t-0 px-0 h-12 hover:bg-transparent",
+                    !date && "text-muted-foreground"
+                  )}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4 text-gold" />
+                  {date ? format(new Date(date + "T00:00:00"), "yyyy年M月d日 (E)", { locale: ja }) : "日付をお選びください"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0 pointer-events-auto" align="start">
+                <Calendar
+                  mode="single"
+                  locale={ja}
+                  selected={date ? new Date(date + "T00:00:00") : undefined}
+                  onSelect={(d) => {
+                    if (!d) return;
+                    const y = d.getFullYear();
+                    const m = String(d.getMonth() + 1).padStart(2, "0");
+                    const day = String(d.getDate()).padStart(2, "0");
+                    setDate(`${y}-${m}-${day}`);
+                  }}
+                  disabled={(d) => d < earliestDate || d > maxDate}
+                  initialFocus
+                  className={cn("p-3 pointer-events-auto")}
+                />
+              </PopoverContent>
+            </Popover>
           </div>
 
           {staffList.length > 0 && (
