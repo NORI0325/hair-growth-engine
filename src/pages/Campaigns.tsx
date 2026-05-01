@@ -12,6 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Send, Loader2, Mail, MessageSquare } from "lucide-react";
+import { useCurrentLocationId } from "@/hooks/useLocations";
 
 interface Campaign {
   id: string;
@@ -69,6 +70,7 @@ const statusInfo = (s: string) => {
 
 const Campaigns = () => {
   const { user } = useAuth();
+  const locationId = useCurrentLocationId();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [open, setOpen] = useState(false);
   const [sending, setSending] = useState(false);
@@ -115,7 +117,7 @@ const Campaigns = () => {
     setCampaigns(enriched as Campaign[]);
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [locationId]);
 
   const applyTemplate = (idx: number) => {
     const t = TEMPLATES[idx];
@@ -124,6 +126,7 @@ const Campaigns = () => {
 
   const handleSend = async () => {
     if (!user) return;
+    if (!locationId) { toast.error("店舗が選択されていません"); return; }
     if (!form.title || !form.email_subject || !form.email_body) { toast.error("タイトル・件名・本文を入力してください"); return; }
     if (form.send_sms && !form.sms_body) { toast.error("SMS本文を入力してください"); return; }
 
@@ -132,6 +135,7 @@ const Campaigns = () => {
       .from("campaigns")
       .insert({
         owner_id: user.id,
+        location_id: locationId,
         title: form.title,
         email_subject: form.email_subject,
         email_body: form.email_body,

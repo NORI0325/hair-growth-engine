@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Upload, FileText, Loader2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
+import { useCurrentLocationId } from "@/hooks/useLocations";
 
 interface ParsedRow {
   full_name: string;
@@ -20,6 +21,7 @@ interface ParsedRow {
 
 const ImportCustomers = () => {
   const { user } = useAuth();
+  const locationId = useCurrentLocationId();
   const [file, setFile] = useState<File | null>(null);
   const [parsed, setParsed] = useState<ParsedRow[]>([]);
   const [importing, setImporting] = useState(false);
@@ -89,13 +91,14 @@ const ImportCustomers = () => {
 
   const handleImport = async () => {
     if (!user || parsed.length === 0) return;
+    if (!locationId) { toast.error("店舗が選択されていません"); return; }
     setImporting(true);
     const errs: string[] = [];
     let success = 0;
 
     const batchSize = 100;
     for (let i = 0; i < parsed.length; i += batchSize) {
-      const batch = parsed.slice(i, i + batchSize).map(r => ({ ...r, owner_id: user.id }));
+      const batch = parsed.slice(i, i + batchSize).map(r => ({ ...r, owner_id: user.id, location_id: locationId }));
       const { error } = await supabase.from("customers").insert(batch);
       if (error) errs.push(`${i + 1}〜${i + batch.length}行目: ${error.message}`);
       else { success += batch.length; setImported(success); }

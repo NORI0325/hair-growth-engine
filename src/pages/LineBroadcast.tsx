@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, Send, MessageCircle, History, Sparkles, BookmarkPlus, BookOpen, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { useCurrentLocationId } from "@/hooks/useLocations";
 import { Input } from "@/components/ui/input";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -36,6 +37,7 @@ const segments = [
 
 const LineBroadcast = () => {
   const { user } = useAuth();
+  const locationId = useCurrentLocationId();
   const [message, setMessage] = useState("");
   const [segment, setSegment] = useState("all");
   const [sending, setSending] = useState(false);
@@ -54,7 +56,7 @@ const LineBroadcast = () => {
     const { data } = await supabase
       .from("line_message_log" as any)
       .select("id, job_type, message, status, error, created_at, customer_id")
-      .eq("owner_id", user.id)
+      .eq("location_id", locationId)
       .order("created_at", { ascending: false })
       .limit(50);
     setLogs((data as any) || []);
@@ -66,7 +68,7 @@ const LineBroadcast = () => {
     const { data } = await supabase
       .from("line_templates")
       .select("*")
-      .eq("owner_id", user.id)
+      .eq("location_id", locationId)
       .order("use_count", { ascending: false });
     setTemplates(data || []);
   };
@@ -75,7 +77,7 @@ const LineBroadcast = () => {
     if (!user) return;
     const { data: all } = await supabase.from("customers")
       .select("id, last_visit_date", { count: "exact" })
-      .eq("owner_id", user.id).eq("is_test", false)
+      .eq("location_id", locationId).eq("is_test", false)
       .not("line_user_id", "is", null);
     const list = all || [];
     const today = new Date();
@@ -91,7 +93,7 @@ const LineBroadcast = () => {
     });
   };
 
-  useEffect(() => { loadLogs(); loadCounts(); loadTemplates(); }, [user]);
+  useEffect(() => { loadLogs(); loadCounts(); loadTemplates(); }, [user, locationId]);
 
   const aiAssist = async (action: string) => {
     if (!message.trim()) { toast.error("本文を入力してください"); return; }
@@ -107,8 +109,9 @@ const LineBroadcast = () => {
 
   const saveAsTemplate = async () => {
     if (!user || !saveTitle.trim() || !message.trim()) return;
+    if (!locationId) { toast.error("店舗が選択されていません"); return; }
     const { error } = await supabase.from("line_templates").insert({
-      owner_id: user.id, title: saveTitle, message,
+      owner_id: user.id, location_id: locationId, title: saveTitle, message,
     });
     if (error) { toast.error(error.message); return; }
     toast.success("テンプレートに保存しました");

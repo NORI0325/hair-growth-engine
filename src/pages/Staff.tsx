@@ -10,6 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { Loader2, Plus, Trash2, Clock, Calendar as CalIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useCurrentLocationId } from "@/hooks/useLocations";
 
 interface Staff {
   id: string;
@@ -43,6 +44,7 @@ const PALETTE = ["#C9A961", "#8B7355", "#A8B5A0", "#9C7C8C", "#6B8E9E", "#B89968
 
 const StaffPage = () => {
   const { user } = useAuth();
+  const locationId = useCurrentLocationId();
   const [staff, setStaff] = useState<Staff[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [timeOffs, setTimeOffs] = useState<TimeOff[]>([]);
@@ -52,12 +54,12 @@ const StaffPage = () => {
   const [timeOffDraft, setTimeOffDraft] = useState({ start: "", end: "", reason: "" });
 
   const load = async () => {
-    if (!user) return;
+    if (!user || !locationId) { setStaff([]); setSchedules([]); setTimeOffs([]); setLoading(false); return; }
     setLoading(true);
     const [s, sc, t] = await Promise.all([
-      supabase.from("staff").select("*").eq("owner_id", user.id).order("sort_order"),
-      supabase.from("staff_schedules").select("*").eq("owner_id", user.id),
-      supabase.from("staff_time_off").select("*").eq("owner_id", user.id).gte("end_at", new Date().toISOString()).order("start_at"),
+      supabase.from("staff").select("*").eq("location_id", locationId).order("sort_order"),
+      supabase.from("staff_schedules").select("*").eq("location_id", locationId),
+      supabase.from("staff_time_off").select("*").eq("location_id", locationId).gte("end_at", new Date().toISOString()).order("start_at"),
     ]);
     setStaff(s.data || []);
     setSchedules(sc.data || []);
@@ -65,13 +67,14 @@ const StaffPage = () => {
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, [user]);
+  useEffect(() => { load(); }, [user, locationId]);
 
   const addStaff = async () => {
-    if (!user || !draft.name.trim()) { toast.error("名前を入力してください"); return; }
+    if (!user || !locationId || !draft.name.trim()) { toast.error("名前を入力してください"); return; }
     const max = staff.reduce((m, s) => Math.max(m, s.sort_order), 0);
     const { error } = await supabase.from("staff").insert({
       owner_id: user.id,
+      location_id: locationId,
       name: draft.name.trim().slice(0, 50),
       display_color: draft.color,
       sort_order: max + 1,
@@ -104,10 +107,11 @@ const StaffPage = () => {
   };
 
   const addTimeOff = async () => {
-    if (!user || !editingStaff) return;
+    if (!user || !editingStaff || !locationId) return;
     if (!timeOffDraft.start || !timeOffDraft.end) { toast.error("日時を入力してください"); return; }
     const { error } = await supabase.from("staff_time_off").insert({
       owner_id: user.id,
+      location_id: locationId,
       staff_id: editingStaff.id,
       start_at: new Date(timeOffDraft.start).toISOString(),
       end_at: new Date(timeOffDraft.end).toISOString(),

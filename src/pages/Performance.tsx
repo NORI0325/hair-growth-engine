@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { TEMPLATE_CATALOG } from "@/lib/templateCatalog";
 import { TrendingUp, Mail, MessageCircle, JapaneseYen, MousePointerClick, Gift } from "lucide-react";
+import { useCurrentLocationId } from "@/hooks/useLocations";
 
 const INCENTIVE_KIND_LABELS: Record<string, string> = {
   gift: "🎁 ギフト",
@@ -30,6 +31,7 @@ interface IncentiveStat {
 
 const Performance = () => {
   const { user } = useAuth();
+  const locationId = useCurrentLocationId();
   const [days, setDays] = useState(30);
   const [emailStats, setEmailStats] = useState<Record<string, { sent: number; failed: number }>>({});
   const [lineStats, setLineStats] = useState<Record<string, { sent: number; failed: number }>>({});
@@ -38,7 +40,7 @@ const Performance = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !locationId) return;
     setLoading(true);
     const since = new Date(Date.now() - days * 86400000).toISOString();
 
@@ -59,14 +61,14 @@ const Performance = () => {
       supabase
         .from("bookings")
         .select("source_template, revenue")
-        .eq("owner_id", user.id)
+        .eq("location_id", locationId)
         .not("source_template", "is", null)
         .gte("created_at", since),
       // 特典マスタ
       supabase
         .from("incentives")
         .select("id, kind, title, estimated_cost")
-        .eq("owner_id", user.id),
+        .eq("location_id", locationId),
       // テンプレ上書き → どのテンプレに何の特典が紐づいているか
       supabase
         .from("template_overrides")
@@ -137,7 +139,7 @@ const Performance = () => {
 
       setLoading(false);
     });
-  }, [user, days]);
+  }, [user, days, locationId]);
 
   const totals = useMemo(() => {
     let emailSent = 0, lineSent = 0, bookingCount = 0, revenue = 0;
