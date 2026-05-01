@@ -1212,6 +1212,15 @@ export type Database = {
       }
       create_anniversary_jobs_for_today: { Args: never; Returns: number }
       create_birthday_jobs_for_month: { Args: never; Returns: number }
+      create_holiday_notice_jobs: {
+        Args: {
+          _end_date?: string
+          _notice_body: string
+          _notice_title: string
+          _start_date?: string
+        }
+        Returns: Json
+      }
       create_reactivation_jobs: { Args: never; Returns: number }
       delete_email: {
         Args: { message_id: number; queue_name: string }
