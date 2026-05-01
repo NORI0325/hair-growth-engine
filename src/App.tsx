@@ -36,7 +36,9 @@ import InviteAccept from "./pages/InviteAccept";
 import Terms from "./pages/Terms";
 import Privacy from "./pages/Privacy";
 import Tokushoho from "./pages/Tokushoho";
+import Locations from "./pages/Locations";
 import NotFound from "./pages/NotFound";
+import { LocationProvider } from "@/hooks/useLocations";
 
 const queryClient = new QueryClient();
 
