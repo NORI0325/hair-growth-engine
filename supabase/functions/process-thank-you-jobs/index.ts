@@ -33,8 +33,8 @@ function jstHourNow(): number {
   return jst.getUTCHours();
 }
 
-// 「次の朝9時(JST)」のtimestamptzを返す
-function nextJstMorning(hour = 9): Date {
+// 「次の朝10時(JST)」のtimestamptzを返す
+function nextJstMorning(hour = 10): Date {
   const now = new Date();
   const jstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
   const targetJst = new Date(Date.UTC(
@@ -51,10 +51,10 @@ function nextJstMorning(hour = 9): Date {
   return new Date(targetJst.getTime() - 9 * 60 * 60 * 1000);
 }
 
-// 配信窓: JST 9:00〜21:00 のみ送信可
+// 配信窓: JST 10:00〜20:00 のみ送信可
 function isWithinSendWindow(): boolean {
   const h = jstHourNow();
-  return h >= 9 && h < 21;
+  return h >= 10 && h < 20;
 }
 
 Deno.serve(async (req) => {
@@ -85,9 +85,9 @@ Deno.serve(async (req) => {
 
     // ====== 深夜帯ガード ======
     // リマインダーは前日の指定時刻配信なのでガード対象外（オーナー設定どおり）
-    // それ以外のジョブで深夜帯(JST 21:00〜翌9:00)に発火したものは、次の朝9時にリスケ
+    // それ以外のジョブで配信窓外(JST 20:00〜翌10:00)に発火したものは、次の朝10時にリスケ
     if (!isWithinSendWindow()) {
-      const targetReschedule = nextJstMorning(9).toISOString();
+      const targetReschedule = nextJstMorning(10).toISOString();
       const reschedTargets = jobs.filter(j => j.job_type !== "reminder");
       if (reschedTargets.length > 0) {
         const ids = reschedTargets.map(j => j.id);
