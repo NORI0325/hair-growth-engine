@@ -86,7 +86,7 @@ const Locations = () => {
   });
 
   return (
-    <RequireRole minRole="owner">
+    <RequireRole role="owner">
       <AppLayout>
         <div className="space-y-8">
           <div>
