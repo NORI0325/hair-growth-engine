@@ -311,6 +311,35 @@ const Index = () => {
         </div>
       </section>
 
+      {/* Pricing */}
+      <section id="pricing" className="py-32 bg-secondary/30 border-y border-border/60">
+        <div className="container mx-auto px-8 max-w-3xl text-center">
+          <p className="eyebrow mb-4">No.04 — Pricing</p>
+          <h2 className="display text-3xl md:text-5xl mb-12">
+            シンプルな<span className="font-serif-en italic text-gold">1プラン</span>
+          </h2>
+          <div className="border border-border bg-background p-12 max-w-md mx-auto">
+            <p className="eyebrow text-xs mb-4">— Standard —</p>
+            <div className="mb-2">
+              <span className="text-5xl font-bold">¥9,800</span>
+              <span className="text-muted-foreground ml-2">/月（税込）</span>
+            </div>
+            <p className="text-sm text-muted-foreground mb-6">最初の60日間は無料</p>
+            <div className="hairline mb-6" />
+            <ul className="text-left text-sm space-y-3 mb-8">
+              {["顧客・予約・メッセージ無制限", "LINE / メール / SMS 配信", "AIアシスタント", "スタッフ無制限", "全機能利用可能"].map((f) => (
+                <li key={f} className="flex items-center gap-2">
+                  <span className="text-gold">✓</span>{f}
+                </li>
+              ))}
+            </ul>
+            <Link to="/auth">
+              <Button className="w-full rounded-none py-6">60日間 無料で始める</Button>
+            </Link>
+          </div>
+        </div>
+      </section>
+
       {/* CTA */}
       <section className="py-32 bg-primary text-primary-foreground">
         <div className="container mx-auto px-8 text-center max-w-3xl">
@@ -330,7 +359,11 @@ const Index = () => {
       <footer className="border-t border-border/60 py-10">
         <div className="container mx-auto px-8 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-muted-foreground">
           <div className="font-serif-en tracking-luxury">SALON BOOST · EST. 2026</div>
-          <div className="tracking-wider">For salons who care about every guest.</div>
+          <div className="flex gap-4">
+            <Link to="/terms" className="hover:text-foreground">利用規約</Link>
+            <Link to="/privacy" className="hover:text-foreground">プライバシーポリシー</Link>
+            <Link to="/tokushoho" className="hover:text-foreground">特定商取引法表記</Link>
+          </div>
         </div>
       </footer>
     </div>
