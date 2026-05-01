@@ -51,10 +51,10 @@ function nextJstMorning(hour = 10): Date {
   return new Date(targetJst.getTime() - 9 * 60 * 60 * 1000);
 }
 
-// 配信窓: JST 9:00〜21:00 のみ送信可
+// 配信窓: JST 10:00〜20:00 のみ送信可
 function isWithinSendWindow(): boolean {
   const h = jstHourNow();
-  return h >= 9 && h < 21;
+  return h >= 10 && h < 20;
 }
 
 Deno.serve(async (req) => {
