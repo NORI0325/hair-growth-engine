@@ -29,16 +29,6 @@ const Team = () => {
   const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([]);
   const [allLocations, setAllLocations] = useState(true);
 
-const Team = () => {
-  const tenantId = useTenantId();
-  const role = useTenantRole();
-  const canManage = hasMinRole(role, "owner");
-  const [members, setMembers] = useState<Member[]>([]);
-  const [invites, setInvites] = useState<Invitation[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState("staff");
-
   const load = async () => {
     if (!tenantId) return;
     const { data: m } = await supabase
