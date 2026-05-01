@@ -36,7 +36,9 @@ import InviteAccept from "./pages/InviteAccept";
 import Terms from "./pages/Terms";
 import Privacy from "./pages/Privacy";
 import Tokushoho from "./pages/Tokushoho";
+import Locations from "./pages/Locations";
 import NotFound from "./pages/NotFound";
+import { LocationProvider } from "@/hooks/useLocations";
 
 const queryClient = new QueryClient();
 
@@ -47,6 +49,7 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
+          <LocationProvider>
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
@@ -73,6 +76,7 @@ const App = () => (
             <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
             <Route path="/billing" element={<ProtectedRoute><Billing /></ProtectedRoute>} />
             <Route path="/team" element={<ProtectedRoute><Team /></ProtectedRoute>} />
+            <Route path="/locations" element={<ProtectedRoute><Locations /></ProtectedRoute>} />
             <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
             <Route path="/invite/:token" element={<InviteAccept />} />
             <Route path="/terms" element={<Terms />} />
@@ -81,6 +85,7 @@ const App = () => (
             <Route path="/unsubscribe" element={<Unsubscribe />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
+          </LocationProvider>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>

@@ -4,9 +4,10 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import {
-  LayoutDashboard, Users, Upload, Megaphone, Calendar, LogOut, Share2, Settings as SettingsIcon, Mail, MessageCircle, FileText, CalendarClock, TrendingUp, Scissors, UserCog, Gift, Inbox, Download, CreditCard, Users2,
+  LayoutDashboard, Users, Upload, Megaphone, Calendar, LogOut, Share2, Settings as SettingsIcon, Mail, MessageCircle, FileText, CalendarClock, TrendingUp, Scissors, UserCog, Gift, Inbox, Download, CreditCard, Users2, Store,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { LocationSwitcher } from "@/components/LocationSwitcher";
 
 const navItems = [
   { to: "/dashboard", label: "ダッシュボード", en: "Overview", icon: LayoutDashboard },
@@ -26,6 +27,7 @@ const navItems = [
   { to: "/email-logs", label: "メール履歴", en: "Email Logs", icon: Mail },
   { to: "/share", label: "公開URL", en: "Share", icon: Share2 },
   { to: "/team", label: "チーム", en: "Team", icon: Users2 },
+  { to: "/locations", label: "店舗管理", en: "Locations", icon: Store },
   { to: "/billing", label: "契約・支払い", en: "Billing", icon: CreditCard },
   { to: "/settings", label: "設定", en: "Settings", icon: SettingsIcon },
 ];
@@ -65,6 +67,10 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
           <div className="font-serif-en text-3xl text-gold tracking-luxury mb-1">SB</div>
           <div className="font-serif text-sm tracking-wider">Salon Boost</div>
           <div className="eyebrow text-[10px] text-sidebar-foreground/50 mt-1">Est. 2026</div>
+        </div>
+
+        <div className="border-b border-sidebar-border/60">
+          <LocationSwitcher />
         </div>
 
         <nav className="flex-1 px-4 py-8 space-y-1">
