@@ -869,6 +869,8 @@ export type Database = {
           line_add_friend_url: string | null
           line_channel_access_token: string | null
           line_channel_secret: string | null
+          onboarding_completed_at: string | null
+          onboarding_progress: Json
           open_time: string | null
           owner_notification_email: string | null
           public_menus: string[] | null
@@ -902,6 +904,8 @@ export type Database = {
           line_add_friend_url?: string | null
           line_channel_access_token?: string | null
           line_channel_secret?: string | null
+          onboarding_completed_at?: string | null
+          onboarding_progress?: Json
           open_time?: string | null
           owner_notification_email?: string | null
           public_menus?: string[] | null
@@ -935,6 +939,8 @@ export type Database = {
           line_add_friend_url?: string | null
           line_channel_access_token?: string | null
           line_channel_secret?: string | null
+          onboarding_completed_at?: string | null
+          onboarding_progress?: Json
           open_time?: string | null
           owner_notification_email?: string | null
           public_menus?: string[] | null
@@ -1146,6 +1152,48 @@ export type Database = {
           },
         ]
       }
+      subscriptions: {
+        Row: {
+          cancel_at_period_end: boolean
+          created_at: string
+          current_period_end: string | null
+          locked_at: string | null
+          owner_id: string
+          plan: string
+          status: string
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          trial_ends_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          cancel_at_period_end?: boolean
+          created_at?: string
+          current_period_end?: string | null
+          locked_at?: string | null
+          owner_id: string
+          plan?: string
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          trial_ends_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          cancel_at_period_end?: boolean
+          created_at?: string
+          current_period_end?: string | null
+          locked_at?: string | null
+          owner_id?: string
+          plan?: string
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          trial_ends_at?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       suppressed_emails: {
         Row: {
           created_at: string
@@ -1224,6 +1272,96 @@ export type Database = {
         }
         Relationships: []
       }
+      tenant_invitations: {
+        Row: {
+          accepted_at: string | null
+          created_at: string
+          email: string
+          expires_at: string
+          id: string
+          invited_by: string
+          role: Database["public"]["Enums"]["app_role"]
+          tenant_id: string
+          token: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          created_at?: string
+          email: string
+          expires_at?: string
+          id?: string
+          invited_by: string
+          role: Database["public"]["Enums"]["app_role"]
+          tenant_id: string
+          token?: string
+        }
+        Update: {
+          accepted_at?: string | null
+          created_at?: string
+          email?: string
+          expires_at?: string
+          id?: string
+          invited_by?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          tenant_id?: string
+          token?: string
+        }
+        Relationships: []
+      }
+      tenant_members: {
+        Row: {
+          accepted_at: string
+          created_at: string
+          invited_at: string | null
+          role: Database["public"]["Enums"]["app_role"]
+          tenant_id: string
+          user_id: string
+        }
+        Insert: {
+          accepted_at?: string
+          created_at?: string
+          invited_at?: string | null
+          role: Database["public"]["Enums"]["app_role"]
+          tenant_id: string
+          user_id: string
+        }
+        Update: {
+          accepted_at?: string
+          created_at?: string
+          invited_at?: string | null
+          role?: Database["public"]["Enums"]["app_role"]
+          tenant_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      tenant_usage_counters: {
+        Row: {
+          emails_sent: number
+          line_sent: number
+          owner_id: string
+          period_start: string
+          sms_sent: number
+          updated_at: string
+        }
+        Insert: {
+          emails_sent?: number
+          line_sent?: number
+          owner_id: string
+          period_start: string
+          sms_sent?: number
+          updated_at?: string
+        }
+        Update: {
+          emails_sent?: number
+          line_sent?: number
+          owner_id?: string
+          period_start?: string
+          sms_sent?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -1274,6 +1412,7 @@ export type Database = {
         Returns: Json
       }
       create_reactivation_jobs: { Args: never; Returns: number }
+      current_tenant_id: { Args: never; Returns: string }
       delete_email: {
         Args: { message_id: number; queue_name: string }
         Returns: boolean
@@ -1322,6 +1461,18 @@ export type Database = {
           _role: Database["public"]["Enums"]["app_role"]
           _user_id: string
         }
+        Returns: boolean
+      }
+      has_tenant_role: {
+        Args: {
+          _min_role: Database["public"]["Enums"]["app_role"]
+          _tenant_id: string
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      is_tenant_member: {
+        Args: { _tenant_id: string; _user_id: string }
         Returns: boolean
       }
       move_to_dlq: {
@@ -1382,7 +1533,7 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: "owner" | "staff"
+      app_role: "owner" | "staff" | "manager" | "super_admin"
       booking_status:
         | "pending"
         | "confirmed"
@@ -1518,7 +1669,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["owner", "staff"],
+      app_role: ["owner", "staff", "manager", "super_admin"],
       booking_status: [
         "pending",
         "confirmed",
