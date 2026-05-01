@@ -33,8 +33,8 @@ function jstHourNow(): number {
   return jst.getUTCHours();
 }
 
-// 「次の朝9時(JST)」のtimestamptzを返す
-function nextJstMorning(hour = 9): Date {
+// 「次の朝10時(JST)」のtimestamptzを返す
+function nextJstMorning(hour = 10): Date {
   const now = new Date();
   const jstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
   const targetJst = new Date(Date.UTC(
