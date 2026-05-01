@@ -1682,6 +1682,14 @@ export type Database = {
         Args: { _total_spent: number; _visit_count: number }
         Returns: string
       }
+      can_access_location: {
+        Args: { _location_id: string; _user_id: string }
+        Returns: boolean
+      }
+      can_manage_location: {
+        Args: { _location_id: string; _user_id: string }
+        Returns: boolean
+      }
       cancel_orphan_reactivation_jobs: {
         Args: { _owner_id: string }
         Returns: number
