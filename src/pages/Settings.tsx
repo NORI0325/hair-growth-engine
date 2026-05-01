@@ -13,6 +13,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import HolidayNoticeBroadcast from "@/components/HolidayNoticeBroadcast";
 
 const WEBHOOK_URL = "https://miyedioemkzhetphjzzg.supabase.co/functions/v1/line-webhook";
 
@@ -683,6 +684,8 @@ const Settings = () => {
             )}
           </div>
         </section>
+
+        <HolidayNoticeBroadcast />
 
         <Button onClick={save} disabled={saving}
           className="rounded-none px-12 py-6 text-xs tracking-luxury bg-primary hover:bg-primary-glow">
