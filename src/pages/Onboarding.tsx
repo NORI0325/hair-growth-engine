@@ -25,7 +25,7 @@ const Onboarding = () => {
   const { user, loading: authLoading } = useAuth();
   const [step, setStep] = useState<Step>(1);
   const [saving, setSaving] = useState(false);
-  const [salon, setSalon] = useState({ salon_name: "", phone: "", address: "", open_time: "10:00", close_time: "19:00" });
+  const [salon, setSalon] = useState({ salon_name: "", open_time: "10:00", close_time: "19:00" });
   const [menus, setMenus] = useState<{ name: string; duration: number; price: number }[]>([
     { name: "カット", duration: 60, price: 5500 },
     { name: "カラー", duration: 90, price: 8800 },
@@ -41,12 +41,10 @@ const Onboarding = () => {
   useEffect(() => {
     if (!user) return;
     (async () => {
-      const { data } = await supabase.from("profiles").select("salon_name, phone, address, open_time, close_time, onboarding_progress").eq("id", user.id).maybeSingle();
+      const { data } = await supabase.from("profiles").select("salon_name, open_time, close_time, onboarding_progress").eq("id", user.id).maybeSingle();
       if (data) {
         setSalon({
           salon_name: data.salon_name ?? "",
-          phone: data.phone ?? "",
-          address: data.address ?? "",
           open_time: (data.open_time as string)?.slice(0, 5) ?? "10:00",
           close_time: (data.close_time as string)?.slice(0, 5) ?? "19:00",
         });
@@ -69,7 +67,7 @@ const Onboarding = () => {
     if (!salon.salon_name.trim()) { toast.error("サロン名を入力してください"); return; }
     setSaving(true);
     const { error } = await supabase.from("profiles").update({
-      salon_name: salon.salon_name, phone: salon.phone, address: salon.address,
+      salon_name: salon.salon_name,
       open_time: salon.open_time, close_time: salon.close_time,
     }).eq("id", user.id);
     setSaving(false);
@@ -132,8 +130,6 @@ const Onboarding = () => {
             <div className="space-y-4">
               <h2 className="text-xl font-semibold">基本情報</h2>
               <div><Label>サロン名 *</Label><Input value={salon.salon_name} onChange={(e) => setSalon({ ...salon, salon_name: e.target.value })} /></div>
-              <div><Label>電話番号</Label><Input value={salon.phone} onChange={(e) => setSalon({ ...salon, phone: e.target.value })} /></div>
-              <div><Label>住所</Label><Input value={salon.address} onChange={(e) => setSalon({ ...salon, address: e.target.value })} /></div>
               <div className="grid grid-cols-2 gap-4">
                 <div><Label>開店時刻</Label><Input type="time" value={salon.open_time} onChange={(e) => setSalon({ ...salon, open_time: e.target.value })} /></div>
                 <div><Label>閉店時刻</Label><Input type="time" value={salon.close_time} onChange={(e) => setSalon({ ...salon, close_time: e.target.value })} /></div>
