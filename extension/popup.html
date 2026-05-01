@@ -1,65 +1,148 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <title>サロンボード顧客エクスポーター</title>
+  <meta charset="UTF-8" />
+  <title>Salon Boost — SalonBoard 取込</title>
   <style>
-    body { font-family: -apple-system, "Hiragino Sans", sans-serif; width: 340px; padding: 16px; margin: 0; background: #fafaf7; color: #1a1a1a; }
-    h1 { font-size: 14px; margin: 0 0 4px; letter-spacing: 0.1em; }
-    .sub { font-size: 11px; color: #888; margin-bottom: 16px; letter-spacing: 0.05em; }
-    .section { border-top: 1px solid #d4d4d0; padding: 14px 0; }
-    .section h2 { font-size: 12px; margin: 0 0 6px; letter-spacing: 0.08em; }
-    .section p { font-size: 11px; color: #666; margin: 0 0 10px; line-height: 1.5; }
-    button { width: 100%; padding: 10px; border: 1px solid #1a1a1a; background: #1a1a1a; color: #fff; font-size: 11px; letter-spacing: 0.15em; cursor: pointer; border-radius: 0; transition: opacity .15s; }
-    button:hover { opacity: 0.85; }
-    button.secondary { background: #fff; color: #1a1a1a; }
-    button:disabled { opacity: 0.4; cursor: not-allowed; }
-    .status { font-size: 11px; color: #b8860b; margin-top: 12px; padding: 8px; background: #fdfaf0; border-left: 2px solid #c9a961; line-height: 1.5; min-height: 16px; }
-    .row { display: flex; gap: 8px; }
-    .row button { flex: 1; }
-    label { font-size: 11px; display: block; margin: 6px 0 4px; color: #555; }
-    input { width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 0; font-size: 12px; box-sizing: border-box; }
-    label.check { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
-    label.check input { width: auto; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", sans-serif;
+      width: 460px;
+      margin: 0;
+      padding: 16px;
+      color: #1a1a1a;
+      background: #fafaf7;
+    }
+    h1 { font-size: 16px; margin: 0 0 4px; letter-spacing: 0.05em; color: #1a1a1a; }
+    .brand { font-size: 10px; letter-spacing: 0.2em; color: #b08e4f; margin-bottom: 14px; text-transform: uppercase; }
+    .section {
+      border: 1px solid #e5e2da;
+      padding: 12px;
+      margin-bottom: 12px;
+      background: #fff;
+    }
+    .section-title {
+      font-size: 10px;
+      letter-spacing: 0.2em;
+      color: #b08e4f;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+    }
+    .row { margin-bottom: 8px; }
+    label { display: block; font-size: 12px; margin-bottom: 4px; color: #444; }
+    input[type="text"], input[type="email"], input[type="password"], input[type="number"], select {
+      width: 100%; box-sizing: border-box; padding: 8px;
+      border: 1px solid #d4cfc4; font-size: 13px; background: white;
+    }
+    .inline { display: flex; gap: 8px; }
+    .inline > div { flex: 1; }
+    .checkbox { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12px; }
+    button {
+      border: none; padding: 10px 12px; font-size: 12px; cursor: pointer;
+      letter-spacing: 0.1em; font-weight: 500;
+    }
+    .btn-primary { background: #1a1a1a; color: #fff; }
+    .btn-primary:hover { background: #b08e4f; }
+    .btn-secondary { background: #f0ece4; color: #1a1a1a; }
+    .btn-danger { background: transparent; color: #c4554d; padding: 4px 8px; font-size: 11px; }
+    .buttons { display: flex; gap: 8px; margin-top: 8px; }
+    #status, #login-status {
+      font-size: 11px; white-space: pre-wrap; color: #1f2937;
+      background: #f7f5ef; padding: 10px; min-height: 40px; line-height: 1.6;
+      border-left: 2px solid #b08e4f;
+    }
+    #status.error, #login-status.error { color: #991b1b; background: #fef2f2; border-left-color: #c4554d; }
+    #status.success, #login-status.success { color: #14532d; background: #f0fdf4; border-left-color: #22c55e; }
+    .hint { font-size: 10px; color: #6b7280; line-height: 1.6; margin-top: 6px; }
+    .user-info { font-size: 11px; color: #444; padding: 6px 0; display: flex; justify-content: space-between; align-items: center; }
+    .badge {
+      display: inline-block; padding: 2px 6px; font-size: 9px;
+      background: #b08e4f; color: white; letter-spacing: 0.1em;
+    }
+    .hidden { display: none !important; }
   </style>
 </head>
 <body>
-  <h1>SALON BOARD EXPORTER</h1>
-  <div class="sub">お客様情報バックアップツール</div>
+  <h1>Salon Boost</h1>
+  <div class="brand">SalonBoard Import · v2.0</div>
 
-  <div class="section">
-    <h2>① 一覧スキャン（高速）</h2>
-    <p>お客様一覧の全ページを巡回し、基本情報をCSV化します（約1〜2分）</p>
-    <label>開始ページ</label>
-    <input type="number" id="startPage" value="1" min="1">
-    <label>終了ページ（空欄=最終まで）</label>
-    <input type="number" id="endPage" placeholder="例: 26">
-    <label>ページ間隔（ミリ秒）</label>
-    <input type="number" id="delay" value="2500" min="1000">
-    <label class="check"><input type="checkbox" id="resetBeforeScan" checked> 開始時に保存済みデータをクリア</label>
-    <div style="height:10px"></div>
-    <button id="scanList">一覧をスキャン開始</button>
-    <div style="height:6px"></div>
-    <button id="stopScan" class="secondary">⏸ スキャン停止</button>
-  </div>
-
-  <div class="section">
-    <h2>② 詳細スキャン（完全版）</h2>
-    <p>各お客様のページを<strong>1件ずつ実際に開いて</strong>、電話・誕生日・住所・血液型・メモ・来店履歴まで全て取得します。お客様一覧画面を開いた状態で開始してください。途中で停止/再開も可能です。</p>
-    <button id="scanDetails" class="secondary">詳細スキャン開始</button>
-  </div>
-
-  <div class="section">
-    <h2>データ操作</h2>
+  <!-- ログイン画面 -->
+  <div id="login-section" class="section">
+    <div class="section-title">— Sign In —</div>
+    <p style="font-size: 11px; color: #555; margin: 0 0 10px;">
+      Salon Boost のアカウントでログインしてください。<br>
+      ご契約が有効な間のみ動作します。
+    </p>
     <div class="row">
-      <button id="downloadCsv" class="secondary">CSVダウンロード</button>
-      <button id="clearData" class="secondary">クリア</button>
+      <label for="email">メールアドレス</label>
+      <input id="email" type="email" placeholder="you@example.com" />
     </div>
-    <div style="height:8px"></div>
-    <button id="debugBtn" class="secondary">🔍 現在ページを診断</button>
+    <div class="row">
+      <label for="password">パスワード</label>
+      <input id="password" type="password" />
+    </div>
+    <div class="buttons">
+      <button id="loginBtn" class="btn-primary" style="flex: 1;">ログイン</button>
+    </div>
+    <div id="login-status" style="margin-top: 8px;"></div>
   </div>
 
-  <div class="status" id="status">使い方: お客様一覧画面を開いた状態で「スキャン開始」を押してください</div>
+  <!-- メイン画面（ログイン後表示） -->
+  <div id="main-section" class="hidden">
+    <div class="section">
+      <div class="user-info">
+        <div>
+          <span id="user-email" style="font-weight: 500;"></span>
+          <span class="badge" id="sub-badge">ACTIVE</span>
+        </div>
+        <button id="logoutBtn" class="btn-danger">ログアウト</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">— Target Store —</div>
+      <div class="row">
+        <label for="locationSelect">取込先の店舗</label>
+        <select id="locationSelect"></select>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">— Settings —</div>
+      <div class="inline">
+        <div class="row">
+          <label for="maxPages">最大ページ数</label>
+          <input id="maxPages" type="number" min="1" step="1" value="999" />
+        </div>
+        <div class="row">
+          <label for="pageDelayMs">一覧ページ待機(ms)</label>
+          <input id="pageDelayMs" type="number" min="0" step="100" value="500" />
+        </div>
+      </div>
+      <div class="row">
+        <label for="detailDelayMs">詳細ページ待機(ms)</label>
+        <input id="detailDelayMs" type="number" min="0" step="100" value="500" />
+      </div>
+      <label class="checkbox">
+        <input id="includeDetails" type="checkbox" checked />
+        顧客詳細も取得する（電話・メール・誕生日）
+      </label>
+
+      <div class="buttons">
+        <button id="testBtn" class="btn-secondary" style="flex: 1;">テスト取得</button>
+        <button id="sendBtn" class="btn-primary" style="flex: 2;">Salon Boost へ送信</button>
+      </div>
+      <div class="hint">
+        ・データは <b>Salon Boost のサーバーに直接送信</b> されます（CSVは作成されません）<br>
+        ・SalonBoardの顧客一覧ページを開いてから実行してください<br>
+        ・実行中はポップアップを閉じないでください
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">— Status —</div>
+      <div id="status">SalonBoardの「お客様一覧」ページを開いてから実行してください。</div>
+    </div>
+  </div>
 
   <script src="popup.js"></script>
 </body>

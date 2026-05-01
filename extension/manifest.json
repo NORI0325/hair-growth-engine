@@ -1,29 +1,20 @@
 {
   "manifest_version": 3,
-  "name": "Salon Board Customer Exporter",
-  "version": "1.8.0",
-  "description": "サロンボードのお客様情報を一覧/詳細から自動抽出してCSVバックアップします",
-  "permissions": ["activeTab", "storage", "downloads", "scripting"],
-  "host_permissions": [
-    "https://salonboard.com/*",
-    "https://*.salonboard.com/*"
-  ],
+  "name": "Salon Boost — SalonBoard 取込",
+  "version": "2.0.0",
+  "description": "SalonBoardの顧客情報をSalon Boostへ安全に取り込みます（CSV保存なし・契約中のみ動作）",
   "action": {
     "default_popup": "popup.html",
-    "default_title": "サロンボード顧客エクスポーター"
+    "default_title": "Salon Boost SalonBoard取込"
   },
-  "content_scripts": [
-    {
-      "matches": [
-        "https://salonboard.com/*",
-        "https://*.salonboard.com/*"
-      ],
-      "js": ["content.js"],
-      "run_at": "document_idle"
-    }
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "tabs"
   ],
-  "icons": {
-    "48": "icon.png",
-    "128": "icon.png"
-  }
+  "host_permissions": [
+    "https://salonboard.com/*",
+    "https://miyedioemkzhetphjzzg.supabase.co/*"
+  ]
 }
