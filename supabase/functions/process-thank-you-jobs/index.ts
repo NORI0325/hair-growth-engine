@@ -85,9 +85,9 @@ Deno.serve(async (req) => {
 
     // ====== 深夜帯ガード ======
     // リマインダーは前日の指定時刻配信なのでガード対象外（オーナー設定どおり）
-    // それ以外のジョブで深夜帯(JST 21:00〜翌9:00)に発火したものは、次の朝9時にリスケ
+    // それ以外のジョブで配信窓外(JST 20:00〜翌10:00)に発火したものは、次の朝10時にリスケ
     if (!isWithinSendWindow()) {
-      const targetReschedule = nextJstMorning(9).toISOString();
+      const targetReschedule = nextJstMorning(10).toISOString();
       const reschedTargets = jobs.filter(j => j.job_type !== "reminder");
       if (reschedTargets.length > 0) {
         const ids = reschedTargets.map(j => j.id);
