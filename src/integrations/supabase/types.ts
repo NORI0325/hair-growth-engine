@@ -403,7 +403,9 @@ export type Database = {
           email: string | null
           full_name: string
           id: string
+          imported_from: string | null
           is_test: boolean
+          last_imported_at: string | null
           last_visit_date: string | null
           line_user_id: string | null
           location_id: string | null
@@ -411,6 +413,8 @@ export type Database = {
           owner_id: string
           phone: string | null
           referred_by: string | null
+          salonboard_customer_id: string | null
+          salonboard_customer_no: string | null
           total_spent: number
           updated_at: string
           visit_count: number
@@ -421,7 +425,9 @@ export type Database = {
           email?: string | null
           full_name: string
           id?: string
+          imported_from?: string | null
           is_test?: boolean
+          last_imported_at?: string | null
           last_visit_date?: string | null
           line_user_id?: string | null
           location_id?: string | null
@@ -429,6 +435,8 @@ export type Database = {
           owner_id: string
           phone?: string | null
           referred_by?: string | null
+          salonboard_customer_id?: string | null
+          salonboard_customer_no?: string | null
           total_spent?: number
           updated_at?: string
           visit_count?: number
@@ -439,7 +447,9 @@ export type Database = {
           email?: string | null
           full_name?: string
           id?: string
+          imported_from?: string | null
           is_test?: boolean
+          last_imported_at?: string | null
           last_visit_date?: string | null
           line_user_id?: string | null
           location_id?: string | null
@@ -447,6 +457,8 @@ export type Database = {
           owner_id?: string
           phone?: string | null
           referred_by?: string | null
+          salonboard_customer_id?: string | null
+          salonboard_customer_no?: string | null
           total_spent?: number
           updated_at?: string
           visit_count?: number
@@ -545,6 +557,36 @@ export type Database = {
           id?: string
           token?: string
           used_at?: string | null
+        }
+        Relationships: []
+      }
+      extension_download_logs: {
+        Row: {
+          created_at: string
+          id: string
+          ip: string | null
+          tenant_id: string | null
+          user_agent: string | null
+          user_id: string
+          version: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          ip?: string | null
+          tenant_id?: string | null
+          user_agent?: string | null
+          user_id: string
+          version?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          ip?: string | null
+          tenant_id?: string | null
+          user_agent?: string | null
+          user_id?: string
+          version?: string | null
         }
         Relationships: []
       }
@@ -1128,6 +1170,57 @@ export type Database = {
           owner_id?: string
           updated_at?: string
           weekday?: number
+        }
+        Relationships: []
+      }
+      salonboard_import_logs: {
+        Row: {
+          created_at: string
+          error: string | null
+          id: string
+          inserted_count: number
+          location_id: string | null
+          meta: Json | null
+          owner_id: string
+          reservations_received: number
+          skipped_count: number
+          source: string
+          status: string
+          total_received: number
+          updated_count: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          error?: string | null
+          id?: string
+          inserted_count?: number
+          location_id?: string | null
+          meta?: Json | null
+          owner_id: string
+          reservations_received?: number
+          skipped_count?: number
+          source?: string
+          status?: string
+          total_received?: number
+          updated_count?: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          error?: string | null
+          id?: string
+          inserted_count?: number
+          location_id?: string | null
+          meta?: Json | null
+          owner_id?: string
+          reservations_received?: number
+          skipped_count?: number
+          source?: string
+          status?: string
+          total_received?: number
+          updated_count?: number
+          user_id?: string
         }
         Relationships: []
       }
