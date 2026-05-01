@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, Send, MessageCircle, History, Sparkles, BookmarkPlus, BookOpen, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { useCurrentLocationId } from "@/hooks/useLocations";
 import { Input } from "@/components/ui/input";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -36,6 +37,7 @@ const segments = [
 
 const LineBroadcast = () => {
   const { user } = useAuth();
+  const locationId = useCurrentLocationId();
   const [message, setMessage] = useState("");
   const [segment, setSegment] = useState("all");
   const [sending, setSending] = useState(false);
@@ -107,8 +109,9 @@ const LineBroadcast = () => {
 
   const saveAsTemplate = async () => {
     if (!user || !saveTitle.trim() || !message.trim()) return;
+    if (!locationId) { toast.error("店舗が選択されていません"); return; }
     const { error } = await supabase.from("line_templates").insert({
-      owner_id: user.id, title: saveTitle, message,
+      owner_id: user.id, location_id: locationId, title: saveTitle, message,
     });
     if (error) { toast.error(error.message); return; }
     toast.success("テンプレートに保存しました");

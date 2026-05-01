@@ -13,6 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Gift, Sparkles, Crown, Star, Leaf, Percent } from "lucide-react";
+import { useCurrentLocationId } from "@/hooks/useLocations";
 
 type Incentive = {
   id?: string;
@@ -52,30 +53,32 @@ const EMPTY: Incentive = {
 
 const Incentives = () => {
   const { user } = useAuth();
+  const locationId = useCurrentLocationId();
   const [items, setItems] = useState<Incentive[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Incentive | null>(null);
   const [open, setOpen] = useState(false);
 
   const load = async () => {
-    if (!user) return;
+    if (!user || !locationId) { setItems([]); setLoading(false); return; }
     setLoading(true);
     const { data, error } = await supabase
       .from("incentives")
       .select("*")
-      .eq("owner_id", user.id)
+      .eq("location_id", locationId)
       .order("sort_order", { ascending: true });
     if (error) toast.error("読込失敗: " + error.message);
     setItems((data as Incentive[]) || []);
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, [user]);
+  useEffect(() => { load(); }, [user, locationId]);
 
   const handleSave = async () => {
     if (!editing || !user) return;
+    if (!locationId) { toast.error("店舗が選択されていません"); return; }
     if (!editing.title.trim()) { toast.error("特典名を入力してください"); return; }
-    const payload = { ...editing, owner_id: user.id };
+    const payload = { ...editing, owner_id: user.id, location_id: locationId };
     const { error } = editing.id
       ? await supabase.from("incentives").update(payload).eq("id", editing.id)
       : await supabase.from("incentives").insert(payload);

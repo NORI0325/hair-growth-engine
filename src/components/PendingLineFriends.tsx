@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Label } from "@/components/ui/label";
 import { Loader2, MessageCircle, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
+import { useCurrentLocationId } from "@/hooks/useLocations";
 
 interface PendingFriend {
   id: string;
@@ -22,6 +23,7 @@ interface Props {
 
 const PendingLineFriends = ({ onConverted }: Props) => {
   const { user } = useAuth();
+  const locationId = useCurrentLocationId();
   const [items, setItems] = useState<PendingFriend[]>([]);
   const [loading, setLoading] = useState(true);
   const [target, setTarget] = useState<PendingFriend | null>(null);
@@ -30,18 +32,18 @@ const PendingLineFriends = ({ onConverted }: Props) => {
   const [collapsed, setCollapsed] = useState(false);
 
   const load = async () => {
-    if (!user) return;
+    if (!user || !locationId) { setItems([]); setLoading(false); return; }
     setLoading(true);
     const { data } = await supabase
       .from("line_pending_friends")
       .select("*")
-      .eq("owner_id", user.id)
+      .eq("location_id", locationId)
       .order("created_at", { ascending: false });
     setItems(data || []);
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, [user]);
+  useEffect(() => { load(); }, [user, locationId]);
 
   const openConvert = (p: PendingFriend) => {
     setTarget(p);
@@ -54,11 +56,13 @@ const PendingLineFriends = ({ onConverted }: Props) => {
 
   const convert = async () => {
     if (!user || !target) return;
+    if (!locationId) { toast.error("店舗が選択されていません"); return; }
     if (!form.full_name.trim()) { toast.error("お名前を入力してください"); return; }
     setSaving(true);
     // 顧客作成
     const { error } = await supabase.from("customers").insert({
       owner_id: user.id,
+      location_id: locationId,
       full_name: form.full_name.trim(),
       phone: form.phone.trim() || null,
       email: form.email.trim() || null,

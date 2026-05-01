@@ -14,6 +14,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { Sparkles, Save, RotateCcw, Eye, Send, Tag, Gift } from "lucide-react";
+import { useCurrentLocationId } from "@/hooks/useLocations";
 
 type Override = {
   id?: string;
@@ -34,6 +35,7 @@ const EMPTY: Override = {
 
 const Templates = () => {
   const { user } = useAuth();
+  const locationId = useCurrentLocationId();
   const [channel, setChannel] = useState<TemplateChannel>("email");
   const [selectedKey, setSelectedKey] = useState<string>(TEMPLATE_CATALOG[0].key);
   const [override, setOverride] = useState<Override>(EMPTY);

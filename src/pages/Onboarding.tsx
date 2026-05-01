@@ -81,23 +81,28 @@ const Onboarding = () => {
     const valid = menus.filter((m) => m.name.trim() && m.duration > 0);
     if (valid.length < 3) { toast.error("最低3つのメニューを登録してください"); return; }
     setSaving(true);
+    // ユーザー作成時の既定店舗を取得
+    const { data: loc } = await supabase.from("locations").select("id").eq("tenant_id", user.id).order("is_primary", { ascending: false }).limit(1).maybeSingle();
+    const locId = loc?.id;
     const { error } = await supabase.from("menu_items").insert(
       valid.map((m, i) => ({
-        owner_id: user.id, name: m.name, duration_minutes: m.duration, price: m.price, sort_order: i, active: true,
+        owner_id: user.id, location_id: locId, name: m.name, duration_minutes: m.duration, price: m.price, sort_order: i, active: true,
       })),
     );
     setSaving(false);
     if (error) { toast.error(error.message); return; }
     await updateProgress({ menus: true });
-    setStep(3);
+    setStep(2);
   };
 
   const saveStaff = async () => {
     if (!user) return;
     if (!staffName.trim()) { toast.error("スタッフ名を入力してください"); return; }
     setSaving(true);
+    const { data: loc } = await supabase.from("locations").select("id").eq("tenant_id", user.id).order("is_primary", { ascending: false }).limit(1).maybeSingle();
+    const locId = loc?.id;
     const { error } = await supabase.from("staff").insert({
-      owner_id: user.id, name: staffName, active: true, bookable: true, sort_order: 0,
+      owner_id: user.id, location_id: locId, name: staffName, active: true, bookable: true, sort_order: 0,
     });
     setSaving(false);
     if (error) { toast.error(error.message); return; }

@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, Send, MessageCircle, Phone, Sparkles, Wand2 } from "lucide-react";
 import { toast } from "sonner";
+import { useCurrentLocationId } from "@/hooks/useLocations";
 
 interface Template {
   id: string;
@@ -31,6 +32,7 @@ export const CustomerMessageDialog = ({
   open, onClose, customerId, customerName, customerPhone, hasLine, bookingTime,
 }: Props) => {
   const { user } = useAuth();
+  const locationId = useCurrentLocationId();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [selected, setSelected] = useState<Template | null>(null);
   const [minutes, setMinutes] = useState(15);
@@ -53,13 +55,15 @@ export const CustomerMessageDialog = ({
     setAiContext("");
     setAiSuggestions([]);
     setAiPickedTone(null);
-    supabase.from("customer_message_templates")
-      .select("*").eq("owner_id", user.id).eq("active", true).order("sort_order")
-      .then(({ data }) => {
-        setTemplates(data || []);
-        setLoading(false);
-      });
-  }, [open, user]);
+    let q = supabase.from("customer_message_templates")
+      .select("*").eq("active", true).order("sort_order");
+    if (locationId) q = q.eq("location_id", locationId);
+    else q = q.eq("owner_id", user.id);
+    q.then(({ data }) => {
+      setTemplates(data || []);
+      setLoading(false);
+    });
+  }, [open, user, locationId]);
 
   const generateAiDrafts = async () => {
     setAiLoading(true);
