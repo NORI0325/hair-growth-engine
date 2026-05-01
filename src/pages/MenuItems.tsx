@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Loader2, Plus, Trash2, GripVertical, ImagePlus, X } from "lucide-react";
 import { toast } from "sonner";
+import { useCurrentLocationId } from "@/hooks/useLocations";
 
 interface MenuItem {
   id: string;
@@ -24,32 +25,34 @@ interface MenuItem {
 
 const MenuItems = () => {
   const { user } = useAuth();
+  const locationId = useCurrentLocationId();
   const [items, setItems] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState({ name: "", duration_minutes: 60, buffer_minutes: 15, price: 0 });
 
   const load = async () => {
-    if (!user) return;
+    if (!user || !locationId) { setItems([]); setLoading(false); return; }
     setLoading(true);
     const { data } = await supabase
       .from("menu_items")
       .select("*")
-      .eq("owner_id", user.id)
+      .eq("location_id", locationId)
       .order("sort_order", { ascending: true });
     setItems(data || []);
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, [user]);
+  useEffect(() => { load(); }, [user, locationId]);
 
   const add = async () => {
-    if (!user) return;
+    if (!user || !locationId) return;
     if (!draft.name.trim()) { toast.error("メニュー名を入力してください"); return; }
     setSaving(true);
     const max = items.reduce((m, i) => Math.max(m, i.sort_order), 0);
     const { error } = await supabase.from("menu_items").insert({
       owner_id: user.id,
+      location_id: locationId,
       name: draft.name.trim().slice(0, 80),
       duration_minutes: draft.duration_minutes,
       buffer_minutes: draft.buffer_minutes,

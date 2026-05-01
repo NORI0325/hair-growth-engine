@@ -13,6 +13,7 @@ import { Search, Loader2, Plus, Mail, Pencil } from "lucide-react";
 import { toast } from "sonner";
 
 import { calculateVipTier, tierInfo, isBirthdayMonth } from "@/lib/vip";
+import { useCurrentLocationId } from "@/hooks/useLocations";
 
 interface Customer {
   id: string;
@@ -43,6 +44,7 @@ const segmentInfo: Record<string, { label: string; en: string; color: string }> 
 };
 
 const Customers = () => {
+  const locationId = useCurrentLocationId();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -92,17 +94,19 @@ const Customers = () => {
   };
 
   const load = async () => {
+    if (!locationId) { setCustomers([]); setLoading(false); return; }
     setLoading(true);
     const { data, error } = await supabase
       .from("customers")
       .select("id, full_name, email, phone, birthday, last_visit_date, visit_count, total_spent, line_user_id, notes")
+      .eq("location_id", locationId)
       .order("last_visit_date", { ascending: false, nullsFirst: false })
       .limit(1000);
     if (!error && data) setCustomers(data);
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [locationId]);
 
   const filtered = useMemo(() => {
     return customers.filter(c => {

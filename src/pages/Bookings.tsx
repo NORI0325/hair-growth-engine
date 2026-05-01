@@ -9,6 +9,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CustomerMessageDialog } from "@/components/CustomerMessageDialog";
+import { useCurrentLocationId } from "@/hooks/useLocations";
 
 interface Booking {
   id: string;
@@ -36,27 +37,30 @@ const statusInfo = (s: string) => {
 
 const Bookings = () => {
   const { user } = useAuth();
+  const locationId = useCurrentLocationId();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
   const [messageBooking, setMessageBooking] = useState<Booking | null>(null);
 
   const load = async () => {
+    if (!user || !locationId) { setBookings([]); setStaff([]); setLoading(false); return; }
     setLoading(true);
     const [b, s] = await Promise.all([
       supabase
         .from("bookings")
         .select("id, customer_id, booking_date, booking_time, menu, notes, status, revenue, campaign_id, is_test, staff_id, customers(full_name, phone, line_user_id)")
+        .eq("location_id", locationId)
         .order("booking_date", { ascending: true })
         .order("booking_time", { ascending: true }),
-      user ? supabase.from("staff").select("id, name, display_color").eq("owner_id", user.id).eq("active", true).order("sort_order") : Promise.resolve({ data: [] }),
+      supabase.from("staff").select("id, name, display_color").eq("location_id", locationId).eq("active", true).order("sort_order"),
     ]);
     if (b.data) setBookings(b.data as any);
     setStaff((s.data as Staff[]) || []);
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, [user]);
+  useEffect(() => { load(); }, [user, locationId]);
 
   const assignStaff = async (id: string, staffId: string | null) => {
     const { error } = await supabase.from("bookings").update({ staff_id: staffId }).eq("id", id);
