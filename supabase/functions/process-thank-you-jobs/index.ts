@@ -194,9 +194,10 @@ Deno.serve(async (req) => {
           templateData = { customerName: customer.full_name, salonName, bookingLink, menu: (job.payload as any)?.menu };
           body = `${customer.full_name}様\n\n昨日はご来店ありがとうございました。\n仕上がりはいかがでしょうか？\n\nまたお会いできるのを楽しみにしております。\n\n${salonName}`;
         } else if (job.job_type === "birthday") {
+          const bDiscount = Number((job.payload as any)?.discount_percent) || 30;
           templateName = "birthday";
-          templateData = { customerName: customer.full_name, salonName, bookingLink };
-          body = `${customer.full_name}様\nお誕生月おめでとうございます🎂\n感謝を込めてバースデークーポンをお贈りします。\n→ ${bookingLink}\n\n${salonName}`;
+          templateData = { customerName: customer.full_name, salonName, bookingLink, discountPercent: bDiscount };
+          body = `${customer.full_name}様\nお誕生月おめでとうございます🎂\n感謝を込めて ${bDiscount}%OFF のバースデークーポンをお贈りします。\n→ ${bookingLink}\n\n${salonName}`;
         } else if (job.job_type === "review_request") {
           const reviewUrl = profile?.google_review_url;
           if (!reviewUrl) {
