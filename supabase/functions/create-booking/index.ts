@@ -74,6 +74,41 @@ Deno.serve(async (req) => {
     }
     const menuSummary = menus.join(" + ").slice(0, 200);
 
+    // 過去日ブロック（JST基準で当日0時より前を弾く）
+    const todayJST = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
+    const todayStr = `${todayJST.getFullYear()}-${String(todayJST.getMonth()+1).padStart(2,"0")}-${String(todayJST.getDate()).padStart(2,"0")}`;
+    if (date < todayStr) {
+      return new Response(JSON.stringify({ error: "past_date", message: "過去の日付はご指定いただけません。" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // 営業時間 / 定休日チェック
+    const reqWeekday = new Date(`${date}T00:00:00+09:00`).getDay();
+    const { data: salonHours } = await supabase
+      .from("salon_hours")
+      .select("open_time, close_time, closed")
+      .eq("owner_id", customer.owner_id)
+      .eq("weekday", reqWeekday)
+      .maybeSingle();
+    if (salonHours?.closed) {
+      return new Response(JSON.stringify({ error: "closed_day", message: "ご指定の日は定休日です。別の日をお選びください。" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (salonHours) {
+      const reqEndTimeStr = (() => {
+        const e = new Date(`${date}T${time}:00+09:00`);
+        e.setMinutes(e.getMinutes() + (totalDuration || 60));
+        return `${String(e.getHours()).padStart(2,"0")}:${String(e.getMinutes()).padStart(2,"0")}:00`;
+      })();
+      if (`${time}:00` < salonHours.open_time || reqEndTimeStr > salonHours.close_time) {
+        return new Response(JSON.stringify({ error: "out_of_hours", message: "営業時間外のためご予約いただけません。" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     // 予約ルール取得（リードタイム検証）
     const { data: ownerProf } = await supabase
       .from("profiles")
