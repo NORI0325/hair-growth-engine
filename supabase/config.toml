@@ -55,3 +55,7 @@ project_id = "miyedioemkzhetphjzzg"
     verify_jwt = false
   [functions.accept-tenant-invitation]
     verify_jwt = false
+  [functions.cron-trial-reminder]
+    verify_jwt = false
+  [functions.cron-trial-expiry]
+    verify_jwt = false
