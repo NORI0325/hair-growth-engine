@@ -45,3 +45,13 @@ project_id = "miyedioemkzhetphjzzg"
     verify_jwt = true
   [functions.verify-booking-token]
     verify_jwt = false
+  [functions.create-checkout-session]
+    verify_jwt = false
+  [functions.create-portal-session]
+    verify_jwt = false
+  [functions.payments-webhook]
+    verify_jwt = false
+  [functions.send-team-invitation]
+    verify_jwt = false
+  [functions.accept-tenant-invitation]
+    verify_jwt = false
