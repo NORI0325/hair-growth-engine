@@ -333,25 +333,31 @@ const RecipeEditor = ({ title, rows, onChange }: { title: string; rows: RecipeRo
     <div>
       <div className="flex items-center justify-between mb-2">
         <Label className="text-[11px] font-serif">{title}</Label>
-        <Button size="sm" variant="ghost" onClick={() => onChange([...rows, emptyRow()])} className="h-6 text-[10px]">
+        <Button size="sm" variant="ghost" onClick={() => onChange([...rows, emptyRow()])} className="h-7 text-[10px]">
           <Plus className="w-3 h-3 mr-1" />追加
         </Button>
       </div>
       {rows.length === 0 ? (
         <p className="text-[10px] text-muted-foreground">なし</p>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {rows.map((r, i) => (
-            <div key={i} className="grid grid-cols-12 gap-1 items-center">
-              <Input placeholder="ブランド" value={r.brand} onChange={(e) => { const n = [...rows]; n[i].brand = e.target.value; onChange(n); }} className="rounded-none h-8 text-xs col-span-2" />
-              <Input placeholder="薬剤名" value={r.name} onChange={(e) => { const n = [...rows]; n[i].name = e.target.value; onChange(n); }} className="rounded-none h-8 text-xs col-span-3" />
-              <Input placeholder="比率" value={r.ratio} onChange={(e) => { const n = [...rows]; n[i].ratio = e.target.value; onChange(n); }} className="rounded-none h-8 text-xs col-span-2" />
-              <Input placeholder="OX%" value={r.oxy} onChange={(e) => { const n = [...rows]; n[i].oxy = e.target.value; onChange(n); }} className="rounded-none h-8 text-xs col-span-1" />
-              <Input placeholder="放置(分)" value={r.time_minutes} onChange={(e) => { const n = [...rows]; n[i].time_minutes = e.target.value; onChange(n); }} className="rounded-none h-8 text-xs col-span-1" />
-              <Input placeholder="部位" value={r.area} onChange={(e) => { const n = [...rows]; n[i].area = e.target.value; onChange(n); }} className="rounded-none h-8 text-xs col-span-2" />
-              <Button size="sm" variant="ghost" onClick={() => onChange(rows.filter((_, j) => j !== i))} className="h-8 w-8 p-0 col-span-1">
-                <Trash2 className="w-3 h-3" />
-              </Button>
+            <div key={i} className="border border-border p-2 space-y-1.5 bg-secondary/20">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-muted-foreground">#{i + 1}</span>
+                <Button size="sm" variant="ghost" onClick={() => onChange(rows.filter((_, j) => j !== i))} className="h-6 w-6 p-0">
+                  <Trash2 className="w-3 h-3" />
+                </Button>
+              </div>
+              {/* モバイル: 縦積み 2列 / デスクトップ: 6列 */}
+              <div className="grid grid-cols-2 md:grid-cols-6 gap-1.5">
+                <Input placeholder="ブランド" value={r.brand} onChange={(e) => { const n = [...rows]; n[i].brand = e.target.value; onChange(n); }} className="rounded-none h-9 text-xs" />
+                <Input placeholder="薬剤名" value={r.name} onChange={(e) => { const n = [...rows]; n[i].name = e.target.value; onChange(n); }} className="rounded-none h-9 text-xs md:col-span-2" />
+                <Input placeholder="比率" value={r.ratio} onChange={(e) => { const n = [...rows]; n[i].ratio = e.target.value; onChange(n); }} className="rounded-none h-9 text-xs" />
+                <Input placeholder="OX%" inputMode="decimal" value={r.oxy} onChange={(e) => { const n = [...rows]; n[i].oxy = e.target.value; onChange(n); }} className="rounded-none h-9 text-xs" />
+                <Input placeholder="放置(分)" inputMode="numeric" value={r.time_minutes} onChange={(e) => { const n = [...rows]; n[i].time_minutes = e.target.value; onChange(n); }} className="rounded-none h-9 text-xs" />
+                <Input placeholder="部位（根元/中間/毛先など）" value={r.area} onChange={(e) => { const n = [...rows]; n[i].area = e.target.value; onChange(n); }} className="rounded-none h-9 text-xs col-span-2 md:col-span-6" />
+              </div>
             </div>
           ))}
         </div>
