@@ -515,6 +515,30 @@ const Settings = () => {
                   className="rounded-none w-32"/>
               </div>
 
+              <div className="p-4 border border-border bg-secondary/20 grid grid-cols-2 gap-6">
+                <div>
+                  <Label className="text-xs font-serif">配信間隔の最低日数（クールダウン）</Label>
+                  <p className="text-[10px] text-muted-foreground mt-1 mb-2">
+                    同じお客様への次の自動配信は、何日空ければOKか。デフォルト 7日。
+                  </p>
+                  <Input type="number" min={0} max={90}
+                    value={(form as any).frequency_cap_days ?? 7}
+                    onChange={e => setForm({...form, frequency_cap_days: parseInt(e.target.value) || 0} as any)}
+                    className="rounded-none w-32"/>
+                </div>
+                <div>
+                  <Label className="text-xs font-serif">月あたりの配信上限</Label>
+                  <p className="text-[10px] text-muted-foreground mt-1 mb-2">
+                    1人のお客様に1ヶ月で送る自動配信の最大数。デフォルト 4通。
+                  </p>
+                  <Input type="number" min={1} max={30}
+                    value={(form as any).frequency_cap_per_month ?? 4}
+                    onChange={e => setForm({...form, frequency_cap_per_month: parseInt(e.target.value) || 1} as any)}
+                    className="rounded-none w-32"/>
+                </div>
+              </div>
+
+
               {form.approval_mode !== "auto" && (
                 <p className="text-[10px] text-muted-foreground">
                   → 承認待ちの配信は <Link to="/approvals" className="text-gold gold-underline">配信の事前承認</Link> ページで確認できます
