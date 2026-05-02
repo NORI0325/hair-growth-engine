@@ -164,6 +164,9 @@ const Settings = () => {
         birthday_discount_percent: form.birthday_discount_percent,
         thank_you_delay_days: form.thank_you_delay_days,
         aftercare_delay_days: form.aftercare_delay_days,
+        import_quiet_days: form.import_quiet_days,
+        approval_mode: form.approval_mode,
+        approval_required_templates: form.approval_required_templates,
       } as any)
       .eq("id", user.id);
     if (error) {
