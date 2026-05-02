@@ -180,14 +180,28 @@ Deno.serve(async (req) => {
   }
   console.log("inbound payload keys:", Object.keys(payload), "content-type:", contentType);
 
-  // Resend Inbound Webhook payload 形式に対応
-  // 参考: https://resend.com/docs/dashboard/webhooks/inbound
+  // Webhook payload正規化
+  // 対応: Resend Inbound (data.to/from) / ImprovMX (To, From, Subject) / Mailgun (recipient, sender)
   const data = payload.data || payload;
-  const toRaw: any = data.to?.[0] ?? data.to ?? data.envelope?.to?.[0] ?? data.recipient ?? "";
-  const to = typeof toRaw === "string" ? toRaw : toRaw?.email || toRaw?.address || "";
-  const fromRaw: any = data.from ?? data.sender ?? "";
-  const from = typeof fromRaw === "string" ? fromRaw : fromRaw?.email || fromRaw?.address || "";
-  let subject: string = data.subject || data.Subject || "";
+  const pickStr = (...vals: any[]): string => {
+    for (const v of vals) {
+      if (typeof v === "string" && v.trim()) return v.trim();
+      if (Array.isArray(v) && v.length) {
+        const first = v[0];
+        if (typeof first === "string" && first.trim()) return first.trim();
+        if (first?.email) return String(first.email);
+        if (first?.address) return String(first.address);
+      }
+      if (v && typeof v === "object") {
+        if (v.email) return String(v.email);
+        if (v.address) return String(v.address);
+      }
+    }
+    return "";
+  };
+  const to = pickStr(data.to, data.To, data.envelope?.to, data.recipient, data["X-Original-To"]);
+  const from = pickStr(data.from, data.From, data.sender, data.envelope?.from);
+  let subject: string = pickStr(data.subject, data.Subject, data.headers?.Subject);
 
   // 本文抽出: text → html(タグ除去) → body_plain → body_html → 全payloadフォールバック
   const htmlToText = (html: string) => html
