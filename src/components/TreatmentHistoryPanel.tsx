@@ -124,6 +124,7 @@ export const TreatmentHistoryPanel = ({ customerId }: { customerId: string }) =>
     setSaving(true);
     const payload: any = {
       ...editing,
+      staff_id: editing.staff_id || activeStaff?.id || null,
       owner_id: user.id,
       location_id: locationId,
     };
