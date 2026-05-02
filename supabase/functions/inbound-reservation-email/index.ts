@@ -241,6 +241,20 @@ Deno.serve(async (req) => {
   const ownerId = profile.id as string;
   const source = inferSourceFromContent(subject, text, parsed.source);
 
+  // プライマリ店舗を取得（無ければ最古の店舗）
+  let locationId: string | null = null;
+  {
+    const { data: loc } = await supabase
+      .from("locations")
+      .select("id")
+      .eq("tenant_id", ownerId)
+      .order("is_primary", { ascending: false })
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    locationId = loc?.id ?? null;
+  }
+
   // AI解析
   let extracted: any;
   try {
