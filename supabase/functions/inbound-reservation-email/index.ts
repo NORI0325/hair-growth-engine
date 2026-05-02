@@ -158,7 +158,7 @@ Deno.serve(async (req) => {
   const to = typeof toRaw === "string" ? toRaw : toRaw?.email || toRaw?.address || "";
   const fromRaw: any = data.from ?? data.sender ?? "";
   const from = typeof fromRaw === "string" ? fromRaw : fromRaw?.email || fromRaw?.address || "";
-  const subject: string = data.subject || data.Subject || "";
+  let subject: string = data.subject || data.Subject || "";
 
   // 本文抽出: text → html(タグ除去) → body_plain → body_html → 全payloadフォールバック
   const htmlToText = (html: string) => html
