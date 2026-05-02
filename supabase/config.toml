@@ -59,3 +59,5 @@ project_id = "miyedioemkzhetphjzzg"
     verify_jwt = false
   [functions.cron-trial-expiry]
     verify_jwt = false
+  [functions.send-briefing]
+    verify_jwt = false
