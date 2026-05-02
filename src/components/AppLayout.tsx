@@ -273,7 +273,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       </aside>
 
       <main className="flex-1 overflow-auto">
-        <div className="container mx-auto px-12 py-12 max-w-7xl animate-fade-in">{children}</div>
+        <div className="container mx-auto px-4 py-6 md:px-12 md:py-12 max-w-7xl animate-fade-in">{children}</div>
       </main>
 
       <HelpWidget />
