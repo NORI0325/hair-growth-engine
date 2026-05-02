@@ -50,7 +50,7 @@ const navGroups: NavGroup[] = [
       { to: "/incentives", label: "特典マスター", en: "Incentives", icon: Gift },
       { to: "/templates", label: "テンプレート", en: "Templates", icon: FileText },
       { to: "/schedule", label: "配信予定", en: "Schedule", icon: CalendarClock },
-      { to: "/approvals", label: "配信の承認", en: "Approvals", icon: ShieldCheck, badgeKey: "approvals" },
+      { to: "/approvals", label: "配信の承認", en: "Approvals", icon: ShieldCheck },
     ],
   },
   {
