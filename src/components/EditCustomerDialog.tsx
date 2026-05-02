@@ -113,6 +113,10 @@ const EditCustomerDialog = ({ customer, open, onOpenChange, onSaved }: Props) =>
         <div className="mt-4">
           <CustomerInsightsPanel customerId={customer.id} />
         </div>
+        <div className="mt-6">
+          <p className="eyebrow mb-3">— 配信履歴 / Delivery Timeline —</p>
+          <CustomerDeliveryTimeline customerId={customer.id} />
+        </div>
         <form onSubmit={handleSubmit} className="space-y-5 mt-4">
           <div>
             <Label className="mb-2 block font-serif text-sm">お名前 <span className="text-destructive">*</span></Label>
