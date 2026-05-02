@@ -117,9 +117,26 @@ Deno.serve(async (req) => {
       try {
         const { data: customer } = await supabase
           .from("customers")
-          .select("id, full_name, email, phone, line_user_id, opt_out_automation, quiet_until")
+          .select("id, full_name, email, phone, line_user_id, opt_out_automation, quiet_until, imported_from, activated_at")
           .eq("id", job.customer_id)
           .maybeSingle();
+
+        // 過去来店ベースのジョブは「アクティブ化済み顧客」のみに送る
+        // （サロンボードからの一括インポート直後で予約も来店も無い顧客には送らない）
+        const PAST_VISIT_JOBS = new Set(["thank_you", "aftercare", "next_suggestion", "reminder", "review_request"]);
+        if (
+          customer &&
+          PAST_VISIT_JOBS.has(job.job_type) &&
+          (customer as any).imported_from === "salonboard" &&
+          !(customer as any).activated_at
+        ) {
+          await supabase.from("scheduled_jobs").update({
+            status: "skipped",
+            error: "dormant_imported_customer",
+            sent_at: new Date().toISOString(),
+          }).eq("id", job.id);
+          continue;
+        }
         const { data: profile } = await supabase
           .from("profiles")
           .select("salon_name, google_review_url, line_channel_access_token, frequency_cap_days, frequency_cap_per_month")
