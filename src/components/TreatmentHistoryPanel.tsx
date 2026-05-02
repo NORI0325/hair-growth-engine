@@ -162,7 +162,7 @@ export const TreatmentHistoryPanel = ({ customerId }: { customerId: string }) =>
           <Sparkles className="w-4 h-4 text-gold" />
           <h3 className="font-serif text-base">施術履歴 <span className="eyebrow text-[10px] text-muted-foreground ml-2">Treatment History</span></h3>
         </div>
-        <Button size="sm" onClick={() => setEditing(empty(customerId))} className="rounded-none">
+        <Button size="sm" onClick={startNew} className="rounded-none">
           <Plus className="w-3 h-3 mr-1" />追加
         </Button>
       </div>
@@ -194,9 +194,17 @@ export const TreatmentHistoryPanel = ({ customerId }: { customerId: string }) =>
       )}
 
       <Dialog open={!!editing} onOpenChange={(v) => !v && setEditing(null)}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto rounded-none">
+        <DialogContent className="max-w-3xl max-h-[95vh] overflow-y-auto rounded-none p-4 md:p-6">
           <DialogHeader>
-            <DialogTitle className="font-serif">施術カルテ <span className="eyebrow text-[10px] text-muted-foreground ml-2">Treatment Record</span></DialogTitle>
+            <DialogTitle className="font-serif flex items-center justify-between gap-2">
+              <span>施術カルテ <span className="eyebrow text-[10px] text-muted-foreground ml-2">Treatment Record</span></span>
+              {!editing?.id && list.length > 0 && (
+                <Button size="sm" variant="outline" onClick={copyFromPrevious} className="rounded-none text-[11px] h-8">
+                  <Copy className="w-3 h-3 mr-1" />前回コピー
+                </Button>
+              )}
+            </DialogTitle>
+            {activeStaff && <p className="text-[10px] text-muted-foreground">操作中: {activeStaff.name}</p>}
           </DialogHeader>
           {editing && (
             <div className="space-y-4">
@@ -244,18 +252,29 @@ export const TreatmentHistoryPanel = ({ customerId }: { customerId: string }) =>
                 onChange={(rows) => setEditing({ ...editing, perm_recipe: rows })}
               />
 
-              {/* 写真 */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-[11px] flex items-center gap-1"><Camera className="w-3 h-3" />Before</Label>
-                  <Input type="file" accept="image/*" onChange={(e) => onPhotoChange(e, "before")} className="rounded-none h-9 text-xs" />
-                  {editing.before_photo_url && <PhotoThumb path={editing.before_photo_url} />}
-                </div>
-                <div>
-                  <Label className="text-[11px] flex items-center gap-1"><Camera className="w-3 h-3" />After</Label>
-                  <Input type="file" accept="image/*" onChange={(e) => onPhotoChange(e, "after")} className="rounded-none h-9 text-xs" />
-                  {editing.after_photo_url && <PhotoThumb path={editing.after_photo_url} />}
-                </div>
+              {/* 写真 — モバイル: カメラ直撮り or 端末から選択 */}
+              <div className="grid grid-cols-2 gap-3">
+                {(["before", "after"] as const).map((type) => (
+                  <div key={type}>
+                    <Label className="text-[11px] flex items-center gap-1">
+                      <Camera className="w-3 h-3" />{type === "before" ? "Before" : "After"}
+                    </Label>
+                    <div className="grid grid-cols-2 gap-1 mt-1">
+                      <label className="border border-input bg-background hover:bg-accent rounded-none h-12 flex flex-col items-center justify-center text-[10px] cursor-pointer">
+                        <Camera className="w-4 h-4 mb-0.5" />撮影
+                        <input type="file" accept="image/*" capture="environment" className="hidden"
+                          onChange={(e) => onPhotoChange(e, type)} />
+                      </label>
+                      <label className="border border-input bg-background hover:bg-accent rounded-none h-12 flex flex-col items-center justify-center text-[10px] cursor-pointer">
+                        <ImageIcon className="w-4 h-4 mb-0.5" />選択
+                        <input type="file" accept="image/*" className="hidden"
+                          onChange={(e) => onPhotoChange(e, type)} />
+                      </label>
+                    </div>
+                    {uploading === type && <div className="mt-2 text-[10px] text-muted-foreground flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" />アップロード中...</div>}
+                    {editing[type === "before" ? "before_photo_url" : "after_photo_url"] && <PhotoThumb path={editing[type === "before" ? "before_photo_url" : "after_photo_url"]!} />}
+                  </div>
+                ))}
               </div>
 
               <div>
