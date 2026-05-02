@@ -75,7 +75,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const APP_ORIGIN = Deno.env.get("APP_ORIGIN") || "https://www.arunehair.com";
+    const APP_ORIGIN = Deno.env.get("APP_ORIGIN") || "https://saronboost.com";
     const bookingUrl = `${APP_ORIGIN}/salon/${profile.public_slug}`;
 
     // 既存メニュー全削除

@@ -190,7 +190,7 @@ const Auth = () => {
           </Button>
 
           <p className="mt-8 text-xs text-muted-foreground text-center">
-            ご質問は <a href="mailto:support@arunehair.com" className="underline">support@arunehair.com</a> まで
+            ご質問は <a href="mailto:support@saronboost.com" className="underline">support@saronboost.com</a> まで
           </p>
         </div>
       </div>

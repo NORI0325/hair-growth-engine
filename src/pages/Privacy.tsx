@@ -32,7 +32,7 @@ const Privacy = () => (
       <p>ユーザーご本人からの請求により、保有する個人情報の開示・訂正・削除に応じます。</p>
 
       <h2 className="text-xl font-semibold mt-6">7. お問い合わせ</h2>
-      <p>本ポリシーに関するお問い合わせは support@arunehair.com までご連絡ください。</p>
+      <p>本ポリシーに関するお問い合わせは support@saronboost.com までご連絡ください。</p>
     </section>
   </div>
 );
