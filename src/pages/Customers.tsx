@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
+import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import AppLayout from "@/components/AppLayout";
 import PageHeader from "@/components/PageHeader";
@@ -9,7 +10,7 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, Loader2, Plus, Mail, Pencil } from "lucide-react";
+import { Search, Loader2, Plus, Mail, Pencil, FileText } from "lucide-react";
 import { toast } from "sonner";
 
 import { calculateVipTier, tierInfo, isBirthdayMonth } from "@/lib/vip";
