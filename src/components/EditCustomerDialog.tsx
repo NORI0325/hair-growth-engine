@@ -52,6 +52,7 @@ const EditCustomerDialog = ({ customer, open, onOpenChange, onSaved }: Props) =>
     full_name: "", phone: "", email: "", birthday: "",
     last_visit_date: "", visit_count: "0", total_spent: "0",
     line_user_id: "", notes: "",
+    opt_out_automation: false, opt_out_reason: "",
   });
 
   useEffect(() => {
