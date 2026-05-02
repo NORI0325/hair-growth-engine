@@ -37,6 +37,7 @@ import Terms from "./pages/Terms";
 import Privacy from "./pages/Privacy";
 import Tokushoho from "./pages/Tokushoho";
 import Locations from "./pages/Locations";
+import Approvals from "./pages/Approvals";
 import NotFound from "./pages/NotFound";
 import { LocationProvider } from "@/hooks/useLocations";
 
@@ -62,6 +63,7 @@ const App = () => (
             <Route path="/import" element={<ProtectedRoute><ImportCustomers /></ProtectedRoute>} />
             <Route path="/campaigns" element={<ProtectedRoute><Campaigns /></ProtectedRoute>} />
             <Route path="/bookings" element={<ProtectedRoute><Bookings /></ProtectedRoute>} />
+            <Route path="/approvals" element={<ProtectedRoute><Approvals /></ProtectedRoute>} />
             <Route path="/share" element={<ProtectedRoute><Share /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             <Route path="/email-logs" element={<ProtectedRoute><EmailLogs /></ProtectedRoute>} />

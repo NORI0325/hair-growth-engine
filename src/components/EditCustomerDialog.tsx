@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { CustomerInsightsPanel } from "@/components/CustomerInsightsPanel";
+import CustomerDeliveryTimeline from "@/components/CustomerDeliveryTimeline";
 
 const schema = z.object({
   full_name: z.string().trim().min(1, "お名前は必須です").max(100),
@@ -111,6 +112,10 @@ const EditCustomerDialog = ({ customer, open, onOpenChange, onSaved }: Props) =>
         </DialogHeader>
         <div className="mt-4">
           <CustomerInsightsPanel customerId={customer.id} />
+        </div>
+        <div className="mt-6">
+          <p className="eyebrow mb-3">— 配信履歴 / Delivery Timeline —</p>
+          <CustomerDeliveryTimeline customerId={customer.id} />
         </div>
         <form onSubmit={handleSubmit} className="space-y-5 mt-4">
           <div>

@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Users, Upload, Megaphone, Calendar, LogOut, Share2,
   Settings as SettingsIcon, Mail, MessageCircle, FileText, CalendarClock,
   TrendingUp, Scissors, UserCog, Gift, Inbox, Download, CreditCard, Users2,
-  Store, ChevronDown, Sparkles, Building2, BarChart3,
+  Store, ChevronDown, Sparkles, Building2, BarChart3, ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LocationSwitcher } from "@/components/LocationSwitcher";
@@ -50,6 +50,7 @@ const navGroups: NavGroup[] = [
       { to: "/incentives", label: "特典マスター", en: "Incentives", icon: Gift },
       { to: "/templates", label: "テンプレート", en: "Templates", icon: FileText },
       { to: "/schedule", label: "配信予定", en: "Schedule", icon: CalendarClock },
+      { to: "/approvals", label: "配信の承認", en: "Approvals", icon: ShieldCheck },
     ],
   },
   {

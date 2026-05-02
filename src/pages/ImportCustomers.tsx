@@ -98,7 +98,13 @@ const ImportCustomers = () => {
 
     const batchSize = 100;
     for (let i = 0; i < parsed.length; i += batchSize) {
-      const batch = parsed.slice(i, i + batchSize).map(r => ({ ...r, owner_id: user.id, location_id: locationId }));
+      const batch = parsed.slice(i, i + batchSize).map(r => ({
+        ...r,
+        owner_id: user.id,
+        location_id: locationId,
+        imported_from: "csv",
+        last_imported_at: new Date().toISOString(),
+      }));
       const { error } = await supabase.from("customers").insert(batch);
       if (error) errs.push(`${i + 1}〜${i + batch.length}行目: ${error.message}`);
       else { success += batch.length; setImported(success); }

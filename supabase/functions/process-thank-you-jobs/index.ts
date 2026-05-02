@@ -70,8 +70,10 @@ Deno.serve(async (req) => {
   try {
     const { data: jobs, error } = await supabase
       .from("scheduled_jobs")
-      .select("id, owner_id, customer_id, booking_id, job_type, payload, scheduled_for")
+      .select("id, owner_id, customer_id, booking_id, job_type, payload, scheduled_for, approval_status")
       .eq("status", "pending")
+      // 半自動: 承認待ち/却下のジョブはスキップ。auto と approved のみ送信。
+      .in("approval_status", ["auto", "approved"])
       .in("job_type", ["thank_you", "birthday", "review_request", "reminder", "reactivation", "aftercare", "next_suggestion", "welcome", "anniversary", "vip_upgrade", "referral_thanks", "holiday_notice"])
       .lte("scheduled_for", new Date().toISOString())
       .limit(200);

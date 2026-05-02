@@ -401,6 +401,7 @@ export type Database = {
           birthday: string | null
           created_at: string
           email: string | null
+          first_imported_at: string | null
           full_name: string
           id: string
           imported_from: string | null
@@ -412,6 +413,7 @@ export type Database = {
           notes: string | null
           owner_id: string
           phone: string | null
+          quiet_until: string | null
           referred_by: string | null
           salonboard_customer_id: string | null
           salonboard_customer_no: string | null
@@ -423,6 +425,7 @@ export type Database = {
           birthday?: string | null
           created_at?: string
           email?: string | null
+          first_imported_at?: string | null
           full_name: string
           id?: string
           imported_from?: string | null
@@ -434,6 +437,7 @@ export type Database = {
           notes?: string | null
           owner_id: string
           phone?: string | null
+          quiet_until?: string | null
           referred_by?: string | null
           salonboard_customer_id?: string | null
           salonboard_customer_no?: string | null
@@ -445,6 +449,7 @@ export type Database = {
           birthday?: string | null
           created_at?: string
           email?: string | null
+          first_imported_at?: string | null
           full_name?: string
           id?: string
           imported_from?: string | null
@@ -456,6 +461,7 @@ export type Database = {
           notes?: string | null
           owner_id?: string
           phone?: string | null
+          quiet_until?: string | null
           referred_by?: string | null
           salonboard_customer_id?: string | null
           salonboard_customer_no?: string | null
@@ -1033,6 +1039,8 @@ export type Database = {
         Row: {
           aftercare_delay_days: number
           allow_customer_cancel: boolean
+          approval_mode: string
+          approval_required_templates: string[]
           auto_reply_enabled: boolean
           auto_reply_message: string | null
           auto_reply_use_ai: boolean
@@ -1043,9 +1051,12 @@ export type Database = {
           cancel_deadline_hours: number
           close_time: string | null
           created_at: string
+          frequency_cap_days: number
+          frequency_cap_per_month: number
           full_name: string | null
           google_review_url: string | null
           id: string
+          import_quiet_days: number
           inbound_key: string | null
           line_add_friend_url: string | null
           line_channel_access_token: string | null
@@ -1068,6 +1079,8 @@ export type Database = {
         Insert: {
           aftercare_delay_days?: number
           allow_customer_cancel?: boolean
+          approval_mode?: string
+          approval_required_templates?: string[]
           auto_reply_enabled?: boolean
           auto_reply_message?: string | null
           auto_reply_use_ai?: boolean
@@ -1078,9 +1091,12 @@ export type Database = {
           cancel_deadline_hours?: number
           close_time?: string | null
           created_at?: string
+          frequency_cap_days?: number
+          frequency_cap_per_month?: number
           full_name?: string | null
           google_review_url?: string | null
           id: string
+          import_quiet_days?: number
           inbound_key?: string | null
           line_add_friend_url?: string | null
           line_channel_access_token?: string | null
@@ -1103,6 +1119,8 @@ export type Database = {
         Update: {
           aftercare_delay_days?: number
           allow_customer_cancel?: boolean
+          approval_mode?: string
+          approval_required_templates?: string[]
           auto_reply_enabled?: boolean
           auto_reply_message?: string | null
           auto_reply_use_ai?: boolean
@@ -1113,9 +1131,12 @@ export type Database = {
           cancel_deadline_hours?: number
           close_time?: string | null
           created_at?: string
+          frequency_cap_days?: number
+          frequency_cap_per_month?: number
           full_name?: string | null
           google_review_url?: string | null
           id?: string
+          import_quiet_days?: number
           inbound_key?: string | null
           line_add_friend_url?: string | null
           line_channel_access_token?: string | null
@@ -1226,6 +1247,9 @@ export type Database = {
       }
       scheduled_jobs: {
         Row: {
+          approval_status: Database["public"]["Enums"]["job_approval_status"]
+          approved_at: string | null
+          approved_by: string | null
           booking_id: string | null
           created_at: string
           customer_id: string
@@ -1235,11 +1259,16 @@ export type Database = {
           location_id: string | null
           owner_id: string
           payload: Json | null
+          rejected_reason: string | null
+          scheduled_date: string | null
           scheduled_for: string
           sent_at: string | null
           status: string
         }
         Insert: {
+          approval_status?: Database["public"]["Enums"]["job_approval_status"]
+          approved_at?: string | null
+          approved_by?: string | null
           booking_id?: string | null
           created_at?: string
           customer_id: string
@@ -1249,11 +1278,16 @@ export type Database = {
           location_id?: string | null
           owner_id: string
           payload?: Json | null
+          rejected_reason?: string | null
+          scheduled_date?: string | null
           scheduled_for: string
           sent_at?: string | null
           status?: string
         }
         Update: {
+          approval_status?: Database["public"]["Enums"]["job_approval_status"]
+          approved_at?: string | null
+          approved_by?: string | null
           booking_id?: string | null
           created_at?: string
           customer_id?: string
@@ -1263,6 +1297,8 @@ export type Database = {
           location_id?: string | null
           owner_id?: string
           payload?: Json | null
+          rejected_reason?: string | null
+          scheduled_date?: string | null
           scheduled_for?: string
           sent_at?: string | null
           status?: string
@@ -1671,7 +1707,20 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      customer_delivery_timeline: {
+        Row: {
+          channel: string | null
+          customer_id: string | null
+          error: string | null
+          id: string | null
+          owner_id: string | null
+          recipient: string | null
+          sent_at: string | null
+          status: string | null
+          template_key: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       calculate_segment: {
@@ -1781,6 +1830,7 @@ export type Database = {
         Args: { _tenant_id: string; _user_id: string }
         Returns: boolean
       }
+      last_sent_at: { Args: { _customer_id: string }; Returns: string }
       move_to_dlq: {
         Args: {
           dlq_name: string
@@ -1849,6 +1899,7 @@ export type Database = {
         | "no_show"
       campaign_status: "draft" | "sending" | "sent" | "failed"
       customer_segment: "active" | "at_risk" | "dormant" | "new"
+      job_approval_status: "auto" | "pending_approval" | "approved" | "rejected"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1986,6 +2037,7 @@ export const Constants = {
       ],
       campaign_status: ["draft", "sending", "sent", "failed"],
       customer_segment: ["active", "at_risk", "dormant", "new"],
+      job_approval_status: ["auto", "pending_approval", "approved", "rejected"],
     },
   },
 } as const
