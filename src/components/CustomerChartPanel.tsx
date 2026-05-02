@@ -84,8 +84,8 @@ export const CustomerChartPanel = ({ customerId, onSaved }: { customerId: string
   const hasAlert = chart.has_diamine_allergy || chart.is_pregnant || (chart.allergies && chart.allergies.trim());
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 pb-20 md:pb-0">
+      <div className="hidden md:flex items-center justify-between">
         <div className="flex items-center gap-2">
           <FileText className="w-4 h-4 text-gold" />
           <h3 className="font-serif text-base">電子カルテ <span className="eyebrow text-[10px] text-muted-foreground ml-2">Medical Chart</span></h3>
@@ -147,10 +147,16 @@ export const CustomerChartPanel = ({ customerId, onSaved }: { customerId: string
             </Select>
           </div>
           <div>
-            <Label className="text-[11px]">ダメージ (0-5)</Label>
-            <Input type="number" min={0} max={5} value={chart.damage_level ?? ""}
-              onChange={(e) => setChart({ ...chart, damage_level: e.target.value ? Number(e.target.value) : null })}
-              className="rounded-none h-9 text-xs" />
+            <Label className="text-[11px]">ダメージ</Label>
+            <div className="flex gap-1 mt-1">
+              {[0,1,2,3,4,5].map(n => (
+                <button key={n} type="button"
+                  onClick={() => setChart({ ...chart, damage_level: chart.damage_level === n ? null : n })}
+                  className={`flex-1 h-9 text-xs border ${chart.damage_level === n ? "bg-gold text-background border-gold" : "border-input bg-background hover:bg-accent"}`}>
+                  {n}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="col-span-2">
             <Label className="text-[11px]">頭皮状態</Label>
