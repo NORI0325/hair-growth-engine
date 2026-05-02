@@ -8,6 +8,32 @@ import { sendLinePush } from "../_shared/line-push.ts";
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") || "";
+
+// Resend Inbound API から本文を取得（webhookにはメタデータしか含まれないため）
+async function fetchInboundEmailBody(emailId: string): Promise<{ text: string; html: string; subject: string; from: string; to: string[] } | null> {
+  if (!RESEND_API_KEY || !emailId) return null;
+  try {
+    const res = await fetch(`https://api.resend.com/emails/inbound/${emailId}`, {
+      headers: { Authorization: `Bearer ${RESEND_API_KEY}` },
+    });
+    if (!res.ok) {
+      console.error("Resend inbound fetch failed:", res.status, await res.text());
+      return null;
+    }
+    const data = await res.json();
+    return {
+      text: data.text || "",
+      html: data.html || "",
+      subject: data.subject || "",
+      from: typeof data.from === "string" ? data.from : (data.from?.email || ""),
+      to: Array.isArray(data.to) ? data.to : (data.to ? [data.to] : []),
+    };
+  } catch (e) {
+    console.error("Resend inbound fetch exception:", e);
+    return null;
+  }
+}
 
 // 受信先アドレスからソースとinbound_keyを判定
 // 例: hp-sb-a8f3k2@inbound.arunehair.com → source=hotpepper, key=sb-a8f3k2
