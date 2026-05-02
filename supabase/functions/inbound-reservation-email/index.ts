@@ -36,7 +36,7 @@ async function fetchInboundEmailBody(emailId: string): Promise<{ text: string; h
 }
 
 // 受信先アドレスからソースとinbound_keyを判定
-// 例: hp-sb-a8f3k2@inbound.arunehair.com → source=hotpepper, key=sb-a8f3k2
+// 例: hp-sb-a8f3k2@inbound.saronboost.com → source=hotpepper, key=sb-a8f3k2
 function parseInboundAddress(toAddress: string): { source: string; inboundKey: string } | null {
   const local = toAddress.split("@")[0]?.toLowerCase().trim();
   if (!local) return null;

@@ -641,7 +641,7 @@ const Settings = () => {
                 <Label className="mb-2 block font-serif text-sm">代表メールアドレス</Label>
                 <Input type="email" value={form.owner_notification_email}
                   onChange={e => setForm({...form, owner_notification_email: e.target.value})}
-                  placeholder="info@arunehair.com"
+                  placeholder="info@saronboost.com"
                   className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
                 <p className="text-[10px] text-muted-foreground mt-2">空欄の場合、下記の宛先リストのみが使用されます</p>
               </div>
@@ -872,7 +872,7 @@ const Settings = () => {
                 { code: "mn", label: "minimo（ミニモ）", color: "text-pink-400" },
                 { code: "rb", label: "楽天ビューティ", color: "text-red-400" },
               ].map(site => {
-                const addr = inboundKey ? `${site.code}-${inboundKey}@inbound.arunehair.com` : "（保存後に発行されます）";
+                const addr = inboundKey ? `${site.code}-${inboundKey}@inbound.saronboost.com` : "（保存後に発行されます）";
                 return (
                   <div key={site.code} className="border border-border/50 p-4 bg-secondary/10">
                     <div className={`font-serif text-sm ${site.color} mb-2`}>{site.label}</div>

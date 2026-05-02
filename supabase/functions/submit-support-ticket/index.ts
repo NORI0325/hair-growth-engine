@@ -3,7 +3,7 @@ import { corsHeaders } from "../_shared/cors.ts";
 
 // サポート問い合わせ送信
 // - tickets テーブルに保存
-// - support@arunehair.com にメール送信（send-transactional-email 経由）
+// - support@saronboost.com にメール送信（send-transactional-email 経由）
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
@@ -71,7 +71,7 @@ Deno.serve(async (req) => {
       `;
       await supabase.functions.invoke("send-transactional-email", {
         body: {
-          to: "support@arunehair.com",
+          to: "support@saronboost.com",
           subject: `[サポート] ${subject}`,
           html,
           purpose: "transactional",
