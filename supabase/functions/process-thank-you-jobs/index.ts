@@ -242,24 +242,70 @@ Deno.serve(async (req) => {
           const p = (job.payload as any) || {};
           const stage = Number(p.stage) || 1;
           const days = p.days_since || 30;
-          const discount = Number(p.discount_percent) || 0;
+          let discount = Number(p.discount_percent) || 0;
           const label = String(p.label || "").trim();
-          templateName = "reactivation";
-          templateData = { customerName: customer.full_name, salonName, bookingLink, daysSince: days, stage, discountPercent: discount, label };
+          const segment: string = String(p.segment || "");
 
-          // 段階別の文言（オーナー設定の割引率を動的に反映）
+          // セグメント別テンプレ取得
+          let segTpl: any = null;
+          if (segment) {
+            const { data } = await supabase
+              .from("reactivation_segment_templates")
+              .select("*")
+              .eq("owner_id", job.owner_id)
+              .eq("segment", segment)
+              .maybeSingle();
+            segTpl = data;
+          }
+
+          // VIP-Lostは絶対に自動配信しない（保険：approval_statusでもブロック済みだが念押し）
+          if (segment === "vip_lost") {
+            await supabase.from("scheduled_jobs").update({
+              status: "skipped",
+              error: "vip_lost_requires_manual",
+              sent_at: new Date().toISOString(),
+            }).eq("id", job.id);
+            continue;
+          }
+          if (segTpl && segTpl.enabled === false) {
+            await supabase.from("scheduled_jobs").update({
+              status: "skipped",
+              error: `segment_template_disabled:${segment}`,
+              sent_at: new Date().toISOString(),
+            }).eq("id", job.id);
+            continue;
+          }
+
+          if (segTpl?.discount_percent != null) discount = Number(segTpl.discount_percent);
+
+          templateName = "reactivation";
+          templateData = { customerName: customer.full_name, salonName, bookingLink, daysSince: days, stage, discountPercent: discount, label, segment };
+
           const monthsSince = Math.round(days / 30);
           const couponLine = discount > 0
             ? `\n\n🎁 ${label || "ご愛顧感謝"} クーポン ${discount}%OFF\n（45日間限定）`
             : "";
-          const intro = days <= 35
-            ? `いつもありがとうございます。\n前回ご来店から約${monthsSince}ヶ月ほど経ちました🌸`
-            : days <= 70
-              ? `お久しぶりです。前回から約${monthsSince}ヶ月が経ちました。\nまたお会いできるのを楽しみにしております🌸`
-              : days <= 120
-                ? `少しお時間が空いてしまいましたね。\nお元気でお過ごしでしょうか。`
-                : `${salonName}です。\n大切なお客様へ、特別なご案内をお贈りします。`;
-          body = `${customer.full_name}様\n\n${intro}${couponLine}\n\n→ ${bookingLink}\n\n${salonName}`;
+
+          if (segTpl?.body) {
+            // セグメント別カスタム本文
+            body = String(segTpl.body)
+              .replace(/\{customer_name\}/g, customer.full_name)
+              .replace(/\{salon_name\}/g, salonName)
+              .replace(/\{months_since\}/g, String(monthsSince))
+              .replace(/\{days_since\}/g, String(days)) + couponLine + `\n\n→ ${bookingLink}\n\n${salonName}`;
+          } else {
+            // セグメント別デフォルト
+            const intro =
+              segment === "cold_1" ? `以前は${salonName}にお越しいただきありがとうございました。\n改めまして、当店の魅力を少しご紹介させてください。`
+              : segment === "warm_mid" ? `いつもありがとうございます。\n少し間が空いてしまいましたね。お変わりなくお過ごしでしょうか。`
+              : segment === "loyal_risk" ? `いつも${salonName}をご愛顧いただき、本当にありがとうございます。\n少しお会いできていないのが気がかりで、ご連絡いたしました。`
+              : segment === "lost_1" ? `以前は${salonName}にお立ち寄りいただきありがとうございました。\n季節のご挨拶を兼ねてご案内です。`
+              : segment === "churned" ? `ご無沙汰しております。${salonName}でございます。\n以前のご来店で至らぬ点がございましたら、心よりお詫び申し上げます。`
+              : days <= 35 ? `いつもありがとうございます。\n前回ご来店から約${monthsSince}ヶ月ほど経ちました🌸`
+              : days <= 70 ? `お久しぶりです。前回から約${monthsSince}ヶ月が経ちました。`
+              : `少しお時間が空いてしまいましたね。\nお元気でお過ごしでしょうか。`;
+            body = `${customer.full_name}様\n\n${intro}${couponLine}\n\n→ ${bookingLink}\n\n${salonName}`;
+          }
         } else if (job.job_type === "aftercare") {
           const menu = (job.payload as any)?.menu || "";
           templateName = "aftercare";
