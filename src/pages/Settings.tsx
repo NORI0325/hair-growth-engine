@@ -172,6 +172,8 @@ const Settings = () => {
         import_quiet_days: form.import_quiet_days,
         approval_mode: form.approval_mode,
         approval_required_templates: form.approval_required_templates,
+        frequency_cap_days: form.frequency_cap_days,
+        frequency_cap_per_month: form.frequency_cap_per_month,
       } as any)
       .eq("id", user.id);
     if (error) {
