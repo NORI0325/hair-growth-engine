@@ -105,7 +105,7 @@ const CalendarPage = () => {
     calRef.current?.getApi().changeView(v);
   };
 
-  const updateStatus = async (id: string, status: string) => {
+  const updateStatus = async (id: string, status: "pending" | "confirmed" | "completed" | "cancelled" | "no_show") => {
     const { error } = await supabase.from("bookings").update({ status }).eq("id", id);
     if (error) { toast.error("更新失敗: " + error.message); return; }
     toast.success("ステータスを更新しました");
