@@ -64,6 +64,9 @@ const Settings = () => {
     birthday_discount_percent: 30,
     thank_you_delay_days: 1,
     aftercare_delay_days: 7,
+    import_quiet_days: 7,
+    approval_mode: "auto" as "auto" | "semi_auto" | "per_template",
+    approval_required_templates: [] as string[],
   });
 
   useEffect(() => {
