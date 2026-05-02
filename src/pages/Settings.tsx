@@ -450,6 +450,77 @@ const Settings = () => {
               )}
             </section>
 
+            {/* Send Guard - 配信前の安全装置 */}
+            <section className="space-y-4 pt-6 border-t border-border">
+              <div>
+                <div className="font-serif text-sm">配信モード</div>
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  事故防止のため、お客様への配信を「事前承認」で運用することができます。
+                </p>
+              </div>
+
+              <div className="grid sm:grid-cols-3 gap-3">
+                {[
+                  { v: "auto", label: "完全自動", desc: "条件を満たした顧客に自動で配信" },
+                  { v: "semi_auto", label: "半自動（事前承認）", desc: "全配信をオーナーが承認後に送信" },
+                  { v: "per_template", label: "テンプレート別", desc: "選んだ種類のみ承認制" },
+                ].map(opt => (
+                  <button key={opt.v} type="button"
+                    onClick={() => setForm({...form, approval_mode: opt.v as any})}
+                    className={`text-left p-4 border transition-colors ${form.approval_mode === opt.v ? "border-gold bg-gold/5" : "border-border hover:border-gold/40"}`}>
+                    <div className="font-serif text-xs mb-1">{opt.label}</div>
+                    <div className="text-[10px] text-muted-foreground leading-relaxed">{opt.desc}</div>
+                  </button>
+                ))}
+              </div>
+
+              {form.approval_mode === "per_template" && (
+                <div className="p-4 border border-border bg-secondary/20">
+                  <div className="text-[11px] font-serif mb-2">承認制にするテンプレート</div>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { k: "reactivation", l: "復活クーポン" },
+                      { k: "birthday", l: "お誕生日" },
+                      { k: "anniversary", l: "記念日" },
+                      { k: "vip_upgrade", l: "VIPランクアップ" },
+                      { k: "review_request", l: "レビュー依頼" },
+                    ].map(t => {
+                      const on = form.approval_required_templates.includes(t.k);
+                      return (
+                        <button key={t.k} type="button"
+                          onClick={() => setForm({
+                            ...form,
+                            approval_required_templates: on
+                              ? form.approval_required_templates.filter(x => x !== t.k)
+                              : [...form.approval_required_templates, t.k]
+                          })}
+                          className={`px-3 py-1.5 text-[11px] border transition-colors ${on ? "border-gold bg-gold/10" : "border-border"}`}>
+                          {t.l}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div className="p-4 border border-border bg-secondary/20">
+                <Label className="text-xs font-serif">インポート直後の沈黙期間（日数）</Label>
+                <p className="text-[10px] text-muted-foreground mt-1 mb-2">
+                  サロンボード/CSV取込みの直後、自動配信を停止する日数。デフォルト 7日。
+                </p>
+                <Input type="number" min={0} max={60}
+                  value={form.import_quiet_days}
+                  onChange={e => setForm({...form, import_quiet_days: parseInt(e.target.value) || 0})}
+                  className="rounded-none w-32"/>
+              </div>
+
+              {form.approval_mode !== "auto" && (
+                <p className="text-[10px] text-muted-foreground">
+                  → 承認待ちの配信は <Link to="/approvals" className="text-gold gold-underline">配信の事前承認</Link> ページで確認できます
+                </p>
+              )}
+            </section>
+
             {/* 誕生日クーポン */}
             <section className="space-y-4 pt-6 border-t border-border">
               <div className="flex items-center justify-between p-5 border border-border bg-secondary/20">
