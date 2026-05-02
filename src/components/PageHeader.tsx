@@ -1,4 +1,5 @@
 import { ReactNode } from "react";
+import PageHelpButton from "@/components/PageHelpButton";
 
 interface Props {
   eyebrow: string;
@@ -9,7 +10,10 @@ interface Props {
 
 const PageHeader = ({ eyebrow, title, description, action }: Props) => (
   <div className="mb-12 animate-fade-up">
-    <p className="eyebrow mb-3">{eyebrow}</p>
+    <div className="flex items-center justify-between gap-4 mb-3">
+      <p className="eyebrow">{eyebrow}</p>
+      <PageHelpButton />
+    </div>
     <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6">
       <div>
         <h1 className="display text-4xl md:text-5xl mb-3">{title}</h1>
