@@ -206,6 +206,8 @@ const EditCustomerDialog = ({ customer, open, onOpenChange, onSaved }: Props) =>
                   placeholder="例: 本人より配信不要のお申し出"
                   className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold text-sm"
                 />
+              </div>
+            )}
           </div>
 
           {/* サロンボード休眠インポート顧客の手動アクティブ化 */}
@@ -238,8 +240,6 @@ const EditCustomerDialog = ({ customer, open, onOpenChange, onSaved }: Props) =>
               </Button>
             </div>
           )}
-            )}
-          </div>
 
           <div className="flex gap-3 pt-2">
             <AlertDialog>
