@@ -256,6 +256,14 @@ export const CustomerChartPanel = ({ customerId, onSaved }: { customerId: string
           placeholder="スタッフ間共有メモ（家族構成、職業、結婚記念日など）"
           className="rounded-none text-xs min-h-[80px]" />
       </div>
+
+      {/* モバイル: スティッキー保存ボタン */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 p-3 bg-background/95 backdrop-blur border-t border-border">
+        <Button onClick={save} disabled={saving} className="w-full rounded-none h-11">
+          {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
+          カルテを保存
+        </Button>
+      </div>
     </div>
   );
 };
