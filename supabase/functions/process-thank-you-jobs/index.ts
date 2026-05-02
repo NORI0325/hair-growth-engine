@@ -117,14 +117,35 @@ Deno.serve(async (req) => {
       try {
         const { data: customer } = await supabase
           .from("customers")
-          .select("id, full_name, email, phone, line_user_id")
+          .select("id, full_name, email, phone, line_user_id, opt_out_automation, quiet_until")
           .eq("id", job.customer_id)
           .maybeSingle();
         const { data: profile } = await supabase
           .from("profiles")
-          .select("salon_name, google_review_url, line_channel_access_token")
+          .select("salon_name, google_review_url, line_channel_access_token, frequency_cap_days, frequency_cap_per_month")
           .eq("id", job.owner_id)
           .maybeSingle();
+
+        // ====== Send Guard: 頻度キャップ + オプトアウト + 沈黙期間 ======
+        // リマインダーは予約時点で顧客が明示的に求めた配信なのでスキップ対象外
+        if (customer && job.job_type !== "reminder") {
+          const capDays = (profile as any)?.frequency_cap_days ?? 7;
+          const capMonth = (profile as any)?.frequency_cap_per_month ?? 4;
+          const { data: guardResult } = await supabase.rpc("can_send_to_customer" as any, {
+            _customer_id: job.customer_id,
+            _cap_days: capDays,
+            _cap_per_month: capMonth,
+          });
+          const guard = guardResult as any;
+          if (guard && guard.allowed === false) {
+            await supabase.from("scheduled_jobs").update({
+              status: "skipped",
+              error: `send_guard:${guard.reason}`,
+              sent_at: new Date().toISOString(),
+            }).eq("id", job.id);
+            continue;
+          }
+        }
         const { data: tokenRow } = await supabase
           .from("booking_tokens")
           .select("token")
@@ -374,6 +395,17 @@ Deno.serve(async (req) => {
           error: channelUsed === "none" ? (lastErr || "no_channel_available") : (lastErr || null),
           payload: { ...(job.payload as any || {}), channel_used: channelUsed },
         }).eq("id", job.id);
+
+        // ====== 配信成功時: コミュニケーション履歴を記録（頻度キャップ用） ======
+        if (channelUsed !== "none" && job.job_type !== "reminder") {
+          await supabase.rpc("record_customer_communication" as any, {
+            _customer_id: customer.id,
+            _owner_id: job.owner_id,
+            _location_id: (job as any).location_id || null,
+            _template_key: tmplKey,
+            _channel: channelUsed,
+          });
+        }
 
         if (channelUsed === "none") failed++; else success++;
       } catch (e) {

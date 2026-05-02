@@ -68,6 +68,8 @@ const Settings = () => {
     import_quiet_days: 7,
     approval_mode: "auto" as "auto" | "semi_auto" | "per_template",
     approval_required_templates: [] as string[],
+    frequency_cap_days: 7,
+    frequency_cap_per_month: 4,
   });
 
   useEffect(() => {
@@ -115,6 +117,8 @@ const Settings = () => {
           import_quiet_days: d.import_quiet_days ?? 7,
           approval_mode: (d.approval_mode as any) ?? "auto",
           approval_required_templates: Array.isArray(d.approval_required_templates) ? d.approval_required_templates : [],
+          frequency_cap_days: d.frequency_cap_days ?? 7,
+          frequency_cap_per_month: d.frequency_cap_per_month ?? 4,
         });
       }
       setLoading(false);
@@ -168,6 +172,8 @@ const Settings = () => {
         import_quiet_days: form.import_quiet_days,
         approval_mode: form.approval_mode,
         approval_required_templates: form.approval_required_templates,
+        frequency_cap_days: form.frequency_cap_days,
+        frequency_cap_per_month: form.frequency_cap_per_month,
       } as any)
       .eq("id", user.id);
     if (error) {
@@ -514,6 +520,30 @@ const Settings = () => {
                   onChange={e => setForm({...form, import_quiet_days: parseInt(e.target.value) || 0})}
                   className="rounded-none w-32"/>
               </div>
+
+              <div className="p-4 border border-border bg-secondary/20 grid grid-cols-2 gap-6">
+                <div>
+                  <Label className="text-xs font-serif">配信間隔の最低日数（クールダウン）</Label>
+                  <p className="text-[10px] text-muted-foreground mt-1 mb-2">
+                    同じお客様への次の自動配信は、何日空ければOKか。デフォルト 7日。
+                  </p>
+                  <Input type="number" min={0} max={90}
+                    value={(form as any).frequency_cap_days ?? 7}
+                    onChange={e => setForm({...form, frequency_cap_days: parseInt(e.target.value) || 0} as any)}
+                    className="rounded-none w-32"/>
+                </div>
+                <div>
+                  <Label className="text-xs font-serif">月あたりの配信上限</Label>
+                  <p className="text-[10px] text-muted-foreground mt-1 mb-2">
+                    1人のお客様に1ヶ月で送る自動配信の最大数。デフォルト 4通。
+                  </p>
+                  <Input type="number" min={1} max={30}
+                    value={(form as any).frequency_cap_per_month ?? 4}
+                    onChange={e => setForm({...form, frequency_cap_per_month: parseInt(e.target.value) || 1} as any)}
+                    className="rounded-none w-32"/>
+                </div>
+              </div>
+
 
               {form.approval_mode !== "auto" && (
                 <p className="text-[10px] text-muted-foreground">

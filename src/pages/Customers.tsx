@@ -98,7 +98,7 @@ const Customers = () => {
     setLoading(true);
     const { data, error } = await supabase
       .from("customers")
-      .select("id, full_name, email, phone, birthday, last_visit_date, visit_count, total_spent, line_user_id, notes")
+      .select("id, full_name, email, phone, birthday, last_visit_date, visit_count, total_spent, line_user_id, notes, opt_out_automation, opt_out_reason")
       .eq("location_id", locationId)
       .order("last_visit_date", { ascending: false, nullsFirst: false })
       .limit(1000);

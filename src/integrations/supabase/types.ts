@@ -14,6 +14,101 @@ export type Database = {
   }
   public: {
     Tables: {
+      ab_test_assignments: {
+        Row: {
+          ab_test_id: string
+          booked_at: string | null
+          clicked_at: string | null
+          created_at: string
+          customer_id: string
+          id: string
+          opened_at: string | null
+          scheduled_job_id: string | null
+          sent_at: string | null
+          variant: string
+        }
+        Insert: {
+          ab_test_id: string
+          booked_at?: string | null
+          clicked_at?: string | null
+          created_at?: string
+          customer_id: string
+          id?: string
+          opened_at?: string | null
+          scheduled_job_id?: string | null
+          sent_at?: string | null
+          variant: string
+        }
+        Update: {
+          ab_test_id?: string
+          booked_at?: string | null
+          clicked_at?: string | null
+          created_at?: string
+          customer_id?: string
+          id?: string
+          opened_at?: string | null
+          scheduled_job_id?: string | null
+          sent_at?: string | null
+          variant?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ab_test_assignments_ab_test_id_fkey"
+            columns: ["ab_test_id"]
+            isOneToOne: false
+            referencedRelation: "ab_tests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ab_tests: {
+        Row: {
+          created_at: string
+          ended_at: string | null
+          id: string
+          location_id: string | null
+          name: string
+          owner_id: string
+          split_ratio: number
+          started_at: string
+          status: string
+          template_key: string
+          updated_at: string
+          variant_a: Json
+          variant_b: Json
+        }
+        Insert: {
+          created_at?: string
+          ended_at?: string | null
+          id?: string
+          location_id?: string | null
+          name: string
+          owner_id: string
+          split_ratio?: number
+          started_at?: string
+          status?: string
+          template_key: string
+          updated_at?: string
+          variant_a: Json
+          variant_b: Json
+        }
+        Update: {
+          created_at?: string
+          ended_at?: string | null
+          id?: string
+          location_id?: string | null
+          name?: string
+          owner_id?: string
+          split_ratio?: number
+          started_at?: string
+          status?: string
+          template_key?: string
+          updated_at?: string
+          variant_a?: Json
+          variant_b?: Json
+        }
+        Relationships: []
+      }
       booking_tokens: {
         Row: {
           created_at: string
@@ -357,6 +452,51 @@ export type Database = {
         }
         Relationships: []
       }
+      customer_communication_state: {
+        Row: {
+          created_at: string
+          customer_id: string
+          id: string
+          last_channel: string | null
+          last_sent_at: string | null
+          last_template_key: string | null
+          location_id: string | null
+          monthly_count: number
+          monthly_period_start: string
+          owner_id: string
+          total_sent: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          customer_id: string
+          id?: string
+          last_channel?: string | null
+          last_sent_at?: string | null
+          last_template_key?: string | null
+          location_id?: string | null
+          monthly_count?: number
+          monthly_period_start?: string
+          owner_id: string
+          total_sent?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          customer_id?: string
+          id?: string
+          last_channel?: string | null
+          last_sent_at?: string | null
+          last_template_key?: string | null
+          location_id?: string | null
+          monthly_count?: number
+          monthly_period_start?: string
+          owner_id?: string
+          total_sent?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       customer_message_templates: {
         Row: {
           active: boolean
@@ -411,6 +551,9 @@ export type Database = {
           line_user_id: string | null
           location_id: string | null
           notes: string | null
+          opt_out_at: string | null
+          opt_out_automation: boolean
+          opt_out_reason: string | null
           owner_id: string
           phone: string | null
           quiet_until: string | null
@@ -435,6 +578,9 @@ export type Database = {
           line_user_id?: string | null
           location_id?: string | null
           notes?: string | null
+          opt_out_at?: string | null
+          opt_out_automation?: boolean
+          opt_out_reason?: string | null
           owner_id: string
           phone?: string | null
           quiet_until?: string | null
@@ -459,6 +605,9 @@ export type Database = {
           line_user_id?: string | null
           location_id?: string | null
           notes?: string | null
+          opt_out_at?: string | null
+          opt_out_automation?: boolean
+          opt_out_reason?: string | null
           owner_id?: string
           phone?: string | null
           quiet_until?: string | null
@@ -1721,6 +1870,37 @@ export type Database = {
         }
         Relationships: []
       }
+      delivery_daily_summary: {
+        Row: {
+          day: string | null
+          failed_count: number | null
+          owner_id: string | null
+          sent_count: number | null
+          suppressed_count: number | null
+          template_name: string | null
+          total_count: number | null
+        }
+        Relationships: []
+      }
+      delivery_upcoming_view: {
+        Row: {
+          approval_status:
+            | Database["public"]["Enums"]["job_approval_status"]
+            | null
+          customer_email: string | null
+          customer_id: string | null
+          customer_name: string | null
+          customer_phone: string | null
+          id: string | null
+          job_type: string | null
+          location_id: string | null
+          opt_out_automation: boolean | null
+          owner_id: string | null
+          payload: Json | null
+          scheduled_for: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       calculate_segment: {
@@ -1738,6 +1918,14 @@ export type Database = {
       can_manage_location: {
         Args: { _location_id: string; _user_id: string }
         Returns: boolean
+      }
+      can_send_to_customer: {
+        Args: {
+          _cap_days?: number
+          _cap_per_month?: number
+          _customer_id: string
+        }
+        Returns: Json
       }
       cancel_orphan_reactivation_jobs: {
         Args: { _owner_id: string }
@@ -1886,6 +2074,16 @@ export type Database = {
           msg_id: number
           read_ct: number
         }[]
+      }
+      record_customer_communication: {
+        Args: {
+          _channel: string
+          _customer_id: string
+          _location_id: string
+          _owner_id: string
+          _template_key: string
+        }
+        Returns: undefined
       }
       user_tenant_id: { Args: { _user_id: string }; Returns: string }
     }

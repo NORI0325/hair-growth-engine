@@ -34,6 +34,8 @@ export interface EditableCustomer {
   total_spent: number;
   line_user_id?: string | null;
   notes?: string | null;
+  opt_out_automation?: boolean | null;
+  opt_out_reason?: string | null;
 }
 
 interface Props {
@@ -50,6 +52,7 @@ const EditCustomerDialog = ({ customer, open, onOpenChange, onSaved }: Props) =>
     full_name: "", phone: "", email: "", birthday: "",
     last_visit_date: "", visit_count: "0", total_spent: "0",
     line_user_id: "", notes: "",
+    opt_out_automation: false, opt_out_reason: "",
   });
 
   useEffect(() => {
@@ -64,6 +67,8 @@ const EditCustomerDialog = ({ customer, open, onOpenChange, onSaved }: Props) =>
         total_spent: String(customer.total_spent ?? 0),
         line_user_id: customer.line_user_id || "",
         notes: customer.notes || "",
+        opt_out_automation: !!customer.opt_out_automation,
+        opt_out_reason: customer.opt_out_reason || "",
       });
     }
   }, [customer]);
@@ -85,7 +90,10 @@ const EditCustomerDialog = ({ customer, open, onOpenChange, onSaved }: Props) =>
       total_spent: parsed.data.total_spent ?? 0,
       line_user_id: parsed.data.line_user_id || null,
       notes: parsed.data.notes || null,
-    }).eq("id", customer.id);
+      opt_out_automation: form.opt_out_automation,
+      opt_out_reason: form.opt_out_automation ? (form.opt_out_reason || null) : null,
+      opt_out_at: form.opt_out_automation && !customer.opt_out_automation ? new Date().toISOString() : (form.opt_out_automation ? undefined : null),
+    } as any).eq("id", customer.id);
     setLoading(false);
     if (error) { toast.error("更新に失敗しました: " + error.message); return; }
     toast.success("顧客情報を更新しました");
@@ -168,6 +176,36 @@ const EditCustomerDialog = ({ customer, open, onOpenChange, onSaved }: Props) =>
             <textarea value={form.notes} onChange={e => setForm({...form, notes: e.target.value})}
               rows={3}
               className="w-full rounded-none border-x-0 border-t-0 border-b border-input bg-transparent px-0 py-2 text-sm focus-visible:outline-none focus-visible:border-gold resize-none" />
+          </div>
+
+          {/* 自動配信オプトアウト */}
+          <div className="border border-border p-4 bg-muted/30">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <p className="font-serif text-sm">自動配信を停止する</p>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  ONにすると、復活クーポン・お誕生日メッセージなどの自動メールが、このお客様に届かなくなります。<br/>
+                  予約確定・リマインドなどの取引メールは引き続き送信されます。
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                checked={form.opt_out_automation}
+                onChange={e => setForm({...form, opt_out_automation: e.target.checked})}
+                className="w-4 h-4 mt-1 accent-gold"
+              />
+            </div>
+            {form.opt_out_automation && (
+              <div className="mt-3">
+                <Label className="text-[11px] text-muted-foreground mb-1 block">理由（任意）</Label>
+                <Input
+                  value={form.opt_out_reason}
+                  onChange={e => setForm({...form, opt_out_reason: e.target.value})}
+                  placeholder="例: 本人より配信不要のお申し出"
+                  className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold text-sm"
+                />
+              </div>
+            )}
           </div>
 
           <div className="flex gap-3 pt-2">
