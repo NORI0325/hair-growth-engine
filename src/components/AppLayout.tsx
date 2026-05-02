@@ -89,6 +89,7 @@ const navGroups: NavGroup[] = [
       { to: "/team", label: "チーム", en: "Team", icon: Users2 },
       { to: "/billing", label: "契約・支払い", en: "Billing", icon: CreditCard },
       { to: "/import", label: "インポート", en: "Import", icon: Upload },
+      { to: "/inbound-logs", label: "予約取込ログ", en: "Inbound Logs", icon: Radio },
       { to: "/salonboard-export", label: "サロンボード抽出", en: "SB Export", icon: Download },
     ],
   },
