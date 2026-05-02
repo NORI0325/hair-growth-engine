@@ -34,6 +34,8 @@ export interface EditableCustomer {
   total_spent: number;
   line_user_id?: string | null;
   notes?: string | null;
+  opt_out_automation?: boolean | null;
+  opt_out_reason?: string | null;
 }
 
 interface Props {
