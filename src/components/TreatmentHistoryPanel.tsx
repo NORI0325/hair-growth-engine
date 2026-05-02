@@ -100,9 +100,9 @@ export const TreatmentHistoryPanel = ({ customerId }: { customerId: string }) =>
 
   const uploadPhoto = async (file: File, type: "before" | "after"): Promise<string | null> => {
     if (!editing || !tenantId) return null;
-    const ext = file.name.split(".").pop();
-    const path = `${tenantId}/${customerId}/${Date.now()}-${type}.${ext}`;
-    const { error } = await supabase.storage.from("chart-photos").upload(path, file);
+    const compressed = await compressImage(file);
+    const path = `${tenantId}/${customerId}/${Date.now()}-${type}.jpg`;
+    const { error } = await supabase.storage.from("chart-photos").upload(path, compressed, { contentType: "image/jpeg" });
     if (error) { toast.error("写真アップロード失敗: " + error.message); return null; }
     return path;
   };
@@ -110,10 +110,13 @@ export const TreatmentHistoryPanel = ({ customerId }: { customerId: string }) =>
   const onPhotoChange = async (e: React.ChangeEvent<HTMLInputElement>, type: "before" | "after") => {
     const file = e.target.files?.[0];
     if (!file || !editing) return;
+    setUploading(type);
     const path = await uploadPhoto(file, type);
+    setUploading(null);
+    e.target.value = "";
     if (!path) return;
     setEditing({ ...editing, [type === "before" ? "before_photo_url" : "after_photo_url"]: path });
-    toast.success("アップロード完了");
+    toast.success(type === "before" ? "Before写真を保存" : "After写真を保存");
   };
 
   const save = async () => {
