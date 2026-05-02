@@ -1741,6 +1741,7 @@ export type Database = {
           name: string
           note: string | null
           owner_id: string
+          pin_code: string | null
           sort_order: number
           updated_at: string
         }
@@ -1754,6 +1755,7 @@ export type Database = {
           name: string
           note?: string | null
           owner_id: string
+          pin_code?: string | null
           sort_order?: number
           updated_at?: string
         }
@@ -1767,6 +1769,7 @@ export type Database = {
           name?: string
           note?: string | null
           owner_id?: string
+          pin_code?: string | null
           sort_order?: number
           updated_at?: string
         }

@@ -2,12 +2,14 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useCurrentLocationId } from "@/hooks/useLocations";
+import { useActiveStaff } from "@/hooks/useActiveStaff";
+import { compressImage } from "@/lib/imageCompress";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Loader2, Plus, Image as ImageIcon, Camera, Trash2, Sparkles } from "lucide-react";
+import { Loader2, Plus, Image as ImageIcon, Camera, Trash2, Sparkles, Copy } from "lucide-react";
 import { toast } from "sonner";
 
 interface RecipeRow { brand: string; name: string; ratio: string; oxy: string; time_minutes: string; area: string }
@@ -44,12 +46,34 @@ interface Staff { id: string; name: string }
 export const TreatmentHistoryPanel = ({ customerId }: { customerId: string }) => {
   const { user } = useAuth();
   const locationId = useCurrentLocationId();
+  const { active: activeStaff } = useActiveStaff();
   const [list, setList] = useState<Treatment[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Treatment | null>(null);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState<"before" | "after" | null>(null);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [tenantId, setTenantId] = useState<string | null>(null);
+
+  const startNew = () => {
+    const seed = empty(customerId);
+    if (activeStaff) seed.staff_id = activeStaff.id;
+    setEditing(seed);
+  };
+
+  // 前回の施術を雛形にコピー（薬剤・メニュー）
+  const copyFromPrevious = () => {
+    if (!editing || list.length === 0) return;
+    const prev = list[0];
+    setEditing({
+      ...editing,
+      menu_summary: prev.menu_summary,
+      color_recipe: JSON.parse(JSON.stringify(prev.color_recipe || [])),
+      perm_recipe: JSON.parse(JSON.stringify(prev.perm_recipe || [])),
+      next_suggestion: prev.next_suggestion,
+    });
+    toast.success("前回のレシピをコピーしました");
+  };
 
   const load = async () => {
     setLoading(true);
@@ -76,9 +100,9 @@ export const TreatmentHistoryPanel = ({ customerId }: { customerId: string }) =>
 
   const uploadPhoto = async (file: File, type: "before" | "after"): Promise<string | null> => {
     if (!editing || !tenantId) return null;
-    const ext = file.name.split(".").pop();
-    const path = `${tenantId}/${customerId}/${Date.now()}-${type}.${ext}`;
-    const { error } = await supabase.storage.from("chart-photos").upload(path, file);
+    const compressed = await compressImage(file);
+    const path = `${tenantId}/${customerId}/${Date.now()}-${type}.jpg`;
+    const { error } = await supabase.storage.from("chart-photos").upload(path, compressed, { contentType: "image/jpeg" });
     if (error) { toast.error("写真アップロード失敗: " + error.message); return null; }
     return path;
   };
@@ -86,10 +110,13 @@ export const TreatmentHistoryPanel = ({ customerId }: { customerId: string }) =>
   const onPhotoChange = async (e: React.ChangeEvent<HTMLInputElement>, type: "before" | "after") => {
     const file = e.target.files?.[0];
     if (!file || !editing) return;
+    setUploading(type);
     const path = await uploadPhoto(file, type);
+    setUploading(null);
+    e.target.value = "";
     if (!path) return;
     setEditing({ ...editing, [type === "before" ? "before_photo_url" : "after_photo_url"]: path });
-    toast.success("アップロード完了");
+    toast.success(type === "before" ? "Before写真を保存" : "After写真を保存");
   };
 
   const save = async () => {
@@ -97,6 +124,7 @@ export const TreatmentHistoryPanel = ({ customerId }: { customerId: string }) =>
     setSaving(true);
     const payload: any = {
       ...editing,
+      staff_id: editing.staff_id || activeStaff?.id || null,
       owner_id: user.id,
       location_id: locationId,
     };
@@ -135,7 +163,7 @@ export const TreatmentHistoryPanel = ({ customerId }: { customerId: string }) =>
           <Sparkles className="w-4 h-4 text-gold" />
           <h3 className="font-serif text-base">施術履歴 <span className="eyebrow text-[10px] text-muted-foreground ml-2">Treatment History</span></h3>
         </div>
-        <Button size="sm" onClick={() => setEditing(empty(customerId))} className="rounded-none">
+        <Button size="sm" onClick={startNew} className="rounded-none">
           <Plus className="w-3 h-3 mr-1" />追加
         </Button>
       </div>
@@ -167,9 +195,17 @@ export const TreatmentHistoryPanel = ({ customerId }: { customerId: string }) =>
       )}
 
       <Dialog open={!!editing} onOpenChange={(v) => !v && setEditing(null)}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto rounded-none">
+        <DialogContent className="max-w-3xl max-h-[95vh] overflow-y-auto rounded-none p-4 md:p-6">
           <DialogHeader>
-            <DialogTitle className="font-serif">施術カルテ <span className="eyebrow text-[10px] text-muted-foreground ml-2">Treatment Record</span></DialogTitle>
+            <DialogTitle className="font-serif flex items-center justify-between gap-2">
+              <span>施術カルテ <span className="eyebrow text-[10px] text-muted-foreground ml-2">Treatment Record</span></span>
+              {!editing?.id && list.length > 0 && (
+                <Button size="sm" variant="outline" onClick={copyFromPrevious} className="rounded-none text-[11px] h-8">
+                  <Copy className="w-3 h-3 mr-1" />前回コピー
+                </Button>
+              )}
+            </DialogTitle>
+            {activeStaff && <p className="text-[10px] text-muted-foreground">操作中: {activeStaff.name}</p>}
           </DialogHeader>
           {editing && (
             <div className="space-y-4">
@@ -217,18 +253,29 @@ export const TreatmentHistoryPanel = ({ customerId }: { customerId: string }) =>
                 onChange={(rows) => setEditing({ ...editing, perm_recipe: rows })}
               />
 
-              {/* 写真 */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-[11px] flex items-center gap-1"><Camera className="w-3 h-3" />Before</Label>
-                  <Input type="file" accept="image/*" onChange={(e) => onPhotoChange(e, "before")} className="rounded-none h-9 text-xs" />
-                  {editing.before_photo_url && <PhotoThumb path={editing.before_photo_url} />}
-                </div>
-                <div>
-                  <Label className="text-[11px] flex items-center gap-1"><Camera className="w-3 h-3" />After</Label>
-                  <Input type="file" accept="image/*" onChange={(e) => onPhotoChange(e, "after")} className="rounded-none h-9 text-xs" />
-                  {editing.after_photo_url && <PhotoThumb path={editing.after_photo_url} />}
-                </div>
+              {/* 写真 — モバイル: カメラ直撮り or 端末から選択 */}
+              <div className="grid grid-cols-2 gap-3">
+                {(["before", "after"] as const).map((type) => (
+                  <div key={type}>
+                    <Label className="text-[11px] flex items-center gap-1">
+                      <Camera className="w-3 h-3" />{type === "before" ? "Before" : "After"}
+                    </Label>
+                    <div className="grid grid-cols-2 gap-1 mt-1">
+                      <label className="border border-input bg-background hover:bg-accent rounded-none h-12 flex flex-col items-center justify-center text-[10px] cursor-pointer">
+                        <Camera className="w-4 h-4 mb-0.5" />撮影
+                        <input type="file" accept="image/*" capture="environment" className="hidden"
+                          onChange={(e) => onPhotoChange(e, type)} />
+                      </label>
+                      <label className="border border-input bg-background hover:bg-accent rounded-none h-12 flex flex-col items-center justify-center text-[10px] cursor-pointer">
+                        <ImageIcon className="w-4 h-4 mb-0.5" />選択
+                        <input type="file" accept="image/*" className="hidden"
+                          onChange={(e) => onPhotoChange(e, type)} />
+                      </label>
+                    </div>
+                    {uploading === type && <div className="mt-2 text-[10px] text-muted-foreground flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" />アップロード中...</div>}
+                    {editing[type === "before" ? "before_photo_url" : "after_photo_url"] && <PhotoThumb path={editing[type === "before" ? "before_photo_url" : "after_photo_url"]!} />}
+                  </div>
+                ))}
               </div>
 
               <div>
@@ -286,25 +333,31 @@ const RecipeEditor = ({ title, rows, onChange }: { title: string; rows: RecipeRo
     <div>
       <div className="flex items-center justify-between mb-2">
         <Label className="text-[11px] font-serif">{title}</Label>
-        <Button size="sm" variant="ghost" onClick={() => onChange([...rows, emptyRow()])} className="h-6 text-[10px]">
+        <Button size="sm" variant="ghost" onClick={() => onChange([...rows, emptyRow()])} className="h-7 text-[10px]">
           <Plus className="w-3 h-3 mr-1" />追加
         </Button>
       </div>
       {rows.length === 0 ? (
         <p className="text-[10px] text-muted-foreground">なし</p>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {rows.map((r, i) => (
-            <div key={i} className="grid grid-cols-12 gap-1 items-center">
-              <Input placeholder="ブランド" value={r.brand} onChange={(e) => { const n = [...rows]; n[i].brand = e.target.value; onChange(n); }} className="rounded-none h-8 text-xs col-span-2" />
-              <Input placeholder="薬剤名" value={r.name} onChange={(e) => { const n = [...rows]; n[i].name = e.target.value; onChange(n); }} className="rounded-none h-8 text-xs col-span-3" />
-              <Input placeholder="比率" value={r.ratio} onChange={(e) => { const n = [...rows]; n[i].ratio = e.target.value; onChange(n); }} className="rounded-none h-8 text-xs col-span-2" />
-              <Input placeholder="OX%" value={r.oxy} onChange={(e) => { const n = [...rows]; n[i].oxy = e.target.value; onChange(n); }} className="rounded-none h-8 text-xs col-span-1" />
-              <Input placeholder="放置(分)" value={r.time_minutes} onChange={(e) => { const n = [...rows]; n[i].time_minutes = e.target.value; onChange(n); }} className="rounded-none h-8 text-xs col-span-1" />
-              <Input placeholder="部位" value={r.area} onChange={(e) => { const n = [...rows]; n[i].area = e.target.value; onChange(n); }} className="rounded-none h-8 text-xs col-span-2" />
-              <Button size="sm" variant="ghost" onClick={() => onChange(rows.filter((_, j) => j !== i))} className="h-8 w-8 p-0 col-span-1">
-                <Trash2 className="w-3 h-3" />
-              </Button>
+            <div key={i} className="border border-border p-2 space-y-1.5 bg-secondary/20">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-muted-foreground">#{i + 1}</span>
+                <Button size="sm" variant="ghost" onClick={() => onChange(rows.filter((_, j) => j !== i))} className="h-6 w-6 p-0">
+                  <Trash2 className="w-3 h-3" />
+                </Button>
+              </div>
+              {/* モバイル: 縦積み 2列 / デスクトップ: 6列 */}
+              <div className="grid grid-cols-2 md:grid-cols-6 gap-1.5">
+                <Input placeholder="ブランド" value={r.brand} onChange={(e) => { const n = [...rows]; n[i].brand = e.target.value; onChange(n); }} className="rounded-none h-9 text-xs" />
+                <Input placeholder="薬剤名" value={r.name} onChange={(e) => { const n = [...rows]; n[i].name = e.target.value; onChange(n); }} className="rounded-none h-9 text-xs md:col-span-2" />
+                <Input placeholder="比率" value={r.ratio} onChange={(e) => { const n = [...rows]; n[i].ratio = e.target.value; onChange(n); }} className="rounded-none h-9 text-xs" />
+                <Input placeholder="OX%" inputMode="decimal" value={r.oxy} onChange={(e) => { const n = [...rows]; n[i].oxy = e.target.value; onChange(n); }} className="rounded-none h-9 text-xs" />
+                <Input placeholder="放置(分)" inputMode="numeric" value={r.time_minutes} onChange={(e) => { const n = [...rows]; n[i].time_minutes = e.target.value; onChange(n); }} className="rounded-none h-9 text-xs" />
+                <Input placeholder="部位（根元/中間/毛先など）" value={r.area} onChange={(e) => { const n = [...rows]; n[i].area = e.target.value; onChange(n); }} className="rounded-none h-9 text-xs col-span-2 md:col-span-6" />
+              </div>
             </div>
           ))}
         </div>
