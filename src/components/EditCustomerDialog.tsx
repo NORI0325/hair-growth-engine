@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { CustomerInsightsPanel } from "@/components/CustomerInsightsPanel";
+import CustomerDeliveryTimeline from "@/components/CustomerDeliveryTimeline";
 
 const schema = z.object({
   full_name: z.string().trim().min(1, "お名前は必須です").max(100),
