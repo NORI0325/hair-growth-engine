@@ -324,12 +324,12 @@ Deno.serve(async (req) => {
           )
         }
 
-        // 403 means the project/domain cannot send right now — retrying won't help.
+        // 403 means emails are disabled for this project — retrying won't help.
         // Move straight to DLQ and stop processing the rest of the batch.
         if (isForbidden(error)) {
-          await moveToDlq(supabase, queue, msg, errorMsg.slice(0, 1000))
+          await moveToDlq(supabase, queue, msg, 'Emails disabled for this project')
           return new Response(
-            JSON.stringify({ processed: totalProcessed, stopped: 'email_forbidden' }),
+            JSON.stringify({ processed: totalProcessed, stopped: 'emails_disabled' }),
             { headers: { 'Content-Type': 'application/json' } }
           )
         }
