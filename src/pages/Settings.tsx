@@ -111,6 +111,9 @@ const Settings = () => {
           birthday_discount_percent: d.birthday_discount_percent ?? 30,
           thank_you_delay_days: d.thank_you_delay_days ?? 1,
           aftercare_delay_days: d.aftercare_delay_days ?? 7,
+          import_quiet_days: d.import_quiet_days ?? 7,
+          approval_mode: (d.approval_mode as any) ?? "auto",
+          approval_required_templates: Array.isArray(d.approval_required_templates) ? d.approval_required_templates : [],
         });
       }
       setLoading(false);
