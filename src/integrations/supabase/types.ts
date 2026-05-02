@@ -1307,6 +1307,48 @@ export type Database = {
         }
         Relationships: []
       }
+      reactivation_segment_templates: {
+        Row: {
+          body: string | null
+          created_at: string
+          cta_label: string | null
+          discount_percent: number | null
+          enabled: boolean
+          id: string
+          owner_id: string
+          segment: Database["public"]["Enums"]["retention_segment"]
+          subject: string | null
+          tone: string | null
+          updated_at: string
+        }
+        Insert: {
+          body?: string | null
+          created_at?: string
+          cta_label?: string | null
+          discount_percent?: number | null
+          enabled?: boolean
+          id?: string
+          owner_id: string
+          segment: Database["public"]["Enums"]["retention_segment"]
+          subject?: string | null
+          tone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          body?: string | null
+          created_at?: string
+          cta_label?: string | null
+          discount_percent?: number | null
+          enabled?: boolean
+          id?: string
+          owner_id?: string
+          segment?: Database["public"]["Enums"]["retention_segment"]
+          subject?: string | null
+          tone?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       salon_hours: {
         Row: {
           close_time: string
@@ -1931,6 +1973,10 @@ export type Database = {
         Args: { _owner_id: string }
         Returns: number
       }
+      classify_customer_segment: {
+        Args: { _customer_id: string }
+        Returns: Database["public"]["Enums"]["retention_segment"]
+      }
       create_anniversary_jobs_for_today: { Args: never; Returns: number }
       create_birthday_jobs_for_month: { Args: never; Returns: number }
       create_holiday_notice_jobs: {
@@ -2098,6 +2144,13 @@ export type Database = {
       campaign_status: "draft" | "sending" | "sent" | "failed"
       customer_segment: "active" | "at_risk" | "dormant" | "new"
       job_approval_status: "auto" | "pending_approval" | "approved" | "rejected"
+      retention_segment:
+        | "cold_1"
+        | "warm_mid"
+        | "loyal_risk"
+        | "lost_1"
+        | "churned"
+        | "vip_lost"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -2236,6 +2289,14 @@ export const Constants = {
       campaign_status: ["draft", "sending", "sent", "failed"],
       customer_segment: ["active", "at_risk", "dormant", "new"],
       job_approval_status: ["auto", "pending_approval", "approved", "rejected"],
+      retention_segment: [
+        "cold_1",
+        "warm_mid",
+        "loyal_risk",
+        "lost_1",
+        "churned",
+        "vip_lost",
+      ],
     },
   },
 } as const
