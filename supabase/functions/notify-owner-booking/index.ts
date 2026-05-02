@@ -74,7 +74,7 @@ Deno.serve(async (req) => {
     const [{ data: profile }, { data: customer }] = await Promise.all([
       supabase
         .from("profiles")
-        .select("salon_name, owner_notification_email, line_channel_access_token")
+        .select("salon_name, owner_notification_email, line_channel_access_token, notification_recipients")
         .eq("id", booking.owner_id)
         .maybeSingle(),
       supabase
@@ -97,31 +97,73 @@ Deno.serve(async (req) => {
 
     const results: Record<string, unknown> = {};
 
-    // === ① オーナーへメール通知 ===
-    const ownerRecipient = profile?.owner_notification_email;
-    if (ownerRecipient) {
-      const { error } = await supabase.functions.invoke("send-transactional-email", {
-        body: {
-          templateName: "booking-alert-owner",
-          recipientEmail: ownerRecipient,
-          idempotencyKey: `owner-alert-${eventType}-${bookingId}`,
-          templateData: {
-            eventType,
-            customerName,
-            customerPhone: customer?.phone ?? undefined,
-            bookingDate,
-            bookingTime,
-            menu,
-            notes: booking.notes ?? undefined,
-            salonName: profile?.salon_name ?? undefined,
-          },
-        },
-      });
-      results.owner_email = error ? `error: ${error.message}` : "sent";
-      if (error) console.error("owner email error:", error);
-    } else {
-      results.owner_email = "skipped: no recipient";
+    // === ① オーナー側へ通知（複数宛先 + メール/LINE）===
+    type Recipient = { name?: string; email?: string; line_user_id?: string; channels?: string[] };
+    const recipients: Recipient[] = Array.isArray(profile?.notification_recipients)
+      ? (profile!.notification_recipients as Recipient[])
+      : [];
+
+    // 後方互換: owner_notification_email が設定済みでリストに無ければ追加
+    const legacyEmail = profile?.owner_notification_email?.trim();
+    if (legacyEmail && !recipients.some((r) => r.email?.toLowerCase() === legacyEmail.toLowerCase())) {
+      recipients.push({ email: legacyEmail, channels: ["email"] });
     }
+
+    const ownerEmailResults: string[] = [];
+    const ownerLineResults: string[] = [];
+
+    for (const r of recipients) {
+      const channels = r.channels?.length ? r.channels : ["email"];
+
+      // メール通知
+      if (channels.includes("email") && r.email) {
+        const { error } = await supabase.functions.invoke("send-transactional-email", {
+          body: {
+            templateName: "booking-alert-owner",
+            recipientEmail: r.email,
+            idempotencyKey: `owner-alert-${eventType}-${bookingId}-${r.email}`,
+            templateData: {
+              eventType,
+              customerName,
+              customerPhone: customer?.phone ?? undefined,
+              bookingDate,
+              bookingTime,
+              menu,
+              notes: booking.notes ?? undefined,
+              salonName: profile?.salon_name ?? undefined,
+              recipientName: r.name ?? undefined,
+            },
+          },
+        });
+        ownerEmailResults.push(error ? `${r.email}: error` : `${r.email}: sent`);
+        if (error) console.error("owner email error:", r.email, error);
+      }
+
+      // LINE通知（オーナー/スタッフのLINE）
+      if (channels.includes("line") && r.line_user_id && profile?.line_channel_access_token) {
+        const lineMsg =
+          `🔔 ${eventLabel}\n\n` +
+          `👤 ${customerName}様\n` +
+          `📅 ${bookingDate} ${bookingTime}\n` +
+          `💇 ${menu}\n` +
+          (customer?.phone ? `📞 ${customer.phone}\n` : "") +
+          (booking.notes ? `📝 ${booking.notes}\n` : "") +
+          `\n— ${salonName}`;
+        const lr = await sendLinePush(profile.line_channel_access_token, r.line_user_id, lineMsg);
+        ownerLineResults.push(lr.ok ? `${r.line_user_id}: sent` : `${r.line_user_id}: error`);
+        await supabase.from("line_message_log").insert({
+          owner_id: booking.owner_id,
+          line_user_id: r.line_user_id,
+          job_type: `owner_alert_${eventType}`,
+          message: lineMsg,
+          status: lr.ok ? "sent" : "failed",
+          error: lr.ok ? null : lr.err,
+        });
+      }
+    }
+
+    results.owner_email = ownerEmailResults.length ? ownerEmailResults : "skipped: no email recipient";
+    results.owner_line = ownerLineResults.length ? ownerLineResults : "skipped: no line recipient";
 
     // === ② お客様へ LINE プッシュ（連携済みなら）===
     if (customer?.line_user_id && profile?.line_channel_access_token) {
