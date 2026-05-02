@@ -277,3 +277,25 @@
   .animate-delay-300 { animation-delay: 0.3s; }
   .animate-delay-400 { animation-delay: 0.4s; }
 }
+
+/* FullCalendar — luxury minimal theme */
+.salon-calendar .fc {
+  --fc-border-color: hsl(var(--border));
+  --fc-page-bg-color: hsl(var(--background));
+  --fc-neutral-bg-color: hsl(var(--secondary));
+  --fc-today-bg-color: hsl(var(--accent) / 0.3);
+  --fc-now-indicator-color: hsl(var(--gold));
+  --fc-button-bg-color: hsl(var(--secondary));
+  --fc-button-border-color: hsl(var(--border));
+  --fc-button-text-color: hsl(var(--foreground));
+  --fc-button-hover-bg-color: hsl(var(--accent));
+  --fc-button-active-bg-color: hsl(var(--gold));
+  font-family: inherit;
+}
+.salon-calendar .fc .fc-toolbar-title { font-family: var(--font-serif, serif); font-size: 1.1rem; letter-spacing: 0.02em; }
+.salon-calendar .fc .fc-button { border-radius: 0; text-transform: none; font-size: 12px; padding: 4px 10px; }
+.salon-calendar .fc .fc-col-header-cell-cushion { font-size: 11px; letter-spacing: 0.08em; padding: 8px 4px; color: hsl(var(--muted-foreground)); }
+.salon-calendar .fc .fc-timegrid-slot-label-cushion { font-size: 10px; color: hsl(var(--muted-foreground)); }
+.salon-calendar .fc-event { border-radius: 0; font-size: 11px; padding: 1px 4px; cursor: pointer; }
+.salon-calendar .fc-event:hover { opacity: 0.85; }
+.salon-calendar .fc-resource-timegrid-divider { background: hsl(var(--border)); }
