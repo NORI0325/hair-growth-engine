@@ -36,6 +36,8 @@ export interface EditableCustomer {
   notes?: string | null;
   opt_out_automation?: boolean | null;
   opt_out_reason?: string | null;
+  imported_from?: string | null;
+  activated_at?: string | null;
 }
 
 interface Props {
@@ -207,6 +209,37 @@ const EditCustomerDialog = ({ customer, open, onOpenChange, onSaved }: Props) =>
               </div>
             )}
           </div>
+
+          {/* サロンボード休眠インポート顧客の手動アクティブ化 */}
+          {customer.imported_from === "salonboard" && !customer.activated_at && (
+            <div className="border border-gold/40 p-4 bg-gold/5">
+              <p className="font-serif text-sm mb-1">休眠（インポート）顧客です</p>
+              <p className="text-[11px] text-muted-foreground mb-3">
+                サロンボードから一括取り込みされ、まだアプリ経由の予約・来店がないため、過去の来店をきっかけにする自動配信（サンクス・アフターケア・次回提案・リマインダー）はスキップされています。<br/>
+                予約や会計が登録されると自動でアクティブになります。手動で「今後の配信対象にする」場合は下のボタンを押してください。
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={loading}
+                onClick={async () => {
+                  setLoading(true);
+                  const { error } = await supabase
+                    .from("customers")
+                    .update({ activated_at: new Date().toISOString() } as any)
+                    .eq("id", customer.id);
+                  setLoading(false);
+                  if (error) { toast.error("アクティブ化に失敗しました: " + error.message); return; }
+                  toast.success("この顧客をアクティブ化しました");
+                  onOpenChange(false);
+                  onSaved();
+                }}
+                className="rounded-none px-4 py-5 text-xs tracking-luxury"
+              >
+                手動でアクティブ化する
+              </Button>
+            </div>
+          )}
 
           <div className="flex gap-3 pt-2">
             <AlertDialog>
