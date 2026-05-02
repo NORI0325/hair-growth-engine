@@ -396,6 +396,17 @@ Deno.serve(async (req) => {
           payload: { ...(job.payload as any || {}), channel_used: channelUsed },
         }).eq("id", job.id);
 
+        // ====== 配信成功時: コミュニケーション履歴を記録（頻度キャップ用） ======
+        if (channelUsed !== "none" && job.job_type !== "reminder") {
+          await supabase.rpc("record_customer_communication" as any, {
+            _customer_id: customer.id,
+            _owner_id: job.owner_id,
+            _location_id: (job as any).location_id || null,
+            _template_key: tmplKey,
+            _channel: channelUsed,
+          });
+        }
+
         if (channelUsed === "none") failed++; else success++;
       } catch (e) {
         await supabase.from("scheduled_jobs").update({
