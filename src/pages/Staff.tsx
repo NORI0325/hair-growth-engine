@@ -20,6 +20,7 @@ interface Staff {
   active: boolean;
   sort_order: number;
   note: string | null;
+  pin_code: string | null;
 }
 
 interface Schedule {
@@ -204,6 +205,24 @@ const StaffPage = () => {
                     <div className="flex items-center gap-2">
                       <Label className="text-xs">予約受付</Label>
                       <Switch checked={s.bookable} onCheckedChange={() => toggleActive(s, "bookable")} />
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Label className="text-xs">PIN</Label>
+                      <Input
+                        type="text" inputMode="numeric" pattern="[0-9]*" maxLength={6}
+                        defaultValue={s.pin_code || ""}
+                        placeholder="4-6桁"
+                        className="rounded-none h-8 w-20 text-xs text-center"
+                        onBlur={async (e) => {
+                          const v = e.target.value.trim();
+                          if (v === (s.pin_code || "")) return;
+                          if (v && !/^[0-9]{4,6}$/.test(v)) { toast.error("PINは数字4〜6桁"); return; }
+                          const { error } = await supabase.from("staff").update({ pin_code: v || null }).eq("id", s.id);
+                          if (error) { toast.error("PIN保存失敗: " + error.message); return; }
+                          toast.success("PINを保存");
+                          load();
+                        }}
+                      />
                     </div>
                     <Button variant="ghost" size="sm" className="rounded-none" onClick={() => setEditingStaff(s)}>
                       <CalIcon className="w-3.5 h-3.5 mr-1" />休暇
