@@ -128,12 +128,49 @@ Deno.serve(async (req) => {
   // Resend Inbound Webhook payload 形式に対応
   // 参考: https://resend.com/docs/dashboard/webhooks/inbound
   const data = payload.data || payload;
-  const toRaw: string = data.to?.[0] || data.to || data.envelope?.to?.[0] || "";
-  const to = typeof toRaw === "string" ? toRaw : toRaw?.email || "";
-  const fromRaw = data.from || "";
-  const from = typeof fromRaw === "string" ? fromRaw : fromRaw?.email || "";
-  const subject: string = data.subject || "";
-  const text: string = data.text || data.html?.replace(/<[^>]+>/g, "") || "";
+  const toRaw: any = data.to?.[0] ?? data.to ?? data.envelope?.to?.[0] ?? data.recipient ?? "";
+  const to = typeof toRaw === "string" ? toRaw : toRaw?.email || toRaw?.address || "";
+  const fromRaw: any = data.from ?? data.sender ?? "";
+  const from = typeof fromRaw === "string" ? fromRaw : fromRaw?.email || fromRaw?.address || "";
+  const subject: string = data.subject || data.Subject || "";
+
+  // 本文抽出: text → html(タグ除去) → body_plain → body_html → 全payloadフォールバック
+  const htmlToText = (html: string) => html
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|tr|li|h[1-6])>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\r\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  let text = "";
+  if (typeof data.text === "string" && data.text.trim()) {
+    text = data.text;
+  } else if (typeof data["body-plain"] === "string" && data["body-plain"].trim()) {
+    text = data["body-plain"]; // Mailgun形式
+  } else if (typeof data.html === "string" && data.html.trim()) {
+    text = htmlToText(data.html);
+  } else if (typeof data["body-html"] === "string" && data["body-html"].trim()) {
+    text = htmlToText(data["body-html"]);
+  } else if (typeof data["stripped-text"] === "string" && data["stripped-text"].trim()) {
+    text = data["stripped-text"];
+  }
+
+  // それでも空なら、payload全体をJSON化してフォールバック（AIに最低限の情報を渡す）
+  if (!text || text.trim().length < 20) {
+    try {
+      const fallback = JSON.stringify(data).slice(0, 6000);
+      text = (text ? text + "\n\n" : "") + "[RAW_PAYLOAD]\n" + fallback;
+    } catch { /* ignore */ }
+  }
 
   const parsed = parseInboundAddress(to);
   if (!parsed) {
