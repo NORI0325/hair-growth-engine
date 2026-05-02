@@ -45,6 +45,7 @@ import ABTests from "./pages/ABTests";
 import SegmentTemplates from "./pages/SegmentTemplates";
 import InboundLogs from "./pages/InboundLogs";
 import CalendarPage from "./pages/CalendarPage";
+import HelpCenter from "./pages/HelpCenter";
 import NotFound from "./pages/NotFound";
 import { LocationProvider } from "@/hooks/useLocations";
 

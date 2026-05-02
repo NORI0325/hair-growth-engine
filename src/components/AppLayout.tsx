@@ -8,10 +8,13 @@ import {
   Settings as SettingsIcon, Mail, MessageCircle, FileText, CalendarClock,
   TrendingUp, Scissors, UserCog, Gift, Inbox, Download, CreditCard, Users2,
   Store, ChevronDown, Sparkles, Building2, BarChart3, ShieldCheck, Radio, FlaskConical, Users as UsersIcon,
+  HelpCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LocationSwitcher } from "@/components/LocationSwitcher";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import HelpWidget from "@/components/HelpWidget";
+import OnboardingTour from "@/components/OnboardingTour";
 
 type NavItem = {
   to: string;
@@ -196,13 +199,13 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
 
         <nav className="flex-1 overflow-y-auto py-4 space-y-1">
           {/* Daily（常時表示） */}
-          <div className="px-4 pb-2">
+          <div className="px-4 pb-2" data-tour="nav-daily">
             <p className="eyebrow text-[9px] text-sidebar-foreground/40 px-4 mb-1">— Daily —</p>
             {dailyItems.map((item) => renderItem(item))}
           </div>
 
           {/* Groups */}
-          <div className="px-4 pt-2 border-t border-sidebar-border/40 space-y-0.5">
+          <div className="px-4 pt-2 border-t border-sidebar-border/40 space-y-0.5" data-tour="nav-groups">
             {navGroups.map((group) => {
               const GroupIcon = group.icon;
               const isOpen = openGroups[group.id] ?? group.id === activeGroupId;
@@ -243,7 +246,19 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
           </div>
         </nav>
 
-        <div className="p-4 border-t border-sidebar-border/60">
+        <div className="p-4 border-t border-sidebar-border/60 space-y-1">
+          <NavLink
+            to="/help"
+            className={({ isActive }) =>
+              cn(
+                "w-full flex items-center gap-2 px-3 py-2 text-xs tracking-luxury transition-colors rounded-none",
+                isActive ? "text-gold" : "text-sidebar-foreground/60 hover:text-sidebar-foreground"
+              )
+            }
+          >
+            <HelpCircle className="w-3.5 h-3.5 stroke-[1.5]" />
+            ヘルプ <span className="ml-auto opacity-50 text-[9px]">HELP</span>
+          </NavLink>
           <Button
             variant="ghost"
             className="w-full justify-start text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent text-xs tracking-luxury rounded-none"
@@ -258,6 +273,9 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       <main className="flex-1 overflow-auto">
         <div className="container mx-auto px-12 py-12 max-w-7xl animate-fade-in">{children}</div>
       </main>
+
+      <HelpWidget />
+      <OnboardingTour />
     </div>
   );
 };
