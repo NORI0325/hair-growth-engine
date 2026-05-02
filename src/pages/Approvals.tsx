@@ -31,6 +31,15 @@ const TYPE_LABEL: Record<string, string> = {
   holiday_notice: "休業のお知らせ",
 };
 
+const SEGMENT_LABEL: Record<string, { label: string; tone: string }> = {
+  cold_1:     { label: "ワンショット離脱",   tone: "bg-muted text-muted-foreground" },
+  warm_mid:   { label: "軽度離脱(2-3回)",    tone: "bg-blue-500/10 text-blue-700" },
+  loyal_risk: { label: "元常連の離脱予備軍", tone: "bg-amber-500/10 text-amber-700" },
+  lost_1:     { label: "ワンショット休眠",   tone: "bg-muted text-muted-foreground" },
+  churned:    { label: "離脱(2-3回)",        tone: "bg-orange-500/10 text-orange-700" },
+  vip_lost:   { label: "⚠ VIP離脱(手動推奨)", tone: "bg-destructive/10 text-destructive font-bold" },
+};
+
 export default function Approvals() {
   const { user } = useAuth();
   const [jobs, setJobs] = useState<PendingJob[]>([]);
@@ -118,12 +127,17 @@ export default function Approvals() {
           {jobs.map(j => (
             <div key={j.id} className="py-5 border-b border-border/60 flex items-center gap-4">
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-3 mb-1">
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
                   <span className="font-serif text-sm">{j.customers?.full_name || "—"}</span>
                   <Badge variant="secondary" className="text-[10px]">{TYPE_LABEL[j.job_type] || j.job_type}</Badge>
-                  {j.payload?.discount_percent && (
-                    <span className="text-[10px] text-gold">{j.payload.discount_percent}% OFF</span>
+                  {j.payload?.segment && SEGMENT_LABEL[j.payload.segment] && (
+                    <span className={`text-[10px] px-2 py-0.5 rounded ${SEGMENT_LABEL[j.payload.segment].tone}`}>
+                      {SEGMENT_LABEL[j.payload.segment].label}
+                    </span>
                   )}
+                  {j.payload?.discount_percent ? (
+                    <span className="text-[10px] text-gold">{j.payload.discount_percent}% OFF</span>
+                  ) : null}
                 </div>
                 <div className="text-xs text-muted-foreground">
                   {j.customers?.email || j.customers?.phone || "連絡先なし"} · 予定 {new Date(j.scheduled_for).toLocaleString("ja-JP")}

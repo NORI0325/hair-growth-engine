@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Users, Upload, Megaphone, Calendar, LogOut, Share2,
   Settings as SettingsIcon, Mail, MessageCircle, FileText, CalendarClock,
   TrendingUp, Scissors, UserCog, Gift, Inbox, Download, CreditCard, Users2,
-  Store, ChevronDown, Sparkles, Building2, BarChart3, ShieldCheck, Radio, FlaskConical,
+  Store, ChevronDown, Sparkles, Building2, BarChart3, ShieldCheck, Radio, FlaskConical, Users as UsersIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LocationSwitcher } from "@/components/LocationSwitcher";
@@ -52,6 +52,7 @@ const navGroups: NavGroup[] = [
       { to: "/schedule", label: "配信予定", en: "Schedule", icon: CalendarClock },
       { to: "/delivery", label: "配信ダッシュボード", en: "Delivery", icon: Radio },
       { to: "/approvals", label: "配信の承認", en: "Approvals", icon: ShieldCheck },
+      { to: "/segment-templates", label: "セグメント別文面", en: "Segments", icon: UsersIcon },
       { to: "/ab-tests", label: "A/Bテスト", en: "Experiments", icon: FlaskConical },
     ],
   },
