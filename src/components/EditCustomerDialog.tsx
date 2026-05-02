@@ -67,6 +67,8 @@ const EditCustomerDialog = ({ customer, open, onOpenChange, onSaved }: Props) =>
         total_spent: String(customer.total_spent ?? 0),
         line_user_id: customer.line_user_id || "",
         notes: customer.notes || "",
+        opt_out_automation: !!customer.opt_out_automation,
+        opt_out_reason: customer.opt_out_reason || "",
       });
     }
   }, [customer]);
