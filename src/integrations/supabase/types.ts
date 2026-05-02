@@ -538,6 +538,7 @@ export type Database = {
       }
       customers: {
         Row: {
+          activated_at: string | null
           birthday: string | null
           created_at: string
           email: string | null
@@ -565,6 +566,7 @@ export type Database = {
           visit_count: number
         }
         Insert: {
+          activated_at?: string | null
           birthday?: string | null
           created_at?: string
           email?: string | null
@@ -592,6 +594,7 @@ export type Database = {
           visit_count?: number
         }
         Update: {
+          activated_at?: string | null
           birthday?: string | null
           created_at?: string
           email?: string | null
