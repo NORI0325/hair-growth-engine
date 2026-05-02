@@ -41,6 +41,8 @@ import Approvals from "./pages/Approvals";
 import DeliveryDashboard from "./pages/DeliveryDashboard";
 import ABTests from "./pages/ABTests";
 import SegmentTemplates from "./pages/SegmentTemplates";
+import InboundLogs from "./pages/InboundLogs";
+import CalendarPage from "./pages/CalendarPage";
 import NotFound from "./pages/NotFound";
 import { LocationProvider } from "@/hooks/useLocations";
 
@@ -66,6 +68,8 @@ const App = () => (
             <Route path="/import" element={<ProtectedRoute><ImportCustomers /></ProtectedRoute>} />
             <Route path="/campaigns" element={<ProtectedRoute><Campaigns /></ProtectedRoute>} />
             <Route path="/bookings" element={<ProtectedRoute><Bookings /></ProtectedRoute>} />
+            <Route path="/calendar" element={<ProtectedRoute><CalendarPage /></ProtectedRoute>} />
+            <Route path="/inbound-logs" element={<ProtectedRoute><InboundLogs /></ProtectedRoute>} />
             <Route path="/approvals" element={<ProtectedRoute><Approvals /></ProtectedRoute>} />
             <Route path="/delivery" element={<ProtectedRoute><DeliveryDashboard /></ProtectedRoute>} />
             <Route path="/ab-tests" element={<ProtectedRoute><ABTests /></ProtectedRoute>} />

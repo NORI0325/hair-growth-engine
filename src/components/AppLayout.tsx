@@ -33,7 +33,8 @@ type NavGroup = {
 const dailyItems: NavItem[] = [
   { to: "/dashboard", label: "ダッシュボード", en: "Overview", icon: LayoutDashboard },
   { to: "/inbox", label: "受信トレイ", en: "Inbox", icon: Inbox, badgeKey: "inbox" },
-  { to: "/bookings", label: "予約", en: "Bookings", icon: Calendar },
+  { to: "/calendar", label: "予約カレンダー", en: "Calendar", icon: CalendarClock },
+  { to: "/bookings", label: "予約一覧", en: "Bookings", icon: Calendar },
   { to: "/customers", label: "顧客", en: "Guests", icon: Users },
 ];
 
@@ -88,6 +89,7 @@ const navGroups: NavGroup[] = [
       { to: "/team", label: "チーム", en: "Team", icon: Users2 },
       { to: "/billing", label: "契約・支払い", en: "Billing", icon: CreditCard },
       { to: "/import", label: "インポート", en: "Import", icon: Upload },
+      { to: "/inbound-logs", label: "予約取込ログ", en: "Inbound Logs", icon: Radio },
       { to: "/salonboard-export", label: "サロンボード抽出", en: "SB Export", icon: Download },
     ],
   },
