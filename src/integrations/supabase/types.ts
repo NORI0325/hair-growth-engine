@@ -799,6 +799,51 @@ export type Database = {
         }
         Relationships: []
       }
+      help_articles: {
+        Row: {
+          body: string
+          category: string
+          created_at: string
+          id: string
+          keywords: string[] | null
+          published: boolean
+          related_routes: string[] | null
+          slug: string
+          sort_order: number
+          summary: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          body: string
+          category: string
+          created_at?: string
+          id?: string
+          keywords?: string[] | null
+          published?: boolean
+          related_routes?: string[] | null
+          slug: string
+          sort_order?: number
+          summary?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          body?: string
+          category?: string
+          created_at?: string
+          id?: string
+          keywords?: string[] | null
+          published?: boolean
+          related_routes?: string[] | null
+          slug?: string
+          sort_order?: number
+          summary?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       incentives: {
         Row: {
           active: boolean
@@ -1226,6 +1271,7 @@ export type Database = {
           salon_name: string | null
           test_mode: boolean
           thank_you_delay_days: number
+          tour_completed: boolean
           updated_at: string
         }
         Insert: {
@@ -1266,6 +1312,7 @@ export type Database = {
           salon_name?: string | null
           test_mode?: boolean
           thank_you_delay_days?: number
+          tour_completed?: boolean
           updated_at?: string
         }
         Update: {
@@ -1306,6 +1353,7 @@ export type Database = {
           salon_name?: string | null
           test_mode?: boolean
           thank_you_delay_days?: number
+          tour_completed?: boolean
           updated_at?: string
         }
         Relationships: []
@@ -1671,6 +1719,84 @@ export type Database = {
           tenant_id?: string | null
           trial_ends_at?: string | null
           updated_at?: string
+        }
+        Relationships: []
+      }
+      support_chat_messages: {
+        Row: {
+          content: string
+          context_route: string | null
+          created_at: string
+          id: string
+          role: string
+          session_id: string
+          user_id: string
+        }
+        Insert: {
+          content: string
+          context_route?: string | null
+          created_at?: string
+          id?: string
+          role: string
+          session_id: string
+          user_id: string
+        }
+        Update: {
+          content?: string
+          context_route?: string | null
+          created_at?: string
+          id?: string
+          role?: string
+          session_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      support_tickets: {
+        Row: {
+          ai_chat_history: Json | null
+          context_data: Json | null
+          context_route: string | null
+          created_at: string
+          id: string
+          message: string
+          owner_id: string
+          status: string
+          subject: string
+          updated_at: string
+          user_email: string
+          user_id: string
+          user_name: string | null
+        }
+        Insert: {
+          ai_chat_history?: Json | null
+          context_data?: Json | null
+          context_route?: string | null
+          created_at?: string
+          id?: string
+          message: string
+          owner_id: string
+          status?: string
+          subject: string
+          updated_at?: string
+          user_email: string
+          user_id: string
+          user_name?: string | null
+        }
+        Update: {
+          ai_chat_history?: Json | null
+          context_data?: Json | null
+          context_route?: string | null
+          created_at?: string
+          id?: string
+          message?: string
+          owner_id?: string
+          status?: string
+          subject?: string
+          updated_at?: string
+          user_email?: string
+          user_id?: string
+          user_name?: string | null
         }
         Relationships: []
       }
