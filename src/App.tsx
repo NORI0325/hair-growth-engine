@@ -40,6 +40,7 @@ import Locations from "./pages/Locations";
 import Approvals from "./pages/Approvals";
 import DeliveryDashboard from "./pages/DeliveryDashboard";
 import ABTests from "./pages/ABTests";
+import SegmentTemplates from "./pages/SegmentTemplates";
 import NotFound from "./pages/NotFound";
 import { LocationProvider } from "@/hooks/useLocations";
 
