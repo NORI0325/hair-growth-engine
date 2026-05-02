@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Users, Upload, Megaphone, Calendar, LogOut, Share2,
   Settings as SettingsIcon, Mail, MessageCircle, FileText, CalendarClock,
   TrendingUp, Scissors, UserCog, Gift, Inbox, Download, CreditCard, Users2,
-  Store, ChevronDown, Sparkles, Building2, BarChart3, ShieldCheck,
+  Store, ChevronDown, Sparkles, Building2, BarChart3, ShieldCheck, Radio, FlaskConical,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LocationSwitcher } from "@/components/LocationSwitcher";
