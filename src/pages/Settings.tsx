@@ -117,6 +117,8 @@ const Settings = () => {
           import_quiet_days: d.import_quiet_days ?? 7,
           approval_mode: (d.approval_mode as any) ?? "auto",
           approval_required_templates: Array.isArray(d.approval_required_templates) ? d.approval_required_templates : [],
+          frequency_cap_days: d.frequency_cap_days ?? 7,
+          frequency_cap_per_month: d.frequency_cap_per_month ?? 4,
         });
       }
       setLoading(false);
