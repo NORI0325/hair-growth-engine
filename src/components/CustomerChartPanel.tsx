@@ -41,7 +41,7 @@ const empty = (customerId: string): Chart => ({
   preferred_talk_level: null, preferred_scent: null, internal_notes: null,
 });
 
-export const CustomerChartPanel = ({ customerId }: { customerId: string }) => {
+export const CustomerChartPanel = ({ customerId, onSaved }: { customerId: string; onSaved?: () => void }) => {
   const { user } = useAuth();
   const locationId = useCurrentLocationId();
   const [chart, setChart] = useState<Chart>(empty(customerId));
@@ -76,6 +76,7 @@ export const CustomerChartPanel = ({ customerId }: { customerId: string }) => {
     setSaving(false);
     if (error) { toast.error("保存失敗: " + error.message); return; }
     toast.success("カルテを保存しました");
+    onSaved?.();
   };
 
   if (loading) return <div className="py-8 text-center"><Loader2 className="w-4 h-4 animate-spin mx-auto" /></div>;
