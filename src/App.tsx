@@ -46,6 +46,9 @@ import SegmentTemplates from "./pages/SegmentTemplates";
 import InboundLogs from "./pages/InboundLogs";
 import CalendarPage from "./pages/CalendarPage";
 import HelpCenter from "./pages/HelpCenter";
+import CustomerChart from "./pages/CustomerChart";
+import Commission from "./pages/Commission";
+import Retention from "./pages/Retention";
 import NotFound from "./pages/NotFound";
 import { LocationProvider } from "@/hooks/useLocations";
 
@@ -70,6 +73,9 @@ const App = () => (
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/inbox" element={<ProtectedRoute><Inbox /></ProtectedRoute>} />
             <Route path="/customers" element={<ProtectedRoute><Customers /></ProtectedRoute>} />
+            <Route path="/customers/:customerId/chart" element={<ProtectedRoute><CustomerChart /></ProtectedRoute>} />
+            <Route path="/commission" element={<ProtectedRoute><Commission /></ProtectedRoute>} />
+            <Route path="/retention" element={<ProtectedRoute><Retention /></ProtectedRoute>} />
             <Route path="/import" element={<ProtectedRoute><ImportCustomers /></ProtectedRoute>} />
             <Route path="/campaigns" element={<ProtectedRoute><Campaigns /></ProtectedRoute>} />
             <Route path="/bookings" element={<ProtectedRoute><Bookings /></ProtectedRoute>} />

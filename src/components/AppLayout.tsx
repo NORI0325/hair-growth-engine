@@ -79,6 +79,8 @@ const navGroups: NavGroup[] = [
     icon: BarChart3,
     items: [
       { to: "/performance", label: "効果測定", en: "Performance", icon: TrendingUp },
+      { to: "/retention", label: "リピート率", en: "Retention", icon: TrendingUp },
+      { to: "/commission", label: "歩合・売上", en: "Commission", icon: BarChart3 },
       { to: "/email-logs", label: "メール履歴", en: "Email Logs", icon: Mail },
     ],
   },

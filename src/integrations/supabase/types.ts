@@ -149,6 +149,7 @@ export type Database = {
           external_reservation_id: string | null
           external_source: string | null
           id: string
+          is_nominated: boolean
           is_test: boolean
           location_id: string | null
           menu: string
@@ -174,6 +175,7 @@ export type Database = {
           external_reservation_id?: string | null
           external_source?: string | null
           id?: string
+          is_nominated?: boolean
           is_test?: boolean
           location_id?: string | null
           menu: string
@@ -199,6 +201,7 @@ export type Database = {
           external_reservation_id?: string | null
           external_source?: string | null
           id?: string
+          is_nominated?: boolean
           is_test?: boolean
           location_id?: string | null
           menu?: string
@@ -244,6 +247,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      briefing_logs: {
+        Row: {
+          booking_id: string
+          channel: string
+          customer_id: string
+          error: string | null
+          id: string
+          owner_id: string
+          sent_at: string
+          staff_id: string
+          status: string
+        }
+        Insert: {
+          booking_id: string
+          channel: string
+          customer_id: string
+          error?: string | null
+          id?: string
+          owner_id: string
+          sent_at?: string
+          staff_id: string
+          status?: string
+        }
+        Update: {
+          booking_id?: string
+          channel?: string
+          customer_id?: string
+          error?: string | null
+          id?: string
+          owner_id?: string
+          sent_at?: string
+          staff_id?: string
+          status?: string
+        }
+        Relationships: []
       }
       campaign_sends: {
         Row: {
@@ -374,6 +413,75 @@ export type Database = {
           },
         ]
       }
+      chart_treatments: {
+        Row: {
+          after_photo_url: string | null
+          before_photo_url: string | null
+          booking_id: string | null
+          color_recipe: Json | null
+          created_at: string
+          customer_id: string
+          customer_reaction: string | null
+          duration_minutes: number | null
+          extra_photo_urls: string[] | null
+          id: string
+          location_id: string | null
+          menu_summary: string | null
+          next_suggestion: string | null
+          owner_id: string
+          perm_recipe: Json | null
+          products_used: Json | null
+          staff_id: string | null
+          staff_notes: string | null
+          treatment_date: string
+          updated_at: string
+        }
+        Insert: {
+          after_photo_url?: string | null
+          before_photo_url?: string | null
+          booking_id?: string | null
+          color_recipe?: Json | null
+          created_at?: string
+          customer_id: string
+          customer_reaction?: string | null
+          duration_minutes?: number | null
+          extra_photo_urls?: string[] | null
+          id?: string
+          location_id?: string | null
+          menu_summary?: string | null
+          next_suggestion?: string | null
+          owner_id: string
+          perm_recipe?: Json | null
+          products_used?: Json | null
+          staff_id?: string | null
+          staff_notes?: string | null
+          treatment_date?: string
+          updated_at?: string
+        }
+        Update: {
+          after_photo_url?: string | null
+          before_photo_url?: string | null
+          booking_id?: string | null
+          color_recipe?: Json | null
+          created_at?: string
+          customer_id?: string
+          customer_reaction?: string | null
+          duration_minutes?: number | null
+          extra_photo_urls?: string[] | null
+          id?: string
+          location_id?: string | null
+          menu_summary?: string | null
+          next_suggestion?: string | null
+          owner_id?: string
+          perm_recipe?: Json | null
+          products_used?: Json | null
+          staff_id?: string | null
+          staff_notes?: string | null
+          treatment_date?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       coupons: {
         Row: {
           created_at: string
@@ -449,6 +557,78 @@ export type Database = {
           recommendations?: Json | null
           risks?: Json | null
           summary?: string | null
+        }
+        Relationships: []
+      }
+      customer_charts: {
+        Row: {
+          allergies: string | null
+          created_at: string
+          customer_id: string
+          damage_level: number | null
+          hair_density: string | null
+          hair_thickness: string | null
+          hair_type: string | null
+          has_diamine_allergy: boolean
+          id: string
+          internal_notes: string | null
+          is_pregnant: boolean
+          location_id: string | null
+          medical_notes: string | null
+          ng_keywords: string | null
+          owner_id: string
+          preferred_scent: string | null
+          preferred_style: string | null
+          preferred_talk_level: number | null
+          pregnancy_due_date: string | null
+          scalp_condition: string | null
+          updated_at: string
+        }
+        Insert: {
+          allergies?: string | null
+          created_at?: string
+          customer_id: string
+          damage_level?: number | null
+          hair_density?: string | null
+          hair_thickness?: string | null
+          hair_type?: string | null
+          has_diamine_allergy?: boolean
+          id?: string
+          internal_notes?: string | null
+          is_pregnant?: boolean
+          location_id?: string | null
+          medical_notes?: string | null
+          ng_keywords?: string | null
+          owner_id: string
+          preferred_scent?: string | null
+          preferred_style?: string | null
+          preferred_talk_level?: number | null
+          pregnancy_due_date?: string | null
+          scalp_condition?: string | null
+          updated_at?: string
+        }
+        Update: {
+          allergies?: string | null
+          created_at?: string
+          customer_id?: string
+          damage_level?: number | null
+          hair_density?: string | null
+          hair_thickness?: string | null
+          hair_type?: string | null
+          has_diamine_allergy?: boolean
+          id?: string
+          internal_notes?: string | null
+          is_pregnant?: boolean
+          location_id?: string | null
+          medical_notes?: string | null
+          ng_keywords?: string | null
+          owner_id?: string
+          preferred_scent?: string | null
+          preferred_style?: string | null
+          preferred_talk_level?: number | null
+          pregnancy_due_date?: string | null
+          scalp_condition?: string | null
+          updated_at?: string
         }
         Relationships: []
       }
@@ -1588,6 +1768,54 @@ export type Database = {
           note?: string | null
           owner_id?: string
           sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      staff_commission_rules: {
+        Row: {
+          active: boolean
+          base_salary: number
+          created_at: string
+          free_tech_rate: number
+          id: string
+          location_id: string | null
+          monthly_target: number
+          nominated_tech_rate: number
+          owner_id: string
+          retail_rate: number
+          staff_id: string
+          target_bonus: number
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          base_salary?: number
+          created_at?: string
+          free_tech_rate?: number
+          id?: string
+          location_id?: string | null
+          monthly_target?: number
+          nominated_tech_rate?: number
+          owner_id: string
+          retail_rate?: number
+          staff_id: string
+          target_bonus?: number
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          base_salary?: number
+          created_at?: string
+          free_tech_rate?: number
+          id?: string
+          location_id?: string | null
+          monthly_target?: number
+          nominated_tech_rate?: number
+          owner_id?: string
+          retail_rate?: number
+          staff_id?: string
+          target_bonus?: number
           updated_at?: string
         }
         Relationships: []
