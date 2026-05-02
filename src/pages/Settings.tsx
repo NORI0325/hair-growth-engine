@@ -70,6 +70,7 @@ const Settings = () => {
     approval_required_templates: [] as string[],
     frequency_cap_days: 7,
     frequency_cap_per_month: 4,
+    notification_recipients: [] as { name: string; email: string; line_user_id: string; channels: string[] }[],
   });
 
   useEffect(() => {
@@ -119,6 +120,14 @@ const Settings = () => {
           approval_required_templates: Array.isArray(d.approval_required_templates) ? d.approval_required_templates : [],
           frequency_cap_days: d.frequency_cap_days ?? 7,
           frequency_cap_per_month: d.frequency_cap_per_month ?? 4,
+          notification_recipients: Array.isArray((d as any).notification_recipients)
+            ? (d as any).notification_recipients.map((r: any) => ({
+                name: r.name ?? "",
+                email: r.email ?? "",
+                line_user_id: r.line_user_id ?? "",
+                channels: Array.isArray(r.channels) && r.channels.length ? r.channels : ["email"],
+              }))
+            : [],
         });
       }
       setLoading(false);
