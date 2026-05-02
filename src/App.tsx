@@ -45,6 +45,7 @@ import ABTests from "./pages/ABTests";
 import SegmentTemplates from "./pages/SegmentTemplates";
 import InboundLogs from "./pages/InboundLogs";
 import CalendarPage from "./pages/CalendarPage";
+import HelpCenter from "./pages/HelpCenter";
 import NotFound from "./pages/NotFound";
 import { LocationProvider } from "@/hooks/useLocations";
 
@@ -94,6 +95,8 @@ const App = () => (
             <Route path="/team" element={<ProtectedRoute><Team /></ProtectedRoute>} />
             <Route path="/locations" element={<ProtectedRoute><Locations /></ProtectedRoute>} />
             <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
+            <Route path="/help" element={<ProtectedRoute><HelpCenter /></ProtectedRoute>} />
+            <Route path="/help/:slug" element={<ProtectedRoute><HelpCenter /></ProtectedRoute>} />
             <Route path="/invite/:token" element={<InviteAccept />} />
             <Route path="/terms" element={<Terms />} />
             <Route path="/privacy" element={<Privacy />} />
