@@ -68,6 +68,8 @@ const Settings = () => {
     import_quiet_days: 7,
     approval_mode: "auto" as "auto" | "semi_auto" | "per_template",
     approval_required_templates: [] as string[],
+    frequency_cap_days: 7,
+    frequency_cap_per_month: 4,
   });
 
   useEffect(() => {
