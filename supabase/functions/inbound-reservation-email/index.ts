@@ -198,25 +198,30 @@ Deno.serve(async (req) => {
     } catch { /* ignore */ }
   }
 
+  // Resend Inbound では本文がwebhookに含まれないため、email_idがあればAPIで本文取得
+  const emailId: string | undefined = data.email_id || data.id;
+  if ((!text || text.replace(/\[RAW_PAYLOAD\][\s\S]*$/, "").trim().length < 20) && emailId) {
+    const fetched = await fetchInboundEmailBody(emailId);
+    if (fetched) {
+      const body = fetched.text?.trim() || (fetched.html ? htmlToText(fetched.html) : "");
+      if (body) text = body;
+      // メタデータも上書き（webhookに無い場合の保険）
+      if (!subject && fetched.subject) (data as any).subject = fetched.subject;
+    }
+  }
+
+  const finalSubject: string = subject || (data as any).subject || "";
+
   const parsed = parseInboundAddress(to);
   if (!parsed) {
     await supabase.from("external_reservation_logs").insert({
-      source: "unknown", raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000),
+      source: "unknown", raw_to: to, raw_from: from, raw_subject: finalSubject, raw_text: text.slice(0, 4000),
       status: "failed", error: "address_not_recognized",
     });
     return new Response(JSON.stringify({ ok: false, reason: "address_not_recognized" }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
-
-  // owner特定
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id, salon_name, line_channel_access_token")
-    .eq("inbound_key", parsed.inboundKey)
-    .maybeSingle();
-
-  if (!profile) {
     await supabase.from("external_reservation_logs").insert({
       source: parsed.source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000),
       status: "failed", error: "owner_not_found",
