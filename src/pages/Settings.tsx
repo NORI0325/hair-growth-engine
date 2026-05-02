@@ -183,6 +183,14 @@ const Settings = () => {
         approval_required_templates: form.approval_required_templates,
         frequency_cap_days: form.frequency_cap_days,
         frequency_cap_per_month: form.frequency_cap_per_month,
+        notification_recipients: (form.notification_recipients || [])
+          .filter((r) => (r.email && r.email.trim()) || (r.line_user_id && r.line_user_id.trim()))
+          .map((r) => ({
+            name: r.name?.trim() || null,
+            email: r.email?.trim() || null,
+            line_user_id: r.line_user_id?.trim() || null,
+            channels: r.channels?.length ? r.channels : ["email"],
+          })),
       } as any)
       .eq("id", user.id);
     if (error) {
