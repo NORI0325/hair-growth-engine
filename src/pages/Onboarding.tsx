@@ -92,7 +92,12 @@ const Onboarding = () => {
     setSaving(false);
     if (error) { toast.error(error.message); return; }
     await updateProgress({ menus: true });
-    setStep(2);
+    setStep(3);
+  };
+
+  const removeMenu = (i: number) => {
+    if (menus.length <= 1) return;
+    setMenus(menus.filter((_, idx) => idx !== i));
   };
 
   const saveStaff = async () => {
