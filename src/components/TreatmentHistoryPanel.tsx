@@ -1,13 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useCurrentLocationId } from "@/hooks/useLocations";
+import { useActiveStaff } from "@/hooks/useActiveStaff";
+import { compressImage } from "@/lib/imageCompress";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Loader2, Plus, Image as ImageIcon, Camera, Trash2, Sparkles } from "lucide-react";
+import { Loader2, Plus, Image as ImageIcon, Camera, Trash2, Sparkles, Copy } from "lucide-react";
 import { toast } from "sonner";
 
 interface RecipeRow { brand: string; name: string; ratio: string; oxy: string; time_minutes: string; area: string }
@@ -44,12 +46,34 @@ interface Staff { id: string; name: string }
 export const TreatmentHistoryPanel = ({ customerId }: { customerId: string }) => {
   const { user } = useAuth();
   const locationId = useCurrentLocationId();
+  const { active: activeStaff } = useActiveStaff();
   const [list, setList] = useState<Treatment[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Treatment | null>(null);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState<"before" | "after" | null>(null);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [tenantId, setTenantId] = useState<string | null>(null);
+
+  const startNew = () => {
+    const seed = empty(customerId);
+    if (activeStaff) seed.staff_id = activeStaff.id;
+    setEditing(seed);
+  };
+
+  // 前回の施術を雛形にコピー（薬剤・メニュー）
+  const copyFromPrevious = () => {
+    if (!editing || list.length === 0) return;
+    const prev = list[0];
+    setEditing({
+      ...editing,
+      menu_summary: prev.menu_summary,
+      color_recipe: JSON.parse(JSON.stringify(prev.color_recipe || [])),
+      perm_recipe: JSON.parse(JSON.stringify(prev.perm_recipe || [])),
+      next_suggestion: prev.next_suggestion,
+    });
+    toast.success("前回のレシピをコピーしました");
+  };
 
   const load = async () => {
     setLoading(true);
