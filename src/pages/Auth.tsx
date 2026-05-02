@@ -133,6 +133,11 @@ const Auth = () => {
                 <Button type="submit" className="w-full" disabled={loading}>
                   {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}ログイン
                 </Button>
+                <div className="text-center">
+                  <Link to="/forgot-password" className="text-xs text-muted-foreground underline hover:text-foreground transition-colors">
+                    パスワードをお忘れですか？
+                  </Link>
+                </div>
               </form>
             </TabsContent>
 
