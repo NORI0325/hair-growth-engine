@@ -1,0 +1,1 @@
+ALTER VIEW public.customer_delivery_timeline SET (security_invoker = true);
