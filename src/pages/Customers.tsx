@@ -209,6 +209,13 @@ const Customers = () => {
                       {c.full_name}
                       <Pencil className="w-3 h-3 opacity-0 group-hover:opacity-60 stroke-[1.5]" />
                     </button>
+                    <Link
+                      to={`/customers/${c.id}/chart`}
+                      title="電子カルテを開く"
+                      className="text-muted-foreground hover:text-gold inline-flex items-center"
+                    >
+                      <FileText className="w-3 h-3 stroke-[1.5]" />
+                    </Link>
                     {c.line_user_id && (
                       <span title="LINE連携済み" className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-[#06C755] text-white text-[8px] font-bold leading-none">L</span>
                     )}
