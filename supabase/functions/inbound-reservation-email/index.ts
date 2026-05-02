@@ -141,15 +141,44 @@ Deno.serve(async (req) => {
 
   const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
 
-  let payload: any;
+  // Content-Typeに応じてpayloadを解釈
+  // - JSON: Resend Inbound webhook
+  // - multipart/form-data or x-www-form-urlencoded: ImprovMX / Mailgun webhook
+  let payload: any = {};
+  const contentType = (req.headers.get("content-type") || "").toLowerCase();
+  let rawBodyForLog = "";
   try {
-    payload = await req.json();
-  } catch {
-    return new Response(JSON.stringify({ error: "invalid json" }), {
-      status: 400,
+    if (contentType.includes("application/json")) {
+      const txt = await req.text();
+      rawBodyForLog = txt.slice(0, 8000);
+      payload = txt ? JSON.parse(txt) : {};
+    } else if (contentType.includes("multipart/form-data") || contentType.includes("application/x-www-form-urlencoded")) {
+      const form = await req.formData();
+      const obj: Record<string, any> = {};
+      for (const [k, v] of form.entries()) {
+        obj[k] = typeof v === "string" ? v : (v as File).name;
+      }
+      payload = obj;
+      rawBodyForLog = JSON.stringify(obj).slice(0, 8000);
+    } else {
+      // 未知Content-Type: テキストとして読み、JSONを試行→失敗時は生テキストを保持
+      const txt = await req.text();
+      rawBodyForLog = txt.slice(0, 8000);
+      try { payload = JSON.parse(txt); } catch { payload = { _raw: txt }; }
+    }
+  } catch (e) {
+    console.error("payload parse error", e, "content-type:", contentType);
+    await supabase.from("external_reservation_logs").insert({
+      source: "unknown", raw_to: "", raw_from: "", raw_subject: "",
+      raw_text: `[parse_error] content-type=${contentType}\n${rawBodyForLog}`,
+      status: "failed", error: `parse_error: ${(e as Error).message}`,
+    });
+    return new Response(JSON.stringify({ error: "invalid body", contentType }), {
+      status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
+  console.log("inbound payload keys:", Object.keys(payload), "content-type:", contentType);
 
   // Resend Inbound Webhook payload 形式に対応
   // 参考: https://resend.com/docs/dashboard/webhooks/inbound
