@@ -206,16 +206,14 @@ Deno.serve(async (req) => {
       const body = fetched.text?.trim() || (fetched.html ? htmlToText(fetched.html) : "");
       if (body) text = body;
       // メタデータも上書き（webhookに無い場合の保険）
-      if (!subject && fetched.subject) (data as any).subject = fetched.subject;
+      if (!subject && fetched.subject) subject = fetched.subject;
     }
   }
-
-  const finalSubject: string = subject || (data as any).subject || "";
 
   const parsed = parseInboundAddress(to);
   if (!parsed) {
     await supabase.from("external_reservation_logs").insert({
-      source: "unknown", raw_to: to, raw_from: from, raw_subject: finalSubject, raw_text: text.slice(0, 4000),
+      source: "unknown", raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000),
       status: "failed", error: "address_not_recognized",
     });
     return new Response(JSON.stringify({ ok: false, reason: "address_not_recognized" }), {
