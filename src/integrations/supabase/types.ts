@@ -1258,6 +1258,7 @@ export type Database = {
           line_add_friend_url: string | null
           line_channel_access_token: string | null
           line_channel_secret: string | null
+          notification_recipients: Json
           onboarding_completed_at: string | null
           onboarding_progress: Json
           open_time: string | null
@@ -1299,6 +1300,7 @@ export type Database = {
           line_add_friend_url?: string | null
           line_channel_access_token?: string | null
           line_channel_secret?: string | null
+          notification_recipients?: Json
           onboarding_completed_at?: string | null
           onboarding_progress?: Json
           open_time?: string | null
@@ -1340,6 +1342,7 @@ export type Database = {
           line_add_friend_url?: string | null
           line_channel_access_token?: string | null
           line_channel_secret?: string | null
+          notification_recipients?: Json
           onboarding_completed_at?: string | null
           onboarding_progress?: Json
           open_time?: string | null

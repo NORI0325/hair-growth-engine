@@ -70,6 +70,7 @@ const Settings = () => {
     approval_required_templates: [] as string[],
     frequency_cap_days: 7,
     frequency_cap_per_month: 4,
+    notification_recipients: [] as { name: string; email: string; line_user_id: string; channels: string[] }[],
   });
 
   useEffect(() => {
@@ -119,6 +120,14 @@ const Settings = () => {
           approval_required_templates: Array.isArray(d.approval_required_templates) ? d.approval_required_templates : [],
           frequency_cap_days: d.frequency_cap_days ?? 7,
           frequency_cap_per_month: d.frequency_cap_per_month ?? 4,
+          notification_recipients: Array.isArray((d as any).notification_recipients)
+            ? (d as any).notification_recipients.map((r: any) => ({
+                name: r.name ?? "",
+                email: r.email ?? "",
+                line_user_id: r.line_user_id ?? "",
+                channels: Array.isArray(r.channels) && r.channels.length ? r.channels : ["email"],
+              }))
+            : [],
         });
       }
       setLoading(false);
@@ -174,6 +183,14 @@ const Settings = () => {
         approval_required_templates: form.approval_required_templates,
         frequency_cap_days: form.frequency_cap_days,
         frequency_cap_per_month: form.frequency_cap_per_month,
+        notification_recipients: (form.notification_recipients || [])
+          .filter((r) => (r.email && r.email.trim()) || (r.line_user_id && r.line_user_id.trim()))
+          .map((r) => ({
+            name: r.name?.trim() || null,
+            email: r.email?.trim() || null,
+            line_user_id: r.line_user_id?.trim() || null,
+            channels: r.channels?.length ? r.channels : ["email"],
+          })),
       } as any)
       .eq("id", user.id);
     if (error) {
@@ -616,21 +633,132 @@ const Settings = () => {
           {/* ========== 🔔 オーナー通知 ========== */}
           <TabsContent value="notify" className="space-y-12">
             <section className="space-y-5">
-              <SectionTitle icon={Bell} title="予約通知メール"
-                desc="新規予約・キャンセルが入った瞬間に、ここで指定したメールアドレスへ即時通知が届きます。" />
+              <SectionTitle icon={Bell} title="予約通知（複数人・メール／LINE対応）"
+                desc="新規予約・変更・キャンセルが入った瞬間に、ここで登録したスタッフへ通知が届きます。メール・LINEを宛先ごとに選べます（最大10件）。" />
+
+              {/* 主要メール（後方互換） */}
               <div>
-                <Label className="mb-2 block font-serif text-sm">通知の宛先</Label>
+                <Label className="mb-2 block font-serif text-sm">代表メールアドレス</Label>
                 <Input type="email" value={form.owner_notification_email}
                   onChange={e => setForm({...form, owner_notification_email: e.target.value})}
                   placeholder="info@arunehair.com"
                   className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
-                <p className="text-[10px] text-muted-foreground mt-2">空欄の場合は通知されません</p>
+                <p className="text-[10px] text-muted-foreground mt-2">空欄の場合、下記の宛先リストのみが使用されます</p>
               </div>
+
               <Button type="button" onClick={sendTestEmail} disabled={testing} variant="outline"
                 className="rounded-none border-gold/40 text-xs tracking-luxury hover:bg-gold/5">
                 {testing ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> : <Send className="w-3.5 h-3.5 mr-2" />}
-                テスト通知を送信
+                代表メール宛にテスト通知
               </Button>
+
+              {/* 追加宛先リスト */}
+              <div className="pt-6 border-t border-border space-y-3">
+                <div className="flex items-baseline justify-between">
+                  <Label className="font-serif text-sm">追加の通知先（スタッフ・オーナー本人など）</Label>
+                  <span className="text-[10px] text-muted-foreground">{form.notification_recipients.length} / 10</span>
+                </div>
+
+                {form.notification_recipients.length === 0 && (
+                  <p className="text-xs text-muted-foreground italic">
+                    まだ追加の通知先がありません。下のボタンから追加してください。
+                  </p>
+                )}
+
+                {form.notification_recipients.map((r, i) => (
+                  <div key={i} className="border border-border p-4 space-y-3 bg-secondary/20">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-muted-foreground tracking-wider uppercase">通知先 #{i + 1}</span>
+                      <button type="button"
+                        onClick={() => setForm({ ...form, notification_recipients: form.notification_recipients.filter((_, idx) => idx !== i) })}
+                        className="text-muted-foreground hover:text-destructive">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <Label className="mb-1.5 block text-[11px]">名前（任意）</Label>
+                        <Input value={r.name}
+                          onChange={e => {
+                            const next = [...form.notification_recipients];
+                            next[i] = { ...next[i], name: e.target.value };
+                            setForm({ ...form, notification_recipients: next });
+                          }}
+                          placeholder="例：山田 店長"
+                          className="text-sm" />
+                      </div>
+                      <div>
+                        <Label className="mb-1.5 block text-[11px]">メールアドレス</Label>
+                        <Input type="email" value={r.email}
+                          onChange={e => {
+                            const next = [...form.notification_recipients];
+                            next[i] = { ...next[i], email: e.target.value };
+                            setForm({ ...form, notification_recipients: next });
+                          }}
+                          placeholder="staff@example.com"
+                          className="text-sm" />
+                      </div>
+                      <div className="md:col-span-2">
+                        <Label className="mb-1.5 block text-[11px]">LINE ユーザーID（任意・LINEで通知する場合）</Label>
+                        <Input value={r.line_user_id}
+                          onChange={e => {
+                            const next = [...form.notification_recipients];
+                            next[i] = { ...next[i], line_user_id: e.target.value };
+                            setForm({ ...form, notification_recipients: next });
+                          }}
+                          placeholder="U で始まる32文字のID"
+                          className="text-sm font-mono" />
+                        <p className="text-[10px] text-muted-foreground mt-1">
+                          ※ サロンのLINE公式アカウントを友だち追加した方のIDが必要です。確認方法は「連携」タブをご覧ください。
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-4 pt-2">
+                      <label className="flex items-center gap-2 text-xs cursor-pointer">
+                        <input type="checkbox"
+                          checked={r.channels.includes("email")}
+                          onChange={e => {
+                            const next = [...form.notification_recipients];
+                            const ch = new Set(next[i].channels);
+                            if (e.target.checked) ch.add("email"); else ch.delete("email");
+                            next[i] = { ...next[i], channels: Array.from(ch) };
+                            setForm({ ...form, notification_recipients: next });
+                          }}
+                        />
+                        <Mail className="w-3.5 h-3.5" /> メール
+                      </label>
+                      <label className="flex items-center gap-2 text-xs cursor-pointer">
+                        <input type="checkbox"
+                          checked={r.channels.includes("line")}
+                          onChange={e => {
+                            const next = [...form.notification_recipients];
+                            const ch = new Set(next[i].channels);
+                            if (e.target.checked) ch.add("line"); else ch.delete("line");
+                            next[i] = { ...next[i], channels: Array.from(ch) };
+                            setForm({ ...form, notification_recipients: next });
+                          }}
+                        />
+                        <MessageCircle className="w-3.5 h-3.5" /> LINE
+                      </label>
+                    </div>
+                  </div>
+                ))}
+
+                <Button type="button" variant="outline"
+                  disabled={form.notification_recipients.length >= 10}
+                  onClick={() => setForm({
+                    ...form,
+                    notification_recipients: [
+                      ...form.notification_recipients,
+                      { name: "", email: "", line_user_id: "", channels: ["email"] },
+                    ],
+                  })}
+                  className="w-full rounded-none border-gold/40 text-xs tracking-luxury hover:bg-gold/5">
+                  + 通知先を追加
+                </Button>
+              </div>
             </section>
           </TabsContent>
 
