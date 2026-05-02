@@ -127,12 +127,17 @@ export default function Approvals() {
           {jobs.map(j => (
             <div key={j.id} className="py-5 border-b border-border/60 flex items-center gap-4">
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-3 mb-1">
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
                   <span className="font-serif text-sm">{j.customers?.full_name || "—"}</span>
                   <Badge variant="secondary" className="text-[10px]">{TYPE_LABEL[j.job_type] || j.job_type}</Badge>
-                  {j.payload?.discount_percent && (
-                    <span className="text-[10px] text-gold">{j.payload.discount_percent}% OFF</span>
+                  {j.payload?.segment && SEGMENT_LABEL[j.payload.segment] && (
+                    <span className={`text-[10px] px-2 py-0.5 rounded ${SEGMENT_LABEL[j.payload.segment].tone}`}>
+                      {SEGMENT_LABEL[j.payload.segment].label}
+                    </span>
                   )}
+                  {j.payload?.discount_percent ? (
+                    <span className="text-[10px] text-gold">{j.payload.discount_percent}% OFF</span>
+                  ) : null}
                 </div>
                 <div className="text-xs text-muted-foreground">
                   {j.customers?.email || j.customers?.phone || "連絡先なし"} · 予定 {new Date(j.scheduled_for).toLocaleString("ja-JP")}
