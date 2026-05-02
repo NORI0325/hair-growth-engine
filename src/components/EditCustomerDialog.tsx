@@ -90,7 +90,10 @@ const EditCustomerDialog = ({ customer, open, onOpenChange, onSaved }: Props) =>
       total_spent: parsed.data.total_spent ?? 0,
       line_user_id: parsed.data.line_user_id || null,
       notes: parsed.data.notes || null,
-    }).eq("id", customer.id);
+      opt_out_automation: form.opt_out_automation,
+      opt_out_reason: form.opt_out_automation ? (form.opt_out_reason || null) : null,
+      opt_out_at: form.opt_out_automation && !customer.opt_out_automation ? new Date().toISOString() : (form.opt_out_automation ? undefined : null),
+    } as any).eq("id", customer.id);
     setLoading(false);
     if (error) { toast.error("更新に失敗しました: " + error.message); return; }
     toast.success("顧客情報を更新しました");
