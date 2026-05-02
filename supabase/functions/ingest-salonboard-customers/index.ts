@@ -215,10 +215,12 @@ Deno.serve(async (req) => {
         if (existing) {
           // visit_count は大きい方を採用
           payload.visit_count = Math.max(existing.visit_count || 0, visitCount);
+          // ★ 既存顧客の first_imported_at / quiet_until は更新しない（再インポートでサイレント期間が延びるのを防ぐ）
           const { error } = await admin.from("customers").update(payload).eq("id", existing.id);
           if (error) throw error;
           updated++;
         } else {
+          // 新規はトリガーで first_imported_at + quiet_until が自動セットされる
           const { error } = await admin.from("customers").insert(payload);
           if (error) throw error;
           inserted++;
