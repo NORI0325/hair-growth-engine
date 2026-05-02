@@ -31,6 +31,15 @@ const TYPE_LABEL: Record<string, string> = {
   holiday_notice: "休業のお知らせ",
 };
 
+const SEGMENT_LABEL: Record<string, { label: string; tone: string }> = {
+  cold_1:     { label: "ワンショット離脱",   tone: "bg-muted text-muted-foreground" },
+  warm_mid:   { label: "軽度離脱(2-3回)",    tone: "bg-blue-500/10 text-blue-700" },
+  loyal_risk: { label: "元常連の離脱予備軍", tone: "bg-amber-500/10 text-amber-700" },
+  lost_1:     { label: "ワンショット休眠",   tone: "bg-muted text-muted-foreground" },
+  churned:    { label: "離脱(2-3回)",        tone: "bg-orange-500/10 text-orange-700" },
+  vip_lost:   { label: "⚠ VIP離脱(手動推奨)", tone: "bg-destructive/10 text-destructive font-bold" },
+};
+
 export default function Approvals() {
   const { user } = useAuth();
   const [jobs, setJobs] = useState<PendingJob[]>([]);
