@@ -36,6 +36,8 @@ export interface EditableCustomer {
   notes?: string | null;
   opt_out_automation?: boolean | null;
   opt_out_reason?: string | null;
+  imported_from?: string | null;
+  activated_at?: string | null;
 }
 
 interface Props {
