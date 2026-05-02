@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import Joyride, { CallBackProps, STATUS, Step } from "react-joyride";
-import { useNavigate } from "react-router-dom";
+import { Joyride, STATUS, type CallBackProps, type Step } from "react-joyride";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 
