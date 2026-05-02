@@ -38,6 +38,8 @@ import Privacy from "./pages/Privacy";
 import Tokushoho from "./pages/Tokushoho";
 import Locations from "./pages/Locations";
 import Approvals from "./pages/Approvals";
+import DeliveryDashboard from "./pages/DeliveryDashboard";
+import ABTests from "./pages/ABTests";
 import NotFound from "./pages/NotFound";
 import { LocationProvider } from "@/hooks/useLocations";
 
