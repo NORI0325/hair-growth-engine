@@ -151,19 +151,72 @@ const Onboarding = () => {
           )}
 
           {step === 2 && (
-            <div className="space-y-4">
-              <h2 className="text-xl font-semibold">メニュー登録（最低3つ）</h2>
-              {menus.map((m, i) => (
-                <div key={i} className="grid grid-cols-12 gap-2">
-                  <Input className="col-span-6" placeholder="メニュー名" value={m.name} onChange={(e) => { const c = [...menus]; c[i].name = e.target.value; setMenus(c); }} />
-                  <Input className="col-span-3" type="number" placeholder="分" value={m.duration} onChange={(e) => { const c = [...menus]; c[i].duration = Number(e.target.value); setMenus(c); }} />
-                  <Input className="col-span-3" type="number" placeholder="円" value={m.price} onChange={(e) => { const c = [...menus]; c[i].price = Number(e.target.value); setMenus(c); }} />
-                </div>
-              ))}
-              <Button variant="outline" className="w-full" onClick={() => setMenus([...menus, { name: "", duration: 60, price: 5000 }])}>+ 追加</Button>
-              <Button className="w-full" onClick={saveMenus} disabled={saving}>
-                {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}次へ <ArrowRight className="w-4 h-4 ml-2" />
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-xl font-semibold">メニュー登録</h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  最低3つ登録してください。後から「メニュー」画面で追加・編集できます。
+                </p>
+              </div>
+
+              {/* ヘッダー */}
+              <div className="grid grid-cols-12 gap-3 px-1 text-[11px] font-medium text-muted-foreground tracking-wider uppercase">
+                <div className="col-span-6">メニュー名</div>
+                <div className="col-span-2 text-right">所要時間</div>
+                <div className="col-span-3 text-right">料金</div>
+                <div className="col-span-1"></div>
+              </div>
+
+              <div className="space-y-3">
+                {menus.map((m, i) => (
+                  <div key={i} className="grid grid-cols-12 gap-3 items-center">
+                    <Input
+                      className="col-span-6"
+                      placeholder="例：カット"
+                      value={m.name}
+                      onChange={(e) => { const c = [...menus]; c[i].name = e.target.value; setMenus(c); }}
+                    />
+                    <div className="col-span-2 relative">
+                      <Input
+                        type="number" min={5} step={5}
+                        value={m.duration}
+                        onChange={(e) => { const c = [...menus]; c[i].duration = Number(e.target.value); setMenus(c); }}
+                        className="pr-8 text-right"
+                      />
+                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">分</span>
+                    </div>
+                    <div className="col-span-3 relative">
+                      <Input
+                        type="number" min={0} step={100}
+                        value={m.price}
+                        onChange={(e) => { const c = [...menus]; c[i].price = Number(e.target.value); setMenus(c); }}
+                        className="pr-8 text-right"
+                      />
+                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">円</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeMenu(i)}
+                      disabled={menus.length <= 1}
+                      className="col-span-1 h-9 flex items-center justify-center text-muted-foreground hover:text-destructive disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                      aria-label="削除"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <Button variant="outline" className="w-full" onClick={() => setMenus([...menus, { name: "", duration: 60, price: 5000 }])}>
+                + メニューを追加
               </Button>
+
+              <div className="pt-2 border-t border-border">
+                <Button className="w-full" size="lg" onClick={saveMenus} disabled={saving}>
+                  {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                  保存して次へ <ArrowRight className="w-4 h-4 ml-2" />
+                </Button>
+              </div>
             </div>
           )}
 
