@@ -33,7 +33,8 @@ type NavGroup = {
 const dailyItems: NavItem[] = [
   { to: "/dashboard", label: "ダッシュボード", en: "Overview", icon: LayoutDashboard },
   { to: "/inbox", label: "受信トレイ", en: "Inbox", icon: Inbox, badgeKey: "inbox" },
-  { to: "/bookings", label: "予約", en: "Bookings", icon: Calendar },
+  { to: "/calendar", label: "予約カレンダー", en: "Calendar", icon: CalendarClock },
+  { to: "/bookings", label: "予約一覧", en: "Bookings", icon: Calendar },
   { to: "/customers", label: "顧客", en: "Guests", icon: Users },
 ];
 
