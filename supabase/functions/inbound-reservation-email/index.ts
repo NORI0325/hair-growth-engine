@@ -311,10 +311,12 @@ Deno.serve(async (req) => {
       .from("customers")
       .insert({
         owner_id: ownerId,
+        location_id: locationId,
         full_name: fullName,
         phone: phone,
         email: extracted.customer_email || null,
         notes: `[${source}より自動取込]`,
+        imported_from: source,
       })
       .select("id")
       .single();
