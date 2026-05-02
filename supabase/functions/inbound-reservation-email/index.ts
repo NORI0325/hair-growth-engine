@@ -220,6 +220,15 @@ Deno.serve(async (req) => {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
+
+  // owner特定
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id, salon_name, line_channel_access_token")
+    .eq("inbound_key", parsed.inboundKey)
+    .maybeSingle();
+
+  if (!profile) {
     await supabase.from("external_reservation_logs").insert({
       source: parsed.source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000),
       status: "failed", error: "owner_not_found",
