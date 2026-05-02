@@ -141,24 +141,67 @@ Deno.serve(async (req) => {
 
   const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
 
-  let payload: any;
+  // Content-Typeに応じてpayloadを解釈
+  // - JSON: Resend Inbound webhook
+  // - multipart/form-data or x-www-form-urlencoded: ImprovMX / Mailgun webhook
+  let payload: any = {};
+  const contentType = (req.headers.get("content-type") || "").toLowerCase();
+  let rawBodyForLog = "";
   try {
-    payload = await req.json();
-  } catch {
-    return new Response(JSON.stringify({ error: "invalid json" }), {
-      status: 400,
+    if (contentType.includes("application/json")) {
+      const txt = await req.text();
+      rawBodyForLog = txt.slice(0, 8000);
+      payload = txt ? JSON.parse(txt) : {};
+    } else if (contentType.includes("multipart/form-data") || contentType.includes("application/x-www-form-urlencoded")) {
+      const form = await req.formData();
+      const obj: Record<string, any> = {};
+      for (const [k, v] of form.entries()) {
+        obj[k] = typeof v === "string" ? v : (v as File).name;
+      }
+      payload = obj;
+      rawBodyForLog = JSON.stringify(obj).slice(0, 8000);
+    } else {
+      // 未知Content-Type: テキストとして読み、JSONを試行→失敗時は生テキストを保持
+      const txt = await req.text();
+      rawBodyForLog = txt.slice(0, 8000);
+      try { payload = JSON.parse(txt); } catch { payload = { _raw: txt }; }
+    }
+  } catch (e) {
+    console.error("payload parse error", e, "content-type:", contentType);
+    await supabase.from("external_reservation_logs").insert({
+      source: "unknown", raw_to: "", raw_from: "", raw_subject: "",
+      raw_text: `[parse_error] content-type=${contentType}\n${rawBodyForLog}`,
+      status: "failed", error: `parse_error: ${(e as Error).message}`,
+    });
+    return new Response(JSON.stringify({ error: "invalid body", contentType }), {
+      status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
+  console.log("inbound payload keys:", Object.keys(payload), "content-type:", contentType);
 
-  // Resend Inbound Webhook payload 形式に対応
-  // 参考: https://resend.com/docs/dashboard/webhooks/inbound
+  // Webhook payload正規化
+  // 対応: Resend Inbound (data.to/from) / ImprovMX (To, From, Subject) / Mailgun (recipient, sender)
   const data = payload.data || payload;
-  const toRaw: any = data.to?.[0] ?? data.to ?? data.envelope?.to?.[0] ?? data.recipient ?? "";
-  const to = typeof toRaw === "string" ? toRaw : toRaw?.email || toRaw?.address || "";
-  const fromRaw: any = data.from ?? data.sender ?? "";
-  const from = typeof fromRaw === "string" ? fromRaw : fromRaw?.email || fromRaw?.address || "";
-  let subject: string = data.subject || data.Subject || "";
+  const pickStr = (...vals: any[]): string => {
+    for (const v of vals) {
+      if (typeof v === "string" && v.trim()) return v.trim();
+      if (Array.isArray(v) && v.length) {
+        const first = v[0];
+        if (typeof first === "string" && first.trim()) return first.trim();
+        if (first?.email) return String(first.email);
+        if (first?.address) return String(first.address);
+      }
+      if (v && typeof v === "object") {
+        if (v.email) return String(v.email);
+        if (v.address) return String(v.address);
+      }
+    }
+    return "";
+  };
+  const to = pickStr(data.to, data.To, data.envelope?.to, data.recipient, data["X-Original-To"]);
+  const from = pickStr(data.from, data.From, data.sender, data.envelope?.from);
+  let subject: string = pickStr(data.subject, data.Subject, data.headers?.Subject);
 
   // 本文抽出: text → html(タグ除去) → body_plain → body_html → 全payloadフォールバック
   const htmlToText = (html: string) => html
