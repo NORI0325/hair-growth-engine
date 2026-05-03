@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useTenantRole } from "@/hooks/useTenant";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Check, ChevronDown, ChevronUp, X } from "lucide-react";
