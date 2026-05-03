@@ -433,11 +433,27 @@ Deno.serve(async (req) => {
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    // マッチなし → needs_review
-    await supabase.from("external_reservation_logs").insert({
+    // マッチなし → needs_review（誤キャンセルを避けるため自動更新しない）
+    // CRITICAL: オーナーに即時通知（放置すると無断キャンセルとして扱われクレーム化）
+    const { data: logRow } = await supabase.from("external_reservation_logs").insert({
       owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000),
       parsed_data: extracted, status: "needs_review", error: "cancel_target_not_found",
-    });
+    }).select("id").single();
+    try {
+      await supabase.functions.invoke("notify-owner-booking", {
+        body: {
+          eventType: "cancel_needs_review",
+          ownerId,
+          payload: {
+            customer_name: extracted.customer_name,
+            booking_date: extracted.booking_date,
+            booking_time: extracted.booking_time,
+            external_reservation_id: extracted.external_reservation_id,
+            log_id: logRow?.id,
+          },
+        },
+      });
+    } catch (e) { console.error("cancel needs_review notify failed:", e); }
     return new Response(JSON.stringify({ ok: true, needs_review: true, reason: "cancel_target_not_found" }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
