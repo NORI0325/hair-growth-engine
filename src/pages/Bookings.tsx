@@ -208,6 +208,9 @@ const Bookings = () => {
                       <div key={b.id} className="grid grid-cols-12 gap-4 py-6 border-b border-border/60 items-center hover:bg-secondary/30 transition-colors">
                         <div className="col-span-2">
                           <div className="font-serif-en text-2xl">{b.booking_time.slice(0, 5)}</div>
+                          {isReceivedMode && (
+                            <div className="text-[10px] text-muted-foreground">{b.booking_date.replace(/-/g, "/").slice(5)}</div>
+                          )}
                           <span className={`inline-flex items-center gap-1.5 text-[10px] font-serif mt-1 ${status.color}`}>
                             <span className="w-1 h-1 rounded-full bg-current" />
                             {status.label}
