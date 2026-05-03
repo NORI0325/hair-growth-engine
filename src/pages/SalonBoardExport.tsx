@@ -108,7 +108,7 @@ const SalonBoardExport = () => {
           <p className="eyebrow mb-3">— Step 01 / Download —</p>
           <h2 className="display text-2xl mb-4">拡張機能をダウンロード</h2>
           <p className="text-sm text-muted-foreground leading-relaxed mb-6">
-            Chrome / Edge / Brave などの Chromium 系ブラウザで動作する専用拡張機能 <strong>v2.0</strong> です。
+            Chrome / Edge / Brave などの Chromium 系ブラウザで動作する専用拡張機能 <strong>v2.0.1</strong> です。
             ダウンロードにはログインが必要で、ご契約が有効な間のみ利用可能です。
           </p>
           <Button
@@ -122,7 +122,7 @@ const SalonBoardExport = () => {
               <Download className="w-4 h-4 mr-2 stroke-[1.5]" />
             )}
             拡張機能をダウンロード
-            <span className="ml-2 opacity-60 text-[10px]">v2.0 ZIP</span>
+            <span className="ml-2 opacity-60 text-[10px]">v2.0.1 ZIP</span>
           </Button>
         </section>
 
