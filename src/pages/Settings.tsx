@@ -18,6 +18,7 @@ import {
 import HolidayNoticeBroadcast from "@/components/HolidayNoticeBroadcast";
 import SalonHoursEditor from "@/components/SalonHoursEditor";
 import ReactivationStagesEditor, { type ReactivationStage } from "@/components/ReactivationStagesEditor";
+import NotificationRecipientsBadge from "@/components/NotificationRecipientsBadge";
 
 const WEBHOOK_URL = "https://miyedioemkzhetphjzzg.supabase.co/functions/v1/line-webhook";
 
