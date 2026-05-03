@@ -36,8 +36,8 @@ const InviteAccept = () => {
         return;
       }
       setDone(true);
-      toast.success("チームに参加しました");
-      setTimeout(() => navigate("/dashboard"), 1500);
+      toast.success("チームに参加しました。続けてパスワードを設定してください。");
+      setTimeout(() => navigate("/reset-password?initial=1", { replace: true }), 1200);
     })();
   }, [user, authLoading, token, navigate]);
 
