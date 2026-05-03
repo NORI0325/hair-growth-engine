@@ -53,7 +53,8 @@ const navGroups: NavGroup[] = [
     items: [
       { to: "/campaigns", label: "メール配信", en: "Campaigns", icon: Megaphone },
       { to: "/line-broadcast", label: "LINE配信", en: "LINE Push", icon: MessageCircle },
-      { to: "/incentives", label: "特典マスター", en: "Incentives", icon: Gift },
+     { to: "/incentives", label: "特典マスター", en: "Incentives", icon: Gift },
+      { to: "/points", label: "ポイント制度", en: "Points", icon: Gift },
       { to: "/templates", label: "テンプレート", en: "Templates", icon: FileText },
       { to: "/schedule", label: "配信予定", en: "Schedule", icon: CalendarClock },
       { to: "/delivery", label: "配信ダッシュボード", en: "Delivery", icon: Radio },
