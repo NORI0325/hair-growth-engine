@@ -230,7 +230,7 @@ const Bookings = () => {
                           <div className="text-xs text-muted-foreground">{b.customers?.phone || ""}</div>
                           <div className="text-[10px] text-muted-foreground/70 mt-0.5">受信 {fmtReceived(b.created_at)}</div>
                         </div>
-                        <div className="col-span-3 text-sm font-serif text-muted-foreground">
+                        <div className="col-span-2 text-sm font-serif text-muted-foreground">
                           {b.menu}
                           {b.notes && <div className="text-[11px] mt-1 italic">{b.notes}</div>}
                           {b.status === "completed" && (b.revenue ?? 0) > 0 && (
