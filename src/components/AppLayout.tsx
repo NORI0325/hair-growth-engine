@@ -15,6 +15,8 @@ import { LocationSwitcher } from "@/components/LocationSwitcher";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import HelpWidget from "@/components/HelpWidget";
 import OnboardingTour from "@/components/OnboardingTour";
+import { useTenantRole, useTenantId } from "@/hooks/useTenant";
+import { useQuery } from "@tanstack/react-query";
 
 type NavItem = {
   to: string;
@@ -105,6 +107,34 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [unreadInbox, setUnreadInbox] = useState(0);
+  const role = useTenantRole();
+  const tenantId = useTenantId();
+
+  // 現在所属サロン名 + 自分のプロフィール
+  const { data: account } = useQuery({
+    queryKey: ["sidebar-account", user?.id, tenantId],
+    enabled: !!user,
+    queryFn: async () => {
+      if (!user) return null;
+      const [{ data: myProfile }, tenantProfileRes] = await Promise.all([
+        supabase.from("profiles").select("full_name, salon_name").eq("id", user.id).maybeSingle(),
+        tenantId
+          ? supabase.from("profiles").select("salon_name").eq("id", tenantId).maybeSingle()
+          : Promise.resolve({ data: null }),
+      ]);
+      return {
+        userName: myProfile?.full_name || user.email?.split("@")[0] || "ユーザー",
+        userEmail: user.email ?? "",
+        salonName: (tenantProfileRes as any).data?.salon_name || myProfile?.salon_name || "（サロン未設定）",
+      };
+    },
+  });
+
+  const roleLabel =
+    role === "owner" ? "オーナー" :
+    role === "manager" ? "マネージャー" :
+    role === "staff" ? "スタッフ" :
+    role === "super_admin" ? "管理者" : "";
 
   // どのグループに現在ルートが含まれるか
   const activeGroupId = useMemo(() => {
@@ -247,6 +277,23 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
             })}
           </div>
         </nav>
+
+        {/* Account info — 誤操作防止のため常時表示 */}
+        {user && (
+          <div className="px-4 py-3 border-t border-sidebar-border/60 bg-sidebar-accent/30">
+            <p className="eyebrow text-[9px] text-sidebar-foreground/40 mb-1">— Signed in as —</p>
+            <p className="font-serif text-[13px] text-gold tracking-wider truncate" title={account?.salonName}>
+              {account?.salonName ?? "..."}
+            </p>
+            <p className="text-[11px] text-sidebar-foreground/80 truncate mt-0.5" title={account?.userName}>
+              {account?.userName ?? ""}
+              {roleLabel && <span className="ml-1.5 text-[9px] text-sidebar-foreground/50">／{roleLabel}</span>}
+            </p>
+            <p className="text-[10px] text-sidebar-foreground/50 truncate font-mono" title={account?.userEmail}>
+              {account?.userEmail}
+            </p>
+          </div>
+        )}
 
         <div className="p-4 border-t border-sidebar-border/60 space-y-1">
           <NavLink
