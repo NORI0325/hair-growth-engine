@@ -677,6 +677,36 @@ export type Database = {
         }
         Relationships: []
       }
+      customer_line_link_tokens: {
+        Row: {
+          created_at: string
+          customer_id: string
+          expires_at: string
+          id: string
+          owner_id: string
+          token: string
+          used_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          customer_id: string
+          expires_at?: string
+          id?: string
+          owner_id: string
+          token?: string
+          used_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          customer_id?: string
+          expires_at?: string
+          id?: string
+          owner_id?: string
+          token?: string
+          used_at?: string | null
+        }
+        Relationships: []
+      }
       customer_message_templates: {
         Row: {
           active: boolean
@@ -729,6 +759,7 @@ export type Database = {
           is_test: boolean
           last_imported_at: string | null
           last_visit_date: string | null
+          line_unfollowed_at: string | null
           line_user_id: string | null
           location_id: string | null
           notes: string | null
@@ -757,6 +788,7 @@ export type Database = {
           is_test?: boolean
           last_imported_at?: string | null
           last_visit_date?: string | null
+          line_unfollowed_at?: string | null
           line_user_id?: string | null
           location_id?: string | null
           notes?: string | null
@@ -785,6 +817,7 @@ export type Database = {
           is_test?: boolean
           last_imported_at?: string | null
           last_visit_date?: string | null
+          line_unfollowed_at?: string | null
           line_user_id?: string | null
           location_id?: string | null
           notes?: string | null
