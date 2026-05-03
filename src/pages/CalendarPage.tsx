@@ -174,7 +174,14 @@ const CalendarPage = () => {
               <Row label="担当">{staff.find((s) => s.id === selected.staff_id)?.name || "未割当"}</Row>
               <Row label="ステータス">{selected.status}</Row>
               {selected.external_source && <Row label="取込元"><span className="eyebrow text-[10px]">{selected.external_source}</span></Row>}
-              <div className="flex gap-2 pt-3 border-t border-border">
+              <div className="flex gap-2 pt-3 border-t border-border flex-wrap">
+                <Link
+                  to={`/customers/${selected.customer_id}/chart`}
+                  className="inline-flex items-center gap-1.5 px-3 h-8 border border-gold/50 text-gold hover:bg-gold hover:text-background transition-colors text-xs tracking-luxury"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  カルテを開く
+                </Link>
                 {selected.status === "pending" && (
                   <Button size="sm" className="rounded-none" onClick={() => updateStatus(selected.id, "confirmed")}>確定にする</Button>
                 )}
