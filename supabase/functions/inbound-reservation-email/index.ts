@@ -10,6 +10,49 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") || "";
 
+// 日本語メールの文字コード自動判定 & デコード
+// SALON BOARD等は ISO-2022-JP で送信される。文字化けしたままAIに渡すとハルシネーションの温床。
+function decodeJapaneseIfNeeded(input: string): string {
+  if (!input) return input;
+  // ISO-2022-JP のエスケープシーケンスが含まれる場合
+  if (input.includes("\x1B$B") || input.includes("\x1b$B") || input.includes("$B") && input.includes("(B")) {
+    try {
+      // 文字列を一旦バイト列として解釈し直す（Latin-1 として byte-preserving）
+      const bytes = new Uint8Array(input.length);
+      for (let i = 0; i < input.length; i++) bytes[i] = input.charCodeAt(i) & 0xff;
+      const decoded = new TextDecoder("iso-2022-jp", { fatal: false }).decode(bytes);
+      // 化け文字（U+FFFD）が多すぎる場合はオリジナルを返す
+      const replacementCount = (decoded.match(/\uFFFD/g) || []).length;
+      if (replacementCount < decoded.length * 0.05) return decoded;
+    } catch (e) { console.warn("ISO-2022-JP decode failed:", e); }
+  }
+  return input;
+}
+
+// charsetを明示指定して再デコード
+function decodeWithCharset(input: string, charset: string): string {
+  if (!input || !charset) return input;
+  const cs = charset.toLowerCase().replace(/[_-]/g, "");
+  const map: Record<string, string> = {
+    "iso2022jp": "iso-2022-jp",
+    "shiftjis": "shift_jis",
+    "sjis": "shift_jis",
+    "windows31j": "shift_jis",
+    "eucjp": "euc-jp",
+    "utf8": "utf-8",
+  };
+  const target = map[cs] || charset.toLowerCase();
+  if (target === "utf-8") return input;
+  try {
+    const bytes = new Uint8Array(input.length);
+    for (let i = 0; i < input.length; i++) bytes[i] = input.charCodeAt(i) & 0xff;
+    return new TextDecoder(target, { fatal: false }).decode(bytes);
+  } catch (e) {
+    console.warn(`decode ${target} failed:`, e);
+    return input;
+  }
+}
+
 // Resend Inbound API から本文を取得（webhookにはメタデータしか含まれないため）
 async function fetchInboundEmailBody(emailId: string): Promise<{ text: string; html: string; subject: string; from: string; to: string[] } | null> {
   if (!RESEND_API_KEY || !emailId) return null;
@@ -22,10 +65,31 @@ async function fetchInboundEmailBody(emailId: string): Promise<{ text: string; h
       return null;
     }
     const data = await res.json();
+    // headersから charset を抽出
+    let charset = "";
+    const headers = data.headers || {};
+    const ct = headers["Content-Type"] || headers["content-type"] || "";
+    const m = String(ct).match(/charset=["']?([\w-]+)/i);
+    if (m) charset = m[1];
+
+    let text = data.text || "";
+    let html = data.html || "";
+    let subject = data.subject || "";
+
+    if (charset) {
+      text = decodeWithCharset(text, charset);
+      html = decodeWithCharset(html, charset);
+      subject = decodeWithCharset(subject, charset);
+    }
+    // 補助: ISO-2022-JPエスケープが残っていれば追加デコード
+    text = decodeJapaneseIfNeeded(text);
+    html = decodeJapaneseIfNeeded(html);
+    subject = decodeJapaneseIfNeeded(subject);
+
     return {
-      text: data.text || "",
-      html: data.html || "",
-      subject: data.subject || "",
+      text,
+      html,
+      subject,
       from: typeof data.from === "string" ? data.from : (data.from?.email || ""),
       to: Array.isArray(data.to) ? data.to : (data.to ? [data.to] : []),
     };
