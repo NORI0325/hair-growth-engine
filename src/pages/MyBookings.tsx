@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Loader2, CalendarDays, ArrowLeft, XCircle, CheckCircle2 } from "lucide-react";
+import { Loader2, CalendarDays, ArrowLeft, XCircle, CheckCircle2, Coins, Gift } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -40,23 +40,48 @@ const MyBookings = () => {
   const [customerName, setCustomerName] = useState("");
   const [salonName, setSalonName] = useState("");
   const [cancelling, setCancelling] = useState<string | null>(null);
+  const [pointBalance, setPointBalance] = useState<number>(0);
+  const [redemptionItems, setRedemptionItems] = useState<any[]>([]);
+  const [redeeming, setRedeeming] = useState<string | null>(null);
 
   const load = async () => {
     if (!token) return;
     setLoading(true);
-    const [verifyRes, bookingsRes] = await Promise.all([
+    const [verifyRes, bookingsRes, pointsRes] = await Promise.all([
       supabase.functions.invoke("verify-booking-token", { body: { token } }),
       supabase.rpc("get_customer_bookings" as any, { _token: token }),
+      supabase.rpc("get_customer_point_summary" as any, { _token: token }),
     ]);
     if (verifyRes.data?.customer) {
       setCustomerName(verifyRes.data.customer.full_name);
       setSalonName(verifyRes.data.salon_name || "サロン");
     }
     setBookings((bookingsRes.data as any) || []);
+    const ps: any = pointsRes.data;
+    if (ps?.success) {
+      setPointBalance(ps.balance || 0);
+      setRedemptionItems(ps.redemption_items || []);
+    }
     setLoading(false);
   };
 
   useEffect(() => { load(); }, [token]);
+
+  const redeem = async (itemId: string, name: string, cost: number) => {
+    if (!confirm(`${cost.toLocaleString()}pt で「${name}」と交換しますか？\n次回ご来店時に適用されます。`)) return;
+    setRedeeming(itemId);
+    const { data } = await supabase.rpc("redeem_customer_points" as any, { _token: token, _item_id: itemId });
+    setRedeeming(null);
+    const r: any = data;
+    if (!r?.success) {
+      const msg = r?.error === "insufficient_points" ? "ポイントが不足しています"
+        : r?.error === "out_of_stock" ? "在庫切れです" : "交換できませんでした";
+      toast.error(msg);
+      return;
+    }
+    toast.success("交換を申請しました。次回ご来店時に適用されます。");
+    load();
+  };
 
   const cancel = async (id: string) => {
     setCancelling(id);
