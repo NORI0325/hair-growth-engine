@@ -57,6 +57,7 @@ const Bookings = () => {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
   const [messageBooking, setMessageBooking] = useState<Booking | null>(null);
+  const [sortMode, setSortMode] = useState<SortMode>("schedule");
 
   const load = async () => {
     if (!user || !locationId) { setBookings([]); setStaff([]); setLoading(false); return; }
@@ -64,7 +65,7 @@ const Bookings = () => {
     const [b, s] = await Promise.all([
       supabase
         .from("bookings")
-        .select("id, customer_id, booking_date, booking_time, menu, notes, status, revenue, campaign_id, is_test, staff_id, customers(full_name, phone, line_user_id)")
+        .select("id, customer_id, booking_date, booking_time, menu, notes, status, revenue, campaign_id, is_test, staff_id, created_at, external_source, customers(full_name, phone, line_user_id)")
         .eq("location_id", locationId)
         .order("booking_date", { ascending: true })
         .order("booking_time", { ascending: true }),
