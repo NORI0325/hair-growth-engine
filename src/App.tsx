@@ -27,6 +27,7 @@ import Performance from "./pages/Performance";
 import MenuItems from "./pages/MenuItems";
 import Staff from "./pages/Staff";
 import Incentives from "./pages/Incentives";
+import Points from "./pages/Points";
 import Unsubscribe from "./pages/Unsubscribe";
 import Inbox from "./pages/Inbox";
 import SalonBoardExport from "./pages/SalonBoardExport";
@@ -95,6 +96,7 @@ const App = () => (
             <Route path="/menu-items" element={<ProtectedRoute><MenuItems /></ProtectedRoute>} />
             <Route path="/staff" element={<ProtectedRoute><Staff /></ProtectedRoute>} />
             <Route path="/incentives" element={<ProtectedRoute><Incentives /></ProtectedRoute>} />
+            <Route path="/points" element={<ProtectedRoute><Points /></ProtectedRoute>} />
             <Route path="/salonboard-export" element={<ProtectedRoute><SalonBoardExport /></ProtectedRoute>} />
             <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
             <Route path="/billing" element={<ProtectedRoute><Billing /></ProtectedRoute>} />
