@@ -226,6 +226,7 @@ const Dashboard = () => {
       />
 
       <SetupChecklist />
+      <NotificationRecipientsBadge variant="dashboard" />
       <ChurnAlertPanel />
 
       {/* ============ ① 今日の戦況ボード ============ */}
