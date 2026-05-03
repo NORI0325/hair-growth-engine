@@ -23,16 +23,31 @@ interface Booking {
   is_test: boolean;
   staff_id: string | null;
   customer_id: string;
+  created_at: string;
+  external_source: string | null;
   customers: { full_name: string; phone: string | null; line_user_id: string | null } | null;
 }
 
 interface Staff { id: string; name: string; display_color: string; }
+
+type SortMode = "schedule" | "received";
 
 const statusInfo = (s: string) => {
   if (s === "confirmed") return { label: "確定", color: "text-gold" };
   if (s === "completed") return { label: "来店済", color: "text-success" };
   if (s === "cancelled") return { label: "キャンセル", color: "text-destructive" };
   return { label: "未確定", color: "text-muted-foreground" };
+};
+
+const sourceLabel = (s: string | null): string | null => {
+  if (!s || s === "manual") return null;
+  const map: Record<string, string> = {
+    hotpepper: "HotPepper",
+    minimo: "minimo",
+    rakuten_beauty: "楽天Beauty",
+    salonboard: "SalonBoard",
+  };
+  return map[s] || s;
 };
 
 const Bookings = () => {
