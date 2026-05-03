@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Salon Boost — SalonBoard 取込",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "SalonBoardの顧客情報をSalon Boostへ安全に取り込みます（CSV保存なし・契約中のみ動作）",
   "action": {
     "default_popup": "popup.html",

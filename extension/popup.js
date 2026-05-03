@@ -1,5 +1,5 @@
 // =====================================================
-// Salon Boost — SalonBoard Importer v2.0.1
+// Salon Boost — SalonBoard Importer v2.0.2
 // セキュア設計：
 //   - Salon Boost にログイン必須
 //   - アクティブサブスクリプション必須
