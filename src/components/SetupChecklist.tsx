@@ -34,13 +34,15 @@ const SetupChecklist = () => {
         .from("menu_items").select("id", { count: "exact", head: true }).eq("owner_id", user.id);
       const { count: staffCount } = await supabase
         .from("staff").select("id", { count: "exact", head: true }).eq("owner_id", user.id);
+      const { count: inboundLogCount } = await supabase
+        .from("external_reservation_logs").select("id", { count: "exact", head: true }).eq("owner_id", user.id);
 
       setItems([
         { key: "menus", label: "メニューを3つ以上登録", done: (menuCount ?? 0) >= 3, href: "/menu", cta: "メニューを開く" },
         { key: "staff", label: "スタッフを登録", done: (staffCount ?? 0) >= 1, href: "/staff", cta: "スタッフを開く" },
         { key: "share", label: "公開予約URLをSNS・名刺に掲載", done: !!p?.public_slug, href: "/share", cta: "URLを取得" },
-        { key: "inbound", label: "ホットペッパー予約の自動取込を有効化", done: false, href: "/settings", cta: "設定を開く" },
-        { key: "line", label: "LINE公式アカウントを連携", done: !!(p?.line_channel_access_token && p?.line_channel_secret), href: "/settings", cta: "設定を開く" },
+        { key: "inbound", label: "ホットペッパー等の予約通知メール自動取込を設定", done: (inboundLogCount ?? 0) > 0, href: "/settings?tab=connect&section=inbound", cta: "転送先アドレスを見る" },
+        { key: "line", label: "LINE公式アカウントを連携", done: !!(p?.line_channel_access_token && p?.line_channel_secret), href: "/settings?tab=connect", cta: "設定を開く" },
       ]);
       setLoading(false);
     })();
