@@ -204,13 +204,17 @@ const Bookings = () => {
                           </span>
                         </div>
                         <div className="col-span-3">
-                          <div className="font-serif text-sm flex items-center gap-2">
+                          <div className="font-serif text-sm flex items-center gap-2 flex-wrap">
                             {b.customers?.full_name || "—"}
                             {b.is_test && (
                               <span className="text-[9px] px-1.5 py-0.5 border border-destructive/40 text-destructive tracking-luxury">TEST</span>
                             )}
+                            {sourceLabel(b.external_source) && (
+                              <span className="text-[9px] px-1.5 py-0.5 border border-gold/40 text-gold tracking-luxury">{sourceLabel(b.external_source)}</span>
+                            )}
                           </div>
                           <div className="text-xs text-muted-foreground">{b.customers?.phone || ""}</div>
+                          <div className="text-[10px] text-muted-foreground/70 mt-0.5">受信 {fmtReceived(b.created_at)}</div>
                         </div>
                         <div className="col-span-3 text-sm font-serif text-muted-foreground">
                           {b.menu}
