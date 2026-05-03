@@ -415,13 +415,54 @@ Deno.serve(async (req) => {
 
         const phone = normalizePhone(text);
 
-        // 既存顧客にline_user_idが既に紐付いているか
+        // ============= 個別連携トークン照合 =============
+        // フォーマット: "連携:XXXXXXXX" or 単独の8桁英数字
+        const tokenMatch = text.match(/(?:連携[:：]?\s*)?\b([A-Z0-9]{8})\b/i);
+        if (tokenMatch) {
+          const tokenStr = tokenMatch[1].toUpperCase();
+          const { data: tokenRow } = await supabase
+            .from("customer_line_link_tokens")
+            .select("id, customer_id, owner_id, used_at, expires_at")
+            .eq("owner_id", owner.id)
+            .eq("token", tokenStr)
+            .maybeSingle();
+          if (tokenRow && !tokenRow.used_at && new Date(tokenRow.expires_at).getTime() > Date.now()) {
+            const { data: cust } = await supabase
+              .from("customers")
+              .select("id, full_name, line_user_id")
+              .eq("id", tokenRow.customer_id)
+              .maybeSingle();
+            if (cust) {
+              if (cust.line_user_id && cust.line_user_id !== userId) {
+                await replyLine(accessToken, replyToken,
+                  `この顧客カードは既に別のLINEアカウントと連携されています。\nお店までお問い合わせください🙇‍♀️`);
+                continue;
+              }
+              await supabase.from("customers")
+                .update({ line_user_id: userId, line_unfollowed_at: null })
+                .eq("id", cust.id);
+              await supabase.from("customer_line_link_tokens")
+                .update({ used_at: new Date().toISOString() }).eq("id", tokenRow.id);
+              await supabase.from("line_pending_friends")
+                .delete().eq("owner_id", owner.id).eq("line_user_id", userId);
+              await replyLine(accessToken, replyToken,
+                `✅ ${cust.full_name}様、連携が完了しました!\n\n次回のご予約案内・特典クーポンをこちらのトークでお届けします🌸\n\n${owner.salon_name || "サロン"}`);
+              continue;
+            }
+          }
+        }
+
+        // 既存顧客にline_user_idが既に紐付いているか（再フォロー時はソフト復活）
         const { data: linkedCustomer } = await supabase
           .from("customers")
-          .select("id, full_name")
+          .select("id, full_name, line_unfollowed_at")
           .eq("owner_id", owner.id)
           .eq("line_user_id", userId)
           .maybeSingle();
+        if (linkedCustomer?.line_unfollowed_at) {
+          await supabase.from("customers")
+            .update({ line_unfollowed_at: null }).eq("id", linkedCustomer.id);
+        }
 
         // 連携済み顧客からのメッセージ、または未連携でも電話番号でないテキスト
         // → 受信トレイに保存し、AI分類をバックグラウンドで実行
@@ -574,14 +615,14 @@ Deno.serve(async (req) => {
           .not("phone", "is", null)
           .limit(500);
 
-        const matched = (candidates || []).find(c => normalizePhone(c.phone || "") === phone);
+        const matches = (candidates || []).filter(c => normalizePhone(c.phone || "") === phone);
+        const matched = matches[0];
 
         if (!matched) {
-          // pendingに番号も記録（オーナーが見て手動連携できるよう）
           await supabase.from("line_pending_friends").upsert({
             owner_id: owner.id,
             line_user_id: userId,
-            last_message: text.slice(0, 200),
+            last_message: "[phone attempted]",
           }, { onConflict: "owner_id,line_user_id" });
 
           await replyLine(
@@ -589,6 +630,18 @@ Deno.serve(async (req) => {
             replyToken,
             `お電話番号が見つかりませんでした🙏\n\nお手数ですがお名前もメッセージでお送りいただけますと、担当者が確認のうえ連携いたします。`
           );
+          continue;
+        }
+
+        if (matches.length > 1) {
+          // 同一電話番号が複数顧客に紐付く（家族など）→ 自動連携せず手動レビュー
+          await supabase.from("line_pending_friends").upsert({
+            owner_id: owner.id,
+            line_user_id: userId,
+            last_message: `[duplicate phone: ${matches.length} matches]`,
+          }, { onConflict: "owner_id,line_user_id" });
+          await replyLine(accessToken, replyToken,
+            `同じお電話番号のお客様が複数登録されています。お手数ですがお名前もお送りください。担当者が確認のうえ連携いたします🙇‍♀️`);
           continue;
         }
 
@@ -603,10 +656,9 @@ Deno.serve(async (req) => {
 
         await supabase
           .from("customers")
-          .update({ line_user_id: userId })
+          .update({ line_user_id: userId, line_unfollowed_at: null })
           .eq("id", matched.id);
 
-        // 連携が成立したのでpending削除
         await supabase
           .from("line_pending_friends")
           .delete()
@@ -621,9 +673,10 @@ Deno.serve(async (req) => {
       }
 
       if (ev.type === "unfollow" && userId) {
+        // ソフト削除：line_user_idは残し、unfollow時刻を記録（再フォロー時に履歴継続）
         await supabase
           .from("customers")
-          .update({ line_user_id: null })
+          .update({ line_unfollowed_at: new Date().toISOString() })
           .eq("owner_id", owner.id)
           .eq("line_user_id", userId);
       }

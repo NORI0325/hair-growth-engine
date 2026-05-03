@@ -6,11 +6,12 @@ import PageHeader from "@/components/PageHeader";
 import AddCustomerDialog from "@/components/AddCustomerDialog";
 import EditCustomerDialog, { type EditableCustomer } from "@/components/EditCustomerDialog";
 import PendingLineFriends from "@/components/PendingLineFriends";
+import LineLinkQRDialog from "@/components/LineLinkQRDialog";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, Loader2, Plus, Mail, Pencil, FileText } from "lucide-react";
+import { Search, Loader2, Plus, Mail, Pencil, FileText, QrCode } from "lucide-react";
 import { toast } from "sonner";
 
 import { calculateVipTier, tierInfo, isBirthdayMonth } from "@/lib/vip";
@@ -53,6 +54,13 @@ const Customers = () => {
   const [addOpen, setAddOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<EditableCustomer | null>(null);
   const [sendingId, setSendingId] = useState<string | null>(null);
+  const [qrTarget, setQrTarget] = useState<{ id: string; name: string } | null>(null);
+  const [lineAddUrl, setLineAddUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase.from("profiles").select("line_add_friend_url").maybeSingle()
+      .then(({ data }) => setLineAddUrl(data?.line_add_friend_url || null));
+  }, []);
 
   const sendTestThankYou = async (c: Customer) => {
     if (!c.email) {
@@ -217,8 +225,17 @@ const Customers = () => {
                       <FileText className="w-3 h-3 stroke-[1.5]" />
                       カルテ
                     </Link>
-                    {c.line_user_id && (
+                    {c.line_user_id ? (
                       <span title="LINE連携済み" className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-[#06C755] text-white text-[8px] font-bold leading-none">L</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setQrTarget({ id: c.id, name: c.full_name })}
+                        title="LINE個別連携QRを発行"
+                        className="inline-flex items-center justify-center w-5 h-5 border border-[#06C755]/40 text-[#06C755] hover:bg-[#06C755] hover:text-white transition-colors"
+                      >
+                        <QrCode className="w-3 h-3" />
+                      </button>
                     )}
                     {birthdayThisMonth && <span title="今月誕生日" className="text-[10px] text-gold">🎂</span>}
                   </div>
@@ -264,6 +281,15 @@ const Customers = () => {
             </div>
           )}
         </div>
+      )}
+      {qrTarget && (
+        <LineLinkQRDialog
+          open={!!qrTarget}
+          onOpenChange={(v) => !v && setQrTarget(null)}
+          customerId={qrTarget.id}
+          customerName={qrTarget.name}
+          lineAddFriendUrl={lineAddUrl}
+        />
       )}
     </AppLayout>
   );
