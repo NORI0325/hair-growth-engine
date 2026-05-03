@@ -1,8 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Loader2, Check } from "lucide-react";
 import { toast } from "sonner";
@@ -11,26 +10,35 @@ const InviteAccept = () => {
   const { token } = useParams();
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
-  const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const triedRef = useRef(false);
 
-  const accept = async () => {
-    if (!token) return;
-    setLoading(true);
-    const { data, error } = await supabase.functions.invoke("accept-tenant-invitation", { body: { token } });
-    setLoading(false);
-    if (error || !data?.success) { setError(data?.error ?? "招待の受諾に失敗しました"); return; }
-    setDone(true);
-    toast.success("チームに参加しました");
-    setTimeout(() => navigate("/dashboard"), 1500);
-  };
-
+  // マジックリンクからの遷移：URLハッシュにaccess_tokenが含まれている場合、Supabase SDKが自動でセッションを確立する
+  // → useAuth が user を返してきたら自動で受諾処理を実行
   useEffect(() => {
-    if (!authLoading && !user) {
-      // 未ログインなら登録/ログインへ
+    if (authLoading) return;
+    if (!token) return;
+
+    if (!user) {
+      // 万が一未ログインなら従来のログインフローへ（招待トークンを保持）
       navigate(`/auth?invite=${token}`);
+      return;
     }
+
+    if (triedRef.current) return;
+    triedRef.current = true;
+
+    (async () => {
+      const { data, error } = await supabase.functions.invoke("accept-tenant-invitation", { body: { token } });
+      if (error || !data?.success) {
+        setError(data?.error ?? "招待の受諾に失敗しました");
+        return;
+      }
+      setDone(true);
+      toast.success("チームに参加しました");
+      setTimeout(() => navigate("/dashboard"), 1500);
+    })();
   }, [user, authLoading, token, navigate]);
 
   return (
@@ -45,12 +53,10 @@ const InviteAccept = () => {
         ) : error ? (
           <p className="text-red-600 text-sm">{error}</p>
         ) : (
-          <>
-            <p className="text-muted-foreground">招待を受諾してチームに参加します。</p>
-            <Button className="w-full" onClick={accept} disabled={loading}>
-              {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}招待を受諾する
-            </Button>
-          </>
+          <div className="space-y-3">
+            <Loader2 className="w-10 h-10 animate-spin text-primary mx-auto" />
+            <p className="text-muted-foreground">ログインして招待を受諾しています...</p>
+          </div>
         )}
       </Card>
     </div>
