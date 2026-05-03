@@ -34,6 +34,18 @@ const HelpWidget = () => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, view]);
 
+  // Allow other pages to open the chat with a prefilled question
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { prefill?: string } | undefined;
+      setOpen(true);
+      setView("chat");
+      if (detail?.prefill) setInput(detail.prefill);
+    };
+    window.addEventListener("help:openchat", handler);
+    return () => window.removeEventListener("help:openchat", handler);
+  }, []);
+
   // 公開ページでは表示しない
   if (!user) return null;
   if (pathname.startsWith("/book/") || pathname.startsWith("/salon/") || pathname.startsWith("/my-bookings/")) return null;
