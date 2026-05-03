@@ -66,14 +66,17 @@ async function loginWithPassword(email, password) {
 
 // ============= API呼び出し =============
 async function fetchLocations(token) {
-  // RLSにより自分が所属する店舗のみが返る
+  // 自分が所属している店舗のみを返すRPC（公開予約スラッグの他サロン店舗を除外）
   const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/locations?select=id,name,is_primary&order=is_primary.desc,name.asc`,
+    `${SUPABASE_URL}/rest/v1/rpc/get_my_member_locations`,
     {
+      method: "POST",
       headers: {
+        "Content-Type": "application/json",
         apikey: SUPABASE_ANON_KEY,
         Authorization: `Bearer ${token}`,
       },
+      body: "{}",
     }
   );
   if (!res.ok) throw new Error(`店舗取得失敗 (${res.status})`);
