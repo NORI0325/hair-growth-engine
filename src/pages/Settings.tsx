@@ -302,7 +302,7 @@ const Settings = () => {
       <PageHeader eyebrow="— Settings —" title="サロン設定" description="店舗・配信・連携をすべて管理" />
 
       <div className="max-w-3xl">
-        <Tabs defaultValue="store" className="w-full">
+        <Tabs defaultValue={initialTab} className="w-full">
           <TabsList className="grid w-full grid-cols-5 rounded-none bg-secondary/30 mb-8">
             <TabsTrigger value="store" className="rounded-none text-xs tracking-luxury data-[state=active]:bg-background data-[state=active]:text-gold">
               <Store className="w-3.5 h-3.5 mr-1.5" />店舗
