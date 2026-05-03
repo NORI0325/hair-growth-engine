@@ -80,6 +80,12 @@ const button: React.CSSProperties = {
 const fineprint: React.CSSProperties = {
   fontSize: '12px', color: '#888', margin: '16px 0 0', lineHeight: '1.5',
 }
+const notice: React.CSSProperties = {
+  background: '#FAF6EC', border: '1px solid #E8DDB8', padding: '14px 18px', margin: '8px 0 16px',
+}
+const noticeText: React.CSSProperties = {
+  fontSize: '13px', color: '#5a4a1a', lineHeight: '1.7', margin: 0,
+}
 const hr: React.CSSProperties = { border: 'none', borderTop: '1px solid #eee', margin: '32px 0 16px' }
 const footer: React.CSSProperties = {
   fontSize: '12px', color: '#999', textAlign: 'center', margin: '0',
