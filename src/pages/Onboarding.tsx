@@ -46,19 +46,44 @@ const Onboarding = () => {
   useEffect(() => {
     if (!user) return;
     (async () => {
-      const { data } = await supabase.from("profiles").select("salon_name, open_time, close_time, onboarding_progress").eq("id", user.id).maybeSingle();
+      const { data } = await supabase.from("profiles").select("salon_name, open_time, close_time, onboarding_progress, public_slug, inbound_key").eq("id", user.id).maybeSingle();
       if (data) {
         setSalon({
           salon_name: data.salon_name ?? "",
           open_time: (data.open_time as string)?.slice(0, 5) ?? "10:00",
           close_time: (data.close_time as string)?.slice(0, 5) ?? "19:00",
         });
+        setPublicSlug((data as any).public_slug ?? "");
+        setInboundKey((data as any).inbound_key ?? "");
         const p = (data.onboarding_progress as OnboardingProgress) || {};
         setProgress(p);
         if (p.done) navigate("/dashboard");
       }
     })();
   }, [user, navigate]);
+
+  const copyText = async (text: string, label = "コピーしました") => {
+    try { await navigator.clipboard.writeText(text); toast.success(label); }
+    catch { toast.error("コピーに失敗しました"); }
+  };
+
+  const saveLineCreds = async () => {
+    if (!user) return;
+    if (!lineCreds.access_token.trim() || !lineCreds.channel_secret.trim()) {
+      toast.error("チャネルアクセストークンとチャネルシークレットを入力してください"); return;
+    }
+    setSaving(true);
+    const { error } = await supabase.from("profiles").update({
+      line_channel_access_token: lineCreds.access_token.trim(),
+      line_channel_secret: lineCreds.channel_secret.trim(),
+    }).eq("id", user.id);
+    setSaving(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success("LINEを接続しました");
+    await updateProgress({ line: true });
+    setStep(5);
+  };
+
 
   const updateProgress = async (next: OnboardingProgress) => {
     if (!user) return;
