@@ -119,6 +119,46 @@ const MyBookings = () => {
           <ArrowLeft className="w-3 h-3" /> 新しいご予約はこちら
         </Link>
 
+        {/* ポイント残高 + 交換 */}
+        <div className="mb-8 border border-gold/30 bg-gold/5 p-5 animate-fade-up">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Coins className="w-4 h-4 text-gold" />
+              <p className="eyebrow text-[10px] text-gold">YOUR POINTS</p>
+            </div>
+            <p className="font-serif text-3xl text-gold">{pointBalance.toLocaleString()}<span className="text-sm ml-1">pt</span></p>
+          </div>
+          {redemptionItems.length > 0 ? (
+            <>
+              <p className="text-[10px] text-muted-foreground mb-3 leading-relaxed">
+                ポイントは次回ご来店時のサービスアップグレードと交換できます
+              </p>
+              <div className="space-y-2">
+                {redemptionItems.map((it: any) => {
+                  const enough = pointBalance >= it.points_cost;
+                  return (
+                    <div key={it.id} className="flex items-center justify-between gap-2 bg-background border border-border p-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium truncate">{it.name}</p>
+                        <p className="text-[10px] text-muted-foreground">{it.points_cost.toLocaleString()} pt</p>
+                      </div>
+                      <Button size="sm" disabled={!enough || redeeming === it.id}
+                        onClick={() => redeem(it.id, it.name, it.points_cost)}
+                        className="text-[10px] h-8">
+                        {redeeming === it.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <><Gift className="w-3 h-3 mr-1" />交換</>}
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            <p className="text-[10px] text-muted-foreground">
+              ご来店ごとにポイントが貯まります
+            </p>
+          )}
+        </div>
+
         {bookings.length === 0 ? (
           <div className="border border-border bg-secondary/30 p-10 text-center">
             <CalendarDays className="w-8 h-8 text-muted-foreground mx-auto mb-4 stroke-[1]" />
