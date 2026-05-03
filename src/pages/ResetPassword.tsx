@@ -55,10 +55,12 @@ const ResetPassword = () => {
   return (
     <div className="min-h-screen flex items-center justify-center p-8 bg-background">
       <div className="w-full max-w-sm animate-fade-up">
-        <p className="eyebrow mb-3">— New Password —</p>
-        <h1 className="display text-3xl mb-2">新しいパスワード</h1>
+        <p className="eyebrow mb-3">— {initial ? "Set Password" : "New Password"} —</p>
+        <h1 className="display text-3xl mb-2">{initial ? "ログイン用パスワード設定" : "新しいパスワード"}</h1>
         <p className="text-sm text-muted-foreground mb-8">
-          新しいパスワードをご設定ください。
+          {initial
+            ? "次回からはメールアドレスとここで設定するパスワードでログインできます。8文字以上で設定してください。"
+            : "新しいパスワードをご設定ください。"}
         </p>
 
         {!ready ? (
