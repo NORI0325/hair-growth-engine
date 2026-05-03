@@ -35,6 +35,14 @@ const TeamInvitationEmail = ({ salonName = 'サロン', inviterName, role, invit
           下のボタンから招待を受諾し、Salon Boostへログインしてください。<br />
           招待リンクは <strong>7日間</strong>有効です。
         </Text>
+        <Section style={notice}>
+          <Text style={noticeText}>
+            <strong>初回ログインの方へ：</strong><br />
+            ボタンをクリックするとパスワード不要でログインできます。<br />
+            ログイン直後に「ログイン用パスワード設定」画面が表示されますので、<br />
+            次回以降のためにパスワードをご登録ください。
+          </Text>
+        </Section>
         <Section style={{ textAlign: 'center', margin: '32px 0' }}>
           <Button href={inviteUrl} style={button}>招待を受諾する</Button>
         </Section>
