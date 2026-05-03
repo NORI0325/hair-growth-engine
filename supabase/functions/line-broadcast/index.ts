@@ -31,6 +31,7 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const message: string = (body?.message || "").toString().trim();
     const segment: string = (body?.segment || "all").toString();
+    const customerIds: string[] = Array.isArray(body?.customer_ids) ? body.customer_ids.filter((x: any) => typeof x === "string") : [];
 
     if (!message || message.length < 2) {
       return new Response(JSON.stringify({ success: false, message: "メッセージを入力してください" }),
