@@ -142,92 +142,129 @@ Deno.serve(async (req) => {
     let inserted = 0, updated = 0, skipped = 0;
     const errors: string[] = [];
 
+    // === Step 1: 受信データを正規化 ===
+    type Norm = {
+      sbId: string; sbNo: string; fullName: string; phone: string;
+      email: string; birthday: string | null; lastVisit: string | null; visitCount: number;
+    };
+    const normalized: Norm[] = [];
     for (const c of body.customers as SbCustomer[]) {
-      try {
-        const sbId = pick(c, ["詳細_顧客ID"]);
-        const sbNo = pick(c, ["詳細_お客様番号", "一覧_お客様番号"]);
-        const fullName = pick(c, [
-          "詳細_氏名（漢字）", "詳細_氏名(漢字)",
-          "一覧_氏名（漢字）", "一覧_氏名(漢字)",
-          "詳細_氏名（カナ）", "詳細_氏名(カナ)",
-          "一覧_氏名（カナ）", "一覧_氏名(カナ)",
-        ]);
-        if (!fullName) { skipped++; continue; }
-
-        const phoneRaw = pick(c, ["詳細_代表番号1", "詳細_代表番号2"]);
-        const phone = normalizePhone(phoneRaw);
-        const email = pick(c, [
+      const fullName = pick(c, [
+        "詳細_氏名（漢字）", "詳細_氏名(漢字)",
+        "一覧_氏名（漢字）", "一覧_氏名(漢字)",
+        "詳細_氏名（カナ）", "詳細_氏名(カナ)",
+        "一覧_氏名（カナ）", "一覧_氏名(カナ)",
+      ]);
+      if (!fullName) { skipped++; continue; }
+      normalized.push({
+        sbId: pick(c, ["詳細_顧客ID"]),
+        sbNo: pick(c, ["詳細_お客様番号", "一覧_お客様番号"]),
+        fullName,
+        phone: normalizePhone(pick(c, ["詳細_代表番号1", "詳細_代表番号2"])),
+        email: pick(c, [
           "詳細_E-MAIL（PC）", "詳細_E-MAIL(PC)",
           "詳細_E-MAIL（携帯）", "詳細_E-MAIL(携帯)",
           "詳細_メッセージ配信先情報_E-MAIL（PC）",
           "詳細_メッセージ配信先情報_E-MAIL（携帯）",
-        ]);
-        const birthday = parseDate(pick(c, ["詳細_誕生日"]));
-        const lastVisit = parseDate(pick(c, ["一覧_前回来店日", "詳細_来店情報_前回来店日"]));
-        const visitCountStr = pick(c, ["一覧_来店回数", "詳細_来店情報_来店回数"]);
-        const visitCount = parseInt(visitCountStr.replace(/[^\d]/g, ""), 10) || 0;
+        ]),
+        birthday: parseDate(pick(c, ["詳細_誕生日"])),
+        lastVisit: parseDate(pick(c, ["一覧_前回来店日", "詳細_来店情報_前回来店日"])),
+        visitCount: parseInt((pick(c, ["一覧_来店回数", "詳細_来店情報_来店回数"]) || "").replace(/[^\d]/g, ""), 10) || 0,
+      });
+    }
 
-        // 既存検索：1) salonboard_customer_id 2) 電話 3) 氏名
-        let existing: any = null;
-        if (sbId) {
-          const { data } = await admin
-            .from("customers")
-            .select("id, visit_count")
-            .eq("owner_id", ownerId)
-            .eq("salonboard_customer_id", sbId)
-            .maybeSingle();
-          existing = data;
-        }
-        if (!existing && phone) {
-          const { data } = await admin
-            .from("customers")
-            .select("id, visit_count")
-            .eq("owner_id", ownerId)
-            .eq("phone", phone)
-            .maybeSingle();
-          existing = data;
-        }
-        if (!existing) {
-          const { data } = await admin
-            .from("customers")
-            .select("id, visit_count")
-            .eq("owner_id", ownerId)
-            .eq("full_name", fullName)
-            .maybeSingle();
-          existing = data;
-        }
+    // === Step 2: 既存顧客を一括取得 (3クエリのみ) ===
+    const sbIds = [...new Set(normalized.map(n => n.sbId).filter(Boolean))];
+    const phones = [...new Set(normalized.map(n => n.phone).filter(Boolean))];
+    const names = [...new Set(normalized.map(n => n.fullName))];
 
-        const payload: any = {
-          owner_id: ownerId,
-          location_id: locationId,
-          full_name: fullName,
-          phone: phone || null,
-          email: email || null,
-          birthday,
-          last_visit_date: lastVisit,
-          visit_count: visitCount,
-          salonboard_customer_id: sbId || null,
-          salonboard_customer_no: sbNo || null,
-          imported_from: "salonboard",
-          last_imported_at: new Date().toISOString(),
-        };
+    const bySbId = new Map<string, { id: string; visit_count: number }>();
+    const byPhone = new Map<string, { id: string; visit_count: number }>();
+    const byName = new Map<string, { id: string; visit_count: number }>();
 
-        if (existing) {
-          // visit_count は大きい方を採用
-          payload.visit_count = Math.max(existing.visit_count || 0, visitCount);
-          // ★ 既存顧客の first_imported_at / quiet_until は更新しない（再インポートでサイレント期間が延びるのを防ぐ）
-          const { error } = await admin.from("customers").update(payload).eq("id", existing.id);
-          if (error) throw error;
-          updated++;
-        } else {
-          // 新規はトリガーで first_imported_at + quiet_until が自動セットされる
-          const { error } = await admin.from("customers").insert(payload);
-          if (error) throw error;
-          inserted++;
+    const CHUNK = 500;
+    async function fetchExisting(col: string, values: string[], target: Map<string, any>) {
+      for (let i = 0; i < values.length; i += CHUNK) {
+        const slice = values.slice(i, i + CHUNK);
+        const { data, error } = await admin
+          .from("customers")
+          .select(`id, visit_count, ${col}`)
+          .eq("owner_id", ownerId)
+          .in(col, slice);
+        if (error) throw error;
+        for (const row of (data || []) as any[]) {
+          const key = row[col];
+          if (key && !target.has(key)) target.set(key, { id: row.id, visit_count: row.visit_count });
         }
-      } catch (e: any) {
-        skipped++;
-        errors.push(e?.message || String(e));
+      }
+    }
+    if (sbIds.length) await fetchExisting("salonboard_customer_id", sbIds, bySbId);
+    if (phones.length) await fetchExisting("phone", phones, byPhone);
+    if (names.length) await fetchExisting("full_name", names, byName);
+
+    // === Step 3: 更新と新規挿入を分類 ===
+    const nowIso = new Date().toISOString();
+    const toUpdate: { id: string; payload: any }[] = [];
+    const toInsert: any[] = [];
+    const seenUpdateIds = new Set<string>();
+
+    for (const n of normalized) {
+      const existing =
+        (n.sbId && bySbId.get(n.sbId)) ||
+        (n.phone && byPhone.get(n.phone)) ||
+        byName.get(n.fullName) || null;
+
+      const base: any = {
+        owner_id: ownerId,
+        location_id: locationId,
+        full_name: n.fullName,
+        phone: n.phone || null,
+        email: n.email || null,
+        birthday: n.birthday,
+        last_visit_date: n.lastVisit,
+        visit_count: n.visitCount,
+        salonboard_customer_id: n.sbId || null,
+        salonboard_customer_no: n.sbNo || null,
+        imported_from: "salonboard",
+        last_imported_at: nowIso,
+      };
+
+      if (existing) {
+        if (seenUpdateIds.has(existing.id)) { skipped++; continue; }
+        seenUpdateIds.add(existing.id);
+        base.visit_count = Math.max(existing.visit_count || 0, n.visitCount);
+        toUpdate.push({ id: existing.id, payload: base });
+      } else {
+        toInsert.push(base);
+      }
+    }
+
+    // === Step 4: チャンクで一括 INSERT ===
+    for (let i = 0; i < toInsert.length; i += CHUNK) {
+      const slice = toInsert.slice(i, i + CHUNK);
+      const { error, data } = await admin.from("customers").insert(slice).select("id");
+      if (error) {
+        // フォールバック：個別挿入で失敗した行を特定
+        for (const row of slice) {
+          const { error: e2 } = await admin.from("customers").insert(row);
+          if (e2) { skipped++; errors.push(e2.message); } else { inserted++; }
+        }
+      } else {
+        inserted += (data?.length ?? slice.length);
+      }
+    }
+
+    // === Step 5: UPDATE は並列で（10並行） ===
+    const PARALLEL = 10;
+    for (let i = 0; i < toUpdate.length; i += PARALLEL) {
+      const batch = toUpdate.slice(i, i + PARALLEL);
+      const results = await Promise.all(
+        batch.map(({ id, payload }) =>
+          admin.from("customers").update(payload).eq("id", id).then((r) => ({ id, error: r.error }))
+        )
+      );
+      for (const r of results) {
+        if (r.error) { skipped++; errors.push(r.error.message); } else { updated++; }
       }
     }
 
