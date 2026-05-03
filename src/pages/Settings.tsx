@@ -865,42 +865,54 @@ const Settings = () => {
             {/* 外部予約サイト */}
             <section className="space-y-5 pt-6 border-t border-border">
               <SectionTitle icon={Inbox} title="外部予約サイト自動連携"
-                desc="ホットペッパー / minimo / 楽天Beautyの予約通知メールを自動転送するだけで、予約・顧客が自動登録されます。" />
+                desc="ホットペッパー / minimo / 楽天Beautyの予約通知メールを下記アドレスへ転送するだけ。DNSや専門設定は一切不要、コピー＆ペーストで完了します。" />
 
-              {[
-                { code: "hp", label: "ホットペッパービューティー", color: "text-orange-400" },
-                { code: "mn", label: "minimo（ミニモ）", color: "text-pink-400" },
-                { code: "rb", label: "楽天ビューティ", color: "text-red-400" },
-              ].map(site => {
-                const addr = inboundKey ? `${site.code}-${inboundKey}@inbound.saronboost.com` : "（保存後に発行されます）";
-                return (
-                  <div key={site.code} className="border border-border/50 p-4 bg-secondary/10">
-                    <div className={`font-serif text-sm ${site.color} mb-2`}>{site.label}</div>
-                    <div className="flex items-center gap-2">
-                      <Input value={addr} readOnly className="rounded-none border-x-0 border-t-0 px-0 text-xs font-mono bg-transparent" />
-                      <Button type="button" variant="outline" size="sm"
-                        onClick={() => { navigator.clipboard.writeText(addr); toast.success("コピーしました"); }}
-                        disabled={!inboundKey}
-                        className="rounded-none border-gold/40 text-[10px] tracking-luxury">
-                        <Copy className="w-3 h-3 mr-1" /> COPY
-                      </Button>
-                    </div>
+              <div className="border border-gold/40 bg-gradient-to-br from-gold/5 to-transparent p-5 rounded-sm">
+                <div className="flex items-start gap-3 mb-4">
+                  <div className="w-8 h-8 rounded-full bg-gold/20 text-gold flex items-center justify-center font-serif text-sm flex-shrink-0">1</div>
+                  <div className="flex-1">
+                    <div className="font-serif text-base mb-1">あなた専用の転送アドレス</div>
+                    <p className="text-xs text-muted-foreground">下記をコピーして、各サイトの登録メール（Gmail等）の転送先に設定してください。</p>
                   </div>
-                );
-              })}
+                </div>
 
-              <details className="border border-border/40 p-4 bg-secondary/5">
+                {[
+                  { code: "hp", label: "ホットペッパービューティー", color: "text-orange-500" },
+                  { code: "mn", label: "minimo（ミニモ）", color: "text-pink-500" },
+                  { code: "rb", label: "楽天ビューティ", color: "text-red-500" },
+                ].map(site => {
+                  const addr = inboundKey ? `${site.code}-${inboundKey}@inbound.saronboost.com` : "（保存後に発行されます）";
+                  return (
+                    <div key={site.code} className="border border-border bg-background p-4 mb-3 last:mb-0">
+                      <div className={`font-serif text-sm ${site.color} mb-2 font-medium`}>{site.label}</div>
+                      <div className="flex items-center gap-2">
+                        <Input value={addr} readOnly className="rounded-none border-x-0 border-t-0 px-0 text-sm font-mono bg-transparent" />
+                        <Button type="button" size="sm"
+                          onClick={() => { navigator.clipboard.writeText(addr); toast.success("コピーしました"); }}
+                          disabled={!inboundKey}
+                          className="rounded-none bg-gold text-background hover:bg-gold/90 tracking-luxury">
+                          <Copy className="w-3.5 h-3.5 mr-1.5" /> コピー
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <details className="border border-border p-4 bg-secondary/10 rounded-sm" open>
                 <summary className="cursor-pointer font-serif text-sm flex items-center gap-2">
-                  <Mail className="w-3.5 h-3.5 text-gold" /> 設定手順を見る（Gmail）
+                  <Mail className="w-4 h-4 text-gold" /> 
+                  <span className="font-medium">ステップ2：Gmail転送設定の手順（3分で完了）</span>
                 </summary>
-                <ol className="mt-4 text-[11px] text-muted-foreground space-y-2 leading-relaxed list-decimal list-inside">
-                  <li>店舗のGmailを開き、右上の歯車 →「すべての設定を表示」</li>
-                  <li>「メール転送と POP/IMAP」→「転送先アドレスを追加」</li>
-                  <li>上記の専用アドレスを貼り付け → 確認メール承認</li>
-                  <li>「フィルタとブロック中のアドレス」→「新しいフィルタを作成」</li>
-                  <li>「From」欄に各サイトのアドレスを入力</li>
-                  <li>「次のアドレスに転送する」を選択 → 専用アドレスを指定 → 完了</li>
+                <ol className="mt-4 text-sm text-foreground/80 space-y-2.5 leading-relaxed list-decimal list-inside pl-2">
+                  <li>サロンのGmailを開き、右上の歯車 →「<strong>すべての設定を表示</strong>」</li>
+                  <li>「<strong>メール転送と POP/IMAP</strong>」タブ →「<strong>転送先アドレスを追加</strong>」</li>
+                  <li>上記の専用アドレスを貼り付け → 確認メールが届くので承認</li>
+                  <li>「<strong>フィルタとブロック中のアドレス</strong>」→「<strong>新しいフィルタを作成</strong>」</li>
+                  <li>「From」欄にホットペッパーの送信元アドレスを入力</li>
+                  <li>「<strong>次のアドレスに転送する</strong>」を選択 → 専用アドレスを指定 → 完了</li>
                 </ol>
+                <p className="mt-3 text-xs text-muted-foreground">※ DNSやResendアカウント作成などの専門知識は一切不要です。</p>
               </details>
 
               <div className="pt-4 border-t border-border/30">
