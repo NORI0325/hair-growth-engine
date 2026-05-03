@@ -278,6 +278,23 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
           </div>
         </nav>
 
+        {/* Account info — 誤操作防止のため常時表示 */}
+        {user && (
+          <div className="px-4 py-3 border-t border-sidebar-border/60 bg-sidebar-accent/30">
+            <p className="eyebrow text-[9px] text-sidebar-foreground/40 mb-1">— Signed in as —</p>
+            <p className="font-serif text-[13px] text-gold tracking-wider truncate" title={account?.salonName}>
+              {account?.salonName ?? "..."}
+            </p>
+            <p className="text-[11px] text-sidebar-foreground/80 truncate mt-0.5" title={account?.userName}>
+              {account?.userName ?? ""}
+              {roleLabel && <span className="ml-1.5 text-[9px] text-sidebar-foreground/50">／{roleLabel}</span>}
+            </p>
+            <p className="text-[10px] text-sidebar-foreground/50 truncate font-mono" title={account?.userEmail}>
+              {account?.userEmail}
+            </p>
+          </div>
+        )}
+
         <div className="p-4 border-t border-sidebar-border/60 space-y-1">
           <NavLink
             to="/help"
