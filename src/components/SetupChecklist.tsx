@@ -51,6 +51,7 @@ const SetupChecklist = () => {
   }, [user]);
 
   if (dismissed || loading || items.length === 0) return null;
+  if (role && role !== "owner") return null;
   const doneCount = items.filter((i) => i.done).length;
   const total = items.length;
   const pct = Math.round((doneCount / total) * 100);
