@@ -282,6 +282,15 @@ const Customers = () => {
           )}
         </div>
       )}
+      {qrTarget && (
+        <LineLinkQRDialog
+          open={!!qrTarget}
+          onOpenChange={(v) => !v && setQrTarget(null)}
+          customerId={qrTarget.id}
+          customerName={qrTarget.name}
+          lineAddFriendUrl={lineAddUrl}
+        />
+      )}
     </AppLayout>
   );
 };
