@@ -243,22 +243,50 @@ async function runScrape(mode) {
       return;
     }
 
-    // 本番送信
-    setStatus("status", `${customers.length}件をSalon Boostへ送信中…`);
+    // 本番送信（500件ずつのチャンクに分割してタイムアウト回避）
+    const CHUNK = 500;
+    const totals = { total: 0, inserted: 0, updated: 0, skipped: 0 };
+    const chunkCount = Math.ceil(customers.length / CHUNK);
 
-    const ingestResult = await ingestCustomers(token, {
-      location_id: locationId,
-      customers,
-      reservations,
-    });
+    for (let i = 0; i < customers.length; i += CHUNK) {
+      const slice = customers.slice(i, i + CHUNK);
+      const chunkIdx = Math.floor(i / CHUNK) + 1;
+      setStatus(
+        "status",
+        `Salon Boostへ送信中… (${chunkIdx}/${chunkCount}) ${slice.length}件処理`
+      );
+      // 予約は1回目のチャンクにのみ含める
+      const payload = {
+        location_id: locationId,
+        customers: slice,
+        reservations: i === 0 ? reservations : [],
+      };
+      let lastErr = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const r = await ingestCustomers(token, payload);
+          totals.total += r.total || slice.length;
+          totals.inserted += r.inserted || 0;
+          totals.updated += r.updated || 0;
+          totals.skipped += r.skipped || 0;
+          lastErr = null;
+          break;
+        } catch (err) {
+          lastErr = err;
+          // 504/timeout は少し待って再試行
+          await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+        }
+      }
+      if (lastErr) throw new Error(`チャンク${chunkIdx}/${chunkCount}で失敗: ${lastErr.message}`);
+    }
 
     setStatus(
       "status",
       `✅ 送信完了\n` +
-        `総数: ${ingestResult.total}件\n` +
-        `新規追加: ${ingestResult.inserted}件\n` +
-        `更新: ${ingestResult.updated}件\n` +
-        `スキップ: ${ingestResult.skipped}件\n\n` +
+        `総数: ${totals.total}件\n` +
+        `新規追加: ${totals.inserted}件\n` +
+        `更新: ${totals.updated}件\n` +
+        `スキップ: ${totals.skipped}件\n\n` +
         `Salon Boost の「顧客」ページで確認できます。`,
       "success"
     );
