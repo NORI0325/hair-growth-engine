@@ -324,6 +324,10 @@ Deno.serve(async (req) => {
     }
   }
 
+  // 文字コード判定 & デコード（ISO-2022-JPなど）
+  text = decodeJapaneseIfNeeded(text);
+  subject = decodeJapaneseIfNeeded(subject);
+
   const parsed = parseInboundAddress(to);
   if (!parsed) {
     await supabase.from("external_reservation_logs").insert({
