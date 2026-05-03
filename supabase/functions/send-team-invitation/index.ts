@@ -50,7 +50,38 @@ Deno.serve(async (req) => {
     // 招待メール送信（正式テンプレート使用）
     const { data: tenantProfile } = await supabase.from("profiles").select("salon_name").eq("id", tenant_id).maybeSingle();
     const { data: inviterProfile } = await supabase.from("profiles").select("full_name").eq("id", user.id).maybeSingle();
-    const inviteUrl = `${Deno.env.get("APP_URL") ?? "https://hair-growth-engine.lovable.app"}/invite/${token}`;
+    const appUrl = Deno.env.get("APP_URL") ?? "https://hair-growth-engine.lovable.app";
+    const redirectTo = `${appUrl}/invite/${token}`;
+
+    // ===== マジックリンク方式：パスワード不要で1クリックでログイン → 自動受諾 =====
+    // 既存ユーザーかどうかで type を切替（invite=未登録ユーザー作成、magiclink=既存ユーザー）
+    let actionLink: string | null = null;
+
+    // まず invite で発行を試みる（ユーザーが存在しない場合に成功）
+    const inviteGen = await supabase.auth.admin.generateLink({
+      type: "invite",
+      email: email.toLowerCase(),
+      options: { redirectTo },
+    });
+
+    if (inviteGen.data?.properties?.action_link) {
+      actionLink = inviteGen.data.properties.action_link;
+    } else {
+      // ユーザーが既に存在 → マジックリンクで発行
+      const magicGen = await supabase.auth.admin.generateLink({
+        type: "magiclink",
+        email: email.toLowerCase(),
+        options: { redirectTo },
+      });
+      if (magicGen.data?.properties?.action_link) {
+        actionLink = magicGen.data.properties.action_link;
+      } else {
+        console.error("generateLink failed:", inviteGen.error, magicGen.error);
+      }
+    }
+
+    // フォールバック：マジックリンク発行失敗時は従来の招待ページURLを使う
+    const inviteUrl = actionLink ?? redirectTo;
 
     const { error: emailErr } = await supabase.functions.invoke("send-transactional-email", {
       headers: { Authorization: auth },
