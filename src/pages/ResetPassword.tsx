@@ -14,6 +14,8 @@ const schema = z.object({
 
 const ResetPassword = () => {
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const initial = params.get("initial") === "1";
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [ready, setReady] = useState(false);
