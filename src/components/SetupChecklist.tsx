@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useTenantRole } from "@/hooks/useTenant";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Check, ChevronDown, ChevronUp, X } from "lucide-react";
@@ -16,6 +17,7 @@ interface Item {
 
 const SetupChecklist = () => {
   const { user } = useAuth();
+  const role = useTenantRole();
   const [items, setItems] = useState<Item[]>([]);
   const [open, setOpen] = useState(true);
   const [dismissed, setDismissed] = useState(false);
@@ -49,6 +51,7 @@ const SetupChecklist = () => {
   }, [user]);
 
   if (dismissed || loading || items.length === 0) return null;
+  if (role && role !== "owner") return null;
   const doneCount = items.filter((i) => i.done).length;
   const total = items.length;
   const pct = Math.round((doneCount / total) * 100);
