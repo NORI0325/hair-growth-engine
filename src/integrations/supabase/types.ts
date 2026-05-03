@@ -2577,6 +2577,15 @@ export type Database = {
         }[]
       }
       get_customer_point_summary: { Args: { _token: string }; Returns: Json }
+      get_my_member_locations: {
+        Args: never
+        Returns: {
+          id: string
+          is_primary: boolean
+          name: string
+          tenant_id: string
+        }[]
+      }
       has_location_role: {
         Args: {
           _location_id: string
