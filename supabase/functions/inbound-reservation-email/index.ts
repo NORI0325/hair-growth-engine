@@ -123,7 +123,13 @@ function inferSourceFromContent(subject: string, text: string, fallback: string)
 async function aiExtractReservation(source: string, subject: string, text: string) {
   const systemPrompt = `あなたは美容室の予約通知メールから情報を構造化抽出するエキスパートです。
 受信元: ${source}
-返却するJSONのスキーマに厳密に従ってください。値が不明な場合はnullを返してください。`;
+
+【厳格ルール】
+- 本文に明示的に書かれている情報のみを抽出してください
+- 推測・補完・創作は絶対にしないでください。不明な値は必ず null を返す
+- 文字化け・判読不能な部分は null とし、extraction_confidence を "low" にしてください
+- 顧客氏名は本文の「氏名」「お客様名」欄から正確にコピーしてください（部分でも創作しない）
+- 文字化け（\\x1B$B のようなエスケープ、意味不明な記号列が多い）の場合は extraction_confidence=low`;
 
   const userPrompt = `以下の予約通知メールから情報を抽出してください。
 
@@ -143,7 +149,8 @@ ${text.slice(0, 8000)}`;
         properties: {
           is_reservation: { type: "boolean", description: "これが新規予約通知か（キャンセル・問い合わせはfalse）" },
           event_type: { type: "string", enum: ["created", "cancelled", "changed", "other"], description: "イベント種別" },
-          customer_name: { type: "string", description: "顧客氏名（漢字）" },
+          extraction_confidence: { type: "string", enum: ["high", "low"], description: "本文が明瞭で確実に抽出できたか" },
+          customer_name: { type: "string", description: "顧客氏名（本文に明示されているもののみ。文字化けしていれば null）" },
           customer_kana: { type: "string", description: "顧客カナ" },
           customer_phone: { type: "string", description: "電話番号（ハイフンなしの数字のみ）" },
           customer_email: { type: "string", description: "顧客メール" },
@@ -154,7 +161,7 @@ ${text.slice(0, 8000)}`;
           external_reservation_id: { type: "string", description: "サイト固有の予約番号" },
           notes: { type: "string", description: "備考・要望" },
         },
-        required: ["is_reservation", "event_type"],
+        required: ["is_reservation", "event_type", "extraction_confidence"],
         additionalProperties: false,
       },
     },
