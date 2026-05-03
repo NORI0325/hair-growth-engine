@@ -79,7 +79,7 @@ Deno.serve(async (req) => {
       tenant_id: membership?.tenant_id ?? null,
       ip: req.headers.get("x-forwarded-for") ?? null,
       user_agent: req.headers.get("user-agent") ?? null,
-      version: "2.0.0",
+      version: "2.0.1",
     });
 
     // 公開URLからZIPを取得して返す（公開フォルダから直接読まない＝差し替え可能）
@@ -103,7 +103,7 @@ Deno.serve(async (req) => {
       headers: {
         ...corsHeaders,
         "Content-Type": "application/zip",
-        "Content-Disposition": 'attachment; filename="salonboard-exporter.zip"',
+        "Content-Disposition": 'attachment; filename="salon-boost-importer.zip"',
         "Cache-Control": "no-store",
       },
     });
