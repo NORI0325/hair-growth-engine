@@ -31,6 +31,9 @@ const DEFAULT_STAGES: ReactivationStage[] = [
 
 const Settings = () => {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const initialTab = searchParams.get("tab") || "store";
+  const highlightSection = searchParams.get("section");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
