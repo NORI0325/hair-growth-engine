@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
-import { Loader2, ArrowRight, Check } from "lucide-react";
+import { Loader2, ArrowRight, Check, Copy, ExternalLink, MessageCircle, Mail, LayoutDashboard, HelpCircle } from "lucide-react";
 
 type Step = 1 | 2 | 3 | 4 | 5;
 
@@ -33,6 +33,11 @@ const Onboarding = () => {
   ]);
   const [staffName, setStaffName] = useState("");
   const [progress, setProgress] = useState<OnboardingProgress>({});
+  const [lineMode, setLineMode] = useState<"choose" | "connect" | "create" | "skip">("choose");
+  const [lineCreds, setLineCreds] = useState({ access_token: "", channel_secret: "" });
+  const [publicSlug, setPublicSlug] = useState("");
+  const [inboundKey, setInboundKey] = useState("");
+  const WEBHOOK_URL = "https://miyedioemkzhetphjzzg.supabase.co/functions/v1/line-webhook";
 
   useEffect(() => {
     if (!authLoading && !user) navigate("/auth");
