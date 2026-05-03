@@ -1445,6 +1445,135 @@ export type Database = {
         }
         Relationships: []
       }
+      point_redemption_items: {
+        Row: {
+          active: boolean
+          created_at: string
+          description: string | null
+          id: string
+          image_url: string | null
+          kind: string
+          location_id: string | null
+          name: string
+          owner_id: string
+          points_cost: number
+          sort_order: number
+          stock: number | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          description?: string | null
+          id?: string
+          image_url?: string | null
+          kind?: string
+          location_id?: string | null
+          name: string
+          owner_id: string
+          points_cost: number
+          sort_order?: number
+          stock?: number | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          description?: string | null
+          id?: string
+          image_url?: string | null
+          kind?: string
+          location_id?: string | null
+          name?: string
+          owner_id?: string
+          points_cost?: number
+          sort_order?: number
+          stock?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      point_redemptions: {
+        Row: {
+          applied_at: string | null
+          booking_id: string | null
+          cancelled_at: string | null
+          created_at: string
+          customer_id: string
+          id: string
+          item_id: string
+          item_name_snapshot: string
+          owner_id: string
+          points_used: number
+          status: string
+        }
+        Insert: {
+          applied_at?: string | null
+          booking_id?: string | null
+          cancelled_at?: string | null
+          created_at?: string
+          customer_id: string
+          id?: string
+          item_id: string
+          item_name_snapshot: string
+          owner_id: string
+          points_used: number
+          status?: string
+        }
+        Update: {
+          applied_at?: string | null
+          booking_id?: string | null
+          cancelled_at?: string | null
+          created_at?: string
+          customer_id?: string
+          id?: string
+          item_id?: string
+          item_name_snapshot?: string
+          owner_id?: string
+          points_used?: number
+          status?: string
+        }
+        Relationships: []
+      }
+      point_transactions: {
+        Row: {
+          created_at: string
+          customer_id: string
+          id: string
+          kind: string
+          location_id: string | null
+          note: string | null
+          owner_id: string
+          points: number
+          reference_booking_id: string | null
+          reference_redemption_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          customer_id: string
+          id?: string
+          kind: string
+          location_id?: string | null
+          note?: string | null
+          owner_id: string
+          points: number
+          reference_booking_id?: string | null
+          reference_redemption_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          customer_id?: string
+          id?: string
+          kind?: string
+          location_id?: string | null
+          note?: string | null
+          owner_id?: string
+          points?: number
+          reference_booking_id?: string | null
+          reference_redemption_id?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           aftercare_delay_days: number
@@ -1476,6 +1605,9 @@ export type Database = {
           onboarding_progress: Json
           open_time: string | null
           owner_notification_email: string | null
+          points_earn_rate_percent: number
+          points_enabled: boolean
+          points_signup_bonus: number
           public_menus: string[] | null
           public_slug: string | null
           reactivation_enabled: boolean
@@ -1518,6 +1650,9 @@ export type Database = {
           onboarding_progress?: Json
           open_time?: string | null
           owner_notification_email?: string | null
+          points_earn_rate_percent?: number
+          points_enabled?: boolean
+          points_signup_bonus?: number
           public_menus?: string[] | null
           public_slug?: string | null
           reactivation_enabled?: boolean
@@ -1560,6 +1695,9 @@ export type Database = {
           onboarding_progress?: Json
           open_time?: string | null
           owner_notification_email?: string | null
+          points_earn_rate_percent?: number
+          points_enabled?: boolean
+          points_signup_bonus?: number
           public_menus?: string[] | null
           public_slug?: string | null
           reactivation_enabled?: boolean
@@ -2308,6 +2446,15 @@ export type Database = {
         }
         Relationships: []
       }
+      customer_point_balances: {
+        Row: {
+          balance: number | null
+          customer_id: string | null
+          last_activity_at: string | null
+          owner_id: string | null
+        }
+        Relationships: []
+      }
       delivery_daily_summary: {
         Row: {
           day: string | null
@@ -2429,6 +2576,7 @@ export type Database = {
           total_price: number
         }[]
       }
+      get_customer_point_summary: { Args: { _token: string }; Returns: Json }
       has_location_role: {
         Args: {
           _location_id: string
@@ -2526,6 +2674,10 @@ export type Database = {
           _template_key: string
         }
         Returns: undefined
+      }
+      redeem_customer_points: {
+        Args: { _item_id: string; _token: string }
+        Returns: Json
       }
       user_tenant_id: { Args: { _user_id: string }; Returns: string }
     }
