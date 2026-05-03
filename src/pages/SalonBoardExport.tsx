@@ -86,7 +86,7 @@ const SalonBoardExport = () => {
 
       <div className="max-w-5xl space-y-12 mt-10">
         {/* HERO — animated flow + 3-min promise */}
-        <section className="border border-border bg-gradient-to-b from-cream to-background p-8 md:p-12">
+        <section className="border border-border bg-gradient-to-b from-secondary/30 to-background p-8 md:p-12">
           <div className="flex items-center gap-2 mb-4">
             <Clock className="w-4 h-4 text-gold" />
             <p className="eyebrow text-gold">— 3 minutes to done —</p>
@@ -140,7 +140,7 @@ const SalonBoardExport = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {STEPS.map(({ n, title, caption, Illust }) => (
               <div key={n} className="border border-border bg-card hover:border-gold transition-colors">
-                <div className="aspect-[16/10] bg-cream border-b border-border overflow-hidden">
+                <div className="aspect-[16/10] bg-secondary/20 border-b border-border overflow-hidden">
                   <Illust className="w-full h-full" />
                 </div>
                 <div className="p-4">
