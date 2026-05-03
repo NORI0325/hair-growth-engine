@@ -464,6 +464,30 @@ Deno.serve(async (req) => {
             .update({ line_unfollowed_at: null }).eq("id", linkedCustomer.id);
         }
 
+        // ============= ポイント残高照会キーワード =============
+        // 「ポイント」「残高」「pt」を含むメッセージで、連携済み顧客に残高を返信
+        if (linkedCustomer && /ポイント|残高|\bpt\b|ポイントは/i.test(text)) {
+          const { data: ptData } = await supabase
+            .from("point_transactions")
+            .select("points")
+            .eq("customer_id", linkedCustomer.id);
+          const balance = (ptData || []).reduce((s: number, r: any) => s + (r.points || 0), 0);
+          const { data: items } = await supabase
+            .from("point_redemption_items")
+            .select("name, points_cost")
+            .eq("owner_id", owner.id)
+            .eq("active", true)
+            .order("points_cost", { ascending: true })
+            .limit(5);
+          const itemsText = (items || []).length > 0
+            ? "\n\n🎁 交換できるアイテム:\n" + (items || []).map((i: any) =>
+                `${i.points_cost >= balance ? "🔒" : "✅"} ${i.points_cost.toLocaleString()}pt ${i.name}`).join("\n")
+            : "";
+          await replyMessage(replyToken,
+            `${linkedCustomer.full_name}様の現在のポイント残高\n\n💎 ${balance.toLocaleString()} pt${itemsText}\n\nマイページで交換できます🌸`);
+          continue;
+        }
+
         // 連携済み顧客からのメッセージ、または未連携でも電話番号でないテキスト
         // → 受信トレイに保存し、AI分類をバックグラウンドで実行
         const isPhoneAttempt = !!phone && !linkedCustomer;
