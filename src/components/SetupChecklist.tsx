@@ -17,6 +17,7 @@ interface Item {
 
 const SetupChecklist = () => {
   const { user } = useAuth();
+  const role = useTenantRole();
   const [items, setItems] = useState<Item[]>([]);
   const [open, setOpen] = useState(true);
   const [dismissed, setDismissed] = useState(false);
