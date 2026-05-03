@@ -4,7 +4,8 @@ import { useAuth } from "@/hooks/useAuth";
 import AppLayout from "@/components/AppLayout";
 import PageHeader from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
-import { Loader2, CheckCircle2, XCircle, MessageCircle, Trash2 } from "lucide-react";
+import { Loader2, CheckCircle2, XCircle, MessageCircle, Trash2, FileText } from "lucide-react";
+import { Link } from "react-router-dom";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -279,6 +280,14 @@ const Bookings = () => {
                           )}
                           {(b.status === "pending" || b.status === "confirmed") && (
                             <>
+                              <Link
+                                to={`/customers/${b.customer_id}/chart`}
+                                className="inline-flex items-center gap-1 px-2 h-8 border border-gold/40 text-gold hover:bg-gold hover:text-background transition-colors text-[10px] tracking-luxury"
+                                title="カルテを開く"
+                              >
+                                <FileText className="w-3 h-3" />
+                                カルテ
+                              </Link>
                               <Button size="sm" variant="ghost" className="text-xs rounded-none h-8" title="お客様へ連絡" onClick={() => setMessageBooking(b)}>
                                 <MessageCircle className="w-3.5 h-3.5 stroke-[1.5]" />
                               </Button>

@@ -387,7 +387,62 @@ Deno.serve(async (req) => {
     });
   }
 
-  // 予約以外はログだけ残す
+  // キャンセルメール → 既存予約をキャンセル状態に
+  if (extracted.is_reservation && extracted.event_type === "cancelled") {
+    const phoneC = normalizePhone(extracted.customer_phone);
+    const nameC = (extracted.customer_name || "").toString().trim();
+
+    // 候補予約の検索：日付＋時刻＋（電話 or 名前）でマッチ
+    let query = supabase
+      .from("bookings")
+      .select("id, status, customer_id, customers(full_name, phone)")
+      .eq("owner_id", ownerId)
+      .eq("external_source", source)
+      .in("status", ["pending", "confirmed"]);
+
+    if (extracted.booking_date) query = query.eq("booking_date", extracted.booking_date);
+    const { data: candidates } = await query.limit(20);
+
+    let target: any = null;
+    if (candidates && candidates.length > 0) {
+      // 時刻一致を優先
+      const timeMatch = extracted.booking_time && /^\d{2}:\d{2}$/.test(extracted.booking_time)
+        ? extracted.booking_time + ":00" : null;
+      target = candidates.find((c: any) => {
+        const cp = (c.customers?.phone || "").trim();
+        const cn = (c.customers?.full_name || "").trim();
+        const phoneMatch = phoneC && cp && phoneC === cp;
+        const nameMatch = nameC && cn && (nameC === cn || nameC.includes(cn) || cn.includes(nameC));
+        return phoneMatch || nameMatch;
+      }) || (candidates.length === 1 ? candidates[0] : null);
+    }
+
+    if (target) {
+      await supabase.from("bookings").update({ status: "cancelled" }).eq("id", target.id);
+      await supabase.from("external_reservation_logs").insert({
+        owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000),
+        parsed_data: extracted, status: "cancelled_booking", matched_customer_id: target.customer_id, created_booking_id: target.id,
+      });
+      try {
+        await supabase.functions.invoke("notify-owner-booking", {
+          body: { bookingId: target.id, eventType: "cancelled" },
+        });
+      } catch {}
+      return new Response(JSON.stringify({ ok: true, cancelled: true, booking_id: target.id }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    // マッチなし → needs_review
+    await supabase.from("external_reservation_logs").insert({
+      owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000),
+      parsed_data: extracted, status: "needs_review", error: "cancel_target_not_found",
+    });
+    return new Response(JSON.stringify({ ok: true, needs_review: true, reason: "cancel_target_not_found" }), {
+      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  // 予約以外（変更・問い合わせ等）はログだけ残す
   if (!extracted.is_reservation || extracted.event_type !== "created") {
     await supabase.from("external_reservation_logs").insert({
       owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000),
