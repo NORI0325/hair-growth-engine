@@ -5,6 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import AppLayout from "@/components/AppLayout";
 import PageHeader from "@/components/PageHeader";
 import ChurnAlertPanel from "@/components/ChurnAlertPanel";
+import SetupChecklist from "@/components/SetupChecklist";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import {
@@ -223,6 +224,7 @@ const Dashboard = () => {
         description={`${new Date().toLocaleDateString("ja-JP", { year: "numeric", month: "long", day: "numeric", weekday: "long" })} ／ サロンの今を一望できます。`}
       />
 
+      <SetupChecklist />
       <ChurnAlertPanel />
 
       {/* ============ ① 今日の戦況ボード ============ */}
