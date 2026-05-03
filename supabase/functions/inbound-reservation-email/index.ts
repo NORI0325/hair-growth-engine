@@ -388,7 +388,8 @@ Deno.serve(async (req) => {
   }
 
   // キャンセルメール → 既存予約をキャンセル状態に
-  if (extracted.is_reservation && extracted.event_type === "cancelled") {
+  // CRITICAL: is_reservation フラグに依存しない（AIが false で返すケースが頻発するため）
+  if (extracted.event_type === "cancelled") {
     const phoneC = normalizePhone(extracted.customer_phone);
     const nameC = (extracted.customer_name || "").toString().trim();
 
