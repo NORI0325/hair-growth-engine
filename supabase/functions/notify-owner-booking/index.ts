@@ -153,7 +153,8 @@ Deno.serve(async (req) => {
     const eventLabel =
       eventType === "created" ? "ご予約承りました"
         : eventType === "updated" ? "ご予約内容を変更しました"
-          : "ご予約をキャンセルしました";
+          : eventType === "cancelled_by_customer" ? "🆘 お客様がオンラインからキャンセルされました"
+            : "ご予約をキャンセルしました";
 
     const results: Record<string, unknown> = {};
 
