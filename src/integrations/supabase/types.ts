@@ -1012,48 +1012,96 @@ export type Database = {
         }
         Relationships: []
       }
+      help_article_feedback: {
+        Row: {
+          article_slug: string
+          comment: string | null
+          created_at: string
+          helpful: boolean
+          id: string
+          user_id: string
+        }
+        Insert: {
+          article_slug: string
+          comment?: string | null
+          created_at?: string
+          helpful: boolean
+          id?: string
+          user_id: string
+        }
+        Update: {
+          article_slug?: string
+          comment?: string | null
+          created_at?: string
+          helpful?: boolean
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       help_articles: {
         Row: {
           body: string
           category: string
+          cover_image_url: string | null
           created_at: string
+          helpful_no: number
+          helpful_yes: number
           id: string
           keywords: string[] | null
           published: boolean
+          reading_minutes: number
           related_routes: string[] | null
+          related_slugs: string[]
           slug: string
           sort_order: number
           summary: string | null
+          tags: string[]
           title: string
           updated_at: string
+          video_url: string | null
         }
         Insert: {
           body: string
           category: string
+          cover_image_url?: string | null
           created_at?: string
+          helpful_no?: number
+          helpful_yes?: number
           id?: string
           keywords?: string[] | null
           published?: boolean
+          reading_minutes?: number
           related_routes?: string[] | null
+          related_slugs?: string[]
           slug: string
           sort_order?: number
           summary?: string | null
+          tags?: string[]
           title: string
           updated_at?: string
+          video_url?: string | null
         }
         Update: {
           body?: string
           category?: string
+          cover_image_url?: string | null
           created_at?: string
+          helpful_no?: number
+          helpful_yes?: number
           id?: string
           keywords?: string[] | null
           published?: boolean
+          reading_minutes?: number
           related_routes?: string[] | null
+          related_slugs?: string[]
           slug?: string
           sort_order?: number
           summary?: string | null
+          tags?: string[]
           title?: string
           updated_at?: string
+          video_url?: string | null
         }
         Relationships: []
       }
