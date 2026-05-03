@@ -123,11 +123,20 @@ const Bookings = () => {
     setBookings((prev) => prev.filter((b) => b.id !== id));
   };
 
+  const flatByReceived = [...bookings].sort((a, b) =>
+    new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+
   const grouped = bookings.reduce((acc, b) => {
     if (!acc[b.booking_date]) acc[b.booking_date] = [];
     acc[b.booking_date].push(b);
     return acc;
   }, {} as Record<string, Booking[]>);
+
+  const fmtReceived = (iso: string) => {
+    const d = new Date(iso);
+    return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  };
 
   return (
     <AppLayout>
@@ -136,6 +145,23 @@ const Bookings = () => {
         title="予約"
         description={`${bookings.length} 件の再会が予定されています`}
       />
+
+      <div className="flex justify-end mb-6">
+        <div className="inline-flex border border-border">
+          <button
+            className={`px-4 py-2 text-xs tracking-luxury ${sortMode === "schedule" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"}`}
+            onClick={() => setSortMode("schedule")}
+          >
+            予定日時順
+          </button>
+          <button
+            className={`px-4 py-2 text-xs tracking-luxury border-l border-border ${sortMode === "received" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"}`}
+            onClick={() => setSortMode("received")}
+          >
+            受信日時順
+          </button>
+        </div>
+      </div>
 
       {loading ? (
         <div className="py-24 text-center">
