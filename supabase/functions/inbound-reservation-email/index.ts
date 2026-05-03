@@ -398,10 +398,42 @@ Deno.serve(async (req) => {
     });
   }
 
+  // 抽出結果の検証: AIがハルシネーションしていないか確認
+  // 顧客名が本文に含まれていなければ無効化（信頼度low扱い）
+  let confidence: "high" | "low" = extracted.extraction_confidence === "low" ? "low" : "high";
+  if (extracted.customer_name) {
+    const nm = String(extracted.customer_name).replace(/\s+/g, "");
+    const bodyClean = text.replace(/\s+/g, "");
+    // 名前の一部（最初の2文字以上）が本文に含まれているか
+    const nameKey = nm.slice(0, Math.min(2, nm.length));
+    if (nameKey && !bodyClean.includes(nameKey)) {
+      console.warn("AI hallucination detected: customer_name not in body:", extracted.customer_name);
+      extracted.customer_name = null;
+      confidence = "low";
+    }
+  }
+  // 文字化け検知（ISO-2022-JPエスケープが残っている / 制御文字が異常に多い）
+  const garbleScore = (text.match(/\x1B\$B/g) || []).length + (text.match(/\uFFFD/g) || []).length;
+  if (garbleScore > 5) {
+    confidence = "low";
+  }
+
   const phone = normalizePhone(extracted.customer_phone);
+  // 信頼度lowで氏名なしなら、自動登録せず needs_review として人手確認に
+  if (confidence === "low" && !extracted.customer_name && !phone) {
+    await supabase.from("external_reservation_logs").insert({
+      owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000),
+      parsed_data: { ...extracted, _confidence: confidence, _garble_score: garbleScore },
+      status: "needs_review", error: "low_confidence_no_identity",
+    });
+    return new Response(JSON.stringify({ ok: true, needs_review: true }), {
+      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   const fullName = (extracted.customer_name || "お客様").toString().slice(0, 100);
 
-  // 既存顧客マッチング（電話番号優先 → 氏名）
+  // 既存顧客マッチング（電話番号優先 → 氏名）。ただし氏名「お客様」では引かない
   let customerId: string | null = null;
   if (phone) {
     const { data: byPhone } = await supabase
@@ -412,7 +444,7 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (byPhone) customerId = byPhone.id;
   }
-  if (!customerId && fullName) {
+  if (!customerId && extracted.customer_name && fullName !== "お客様") {
     const { data: byName } = await supabase
       .from("customers")
       .select("id")
@@ -450,23 +482,94 @@ Deno.serve(async (req) => {
     customerId = newCust.id;
   }
 
-  // 重複チェック → 予約作成
+  // 重複チェック → 予約作成（賢いロジック）
   const externalId = extracted.external_reservation_id || `${source}-${extracted.booking_date}-${extracted.booking_time}-${phone || fullName}`;
 
   const { data: existing } = await supabase
     .from("bookings")
-    .select("id")
+    .select("id, customer_id, customers(full_name, phone)")
     .eq("owner_id", ownerId)
     .eq("external_source", source)
     .eq("external_reservation_id", externalId)
-    .maybeSingle();
+    .maybeSingle() as { data: any };
 
   if (existing) {
+    const existingName = (existing.customers?.full_name || "").trim();
+    const existingPhone = (existing.customers?.phone || "").trim();
+    const newName = fullName.trim();
+    const newPhone = (phone || "").trim();
+
+    // 既存予約が「お客様」（誤登録）または名前一致 → 更新
+    const isExistingPlaceholder = !existingName || existingName === "お客様";
+    const isSamePerson =
+      (newPhone && existingPhone && newPhone === existingPhone) ||
+      (newName && existingName && (newName === existingName || newName.includes(existingName) || existingName.includes(newName)));
+
+    if (isExistingPlaceholder || isSamePerson) {
+      // 既存予約を新しい正確なデータで更新
+      const updates: any = {
+        booking_date: extracted.booking_date,
+        booking_time: extracted.booking_time && /^\d{2}:\d{2}$/.test(extracted.booking_time) ? extracted.booking_time + ":00" : undefined,
+        menu: (extracted.menu || undefined),
+        revenue: extracted.revenue || undefined,
+        notes: extracted.notes ? String(extracted.notes).slice(0, 500) : undefined,
+      };
+      // 顧客差し替え（既存がプレースホルダーで、新規が確実な顧客なら）
+      if (isExistingPlaceholder && customerId && customerId !== existing.customer_id && extracted.customer_name) {
+        updates.customer_id = customerId;
+      }
+      // undefinedを除外
+      Object.keys(updates).forEach(k => updates[k] === undefined && delete updates[k]);
+
+      if (Object.keys(updates).length > 0) {
+        await supabase.from("bookings").update(updates).eq("id", existing.id);
+      }
+      await supabase.from("external_reservation_logs").insert({
+        owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000),
+        parsed_data: extracted, status: "updated", matched_customer_id: customerId, created_booking_id: existing.id,
+      });
+      return new Response(JSON.stringify({ ok: true, updated: true, booking_id: existing.id }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // 別人と判定 → サフィックスを付けて新規作成（needs_review）
+    console.warn(`Different person for same external_id ${externalId}: existing="${existingName}" new="${newName}"`);
+    // 以下、新規作成フローへ続く（externalIdを変える）
+    const altExternalId = `${externalId}-${Date.now().toString(36)}`;
+    const { data: booking2, error: bookErr2 } = await supabase
+      .from("bookings")
+      .insert({
+        owner_id: ownerId,
+        location_id: locationId,
+        customer_id: customerId,
+        booking_date: extracted.booking_date,
+        booking_time: extracted.booking_time && /^\d{2}:\d{2}$/.test(extracted.booking_time) ? extracted.booking_time + ":00" : "10:00:00",
+        menu: (extracted.menu || "メニュー未指定").toString().slice(0, 200),
+        notes: extracted.notes ? String(extracted.notes).slice(0, 500) : null,
+        status: "pending",
+        revenue: extracted.revenue || 0,
+        external_source: source,
+        external_reservation_id: altExternalId,
+      })
+      .select("id")
+      .single();
+    if (bookErr2) {
+      await supabase.from("external_reservation_logs").insert({
+        owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000),
+        parsed_data: extracted, status: "failed", matched_customer_id: customerId,
+        error: `booking_insert(conflict): ${bookErr2.message}`,
+      });
+      return new Response(JSON.stringify({ ok: false, reason: "booking_insert_failed" }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     await supabase.from("external_reservation_logs").insert({
       owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000),
-      parsed_data: extracted, status: "duplicate", matched_customer_id: customerId, created_booking_id: existing.id,
+      parsed_data: extracted, status: "needs_review", matched_customer_id: customerId,
+      created_booking_id: booking2.id, error: `same_external_id_different_person: existing=${existingName}`,
     });
-    return new Response(JSON.stringify({ ok: true, duplicate: true }), {
+    return new Response(JSON.stringify({ ok: true, conflict_resolved: true, booking_id: booking2.id }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
