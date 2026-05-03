@@ -54,6 +54,13 @@ const Customers = () => {
   const [addOpen, setAddOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<EditableCustomer | null>(null);
   const [sendingId, setSendingId] = useState<string | null>(null);
+  const [qrTarget, setQrTarget] = useState<{ id: string; name: string } | null>(null);
+  const [lineAddUrl, setLineAddUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase.from("profiles").select("line_add_friend_url").maybeSingle()
+      .then(({ data }) => setLineAddUrl(data?.line_add_friend_url || null));
+  }, []);
 
   const sendTestThankYou = async (c: Customer) => {
     if (!c.email) {
