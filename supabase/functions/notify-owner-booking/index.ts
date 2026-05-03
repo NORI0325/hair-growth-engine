@@ -253,7 +253,7 @@ Deno.serve(async (req) => {
     // === ③ お客様へメール（メール登録があれば）===
     if (customer?.email) {
       const templateName =
-        eventType === "cancelled" ? "booking-cancelled"
+        eventType === "cancelled" || eventType === "cancelled_by_customer" ? "booking-cancelled"
           : eventType === "updated" ? "booking-updated"
             : "booking-confirmation";
       const { error } = await supabase.functions.invoke("send-transactional-email", {
