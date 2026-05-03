@@ -36,8 +36,8 @@ const InviteAccept = () => {
         return;
       }
       setDone(true);
-      toast.success("チームに参加しました");
-      setTimeout(() => navigate("/dashboard"), 1500);
+      toast.success("チームに参加しました。続けてパスワードを設定してください。");
+      setTimeout(() => navigate("/reset-password?initial=1", { replace: true }), 1200);
     })();
   }, [user, authLoading, token, navigate]);
 
@@ -48,7 +48,8 @@ const InviteAccept = () => {
         {done ? (
           <div className="space-y-3">
             <Check className="w-12 h-12 text-green-600 mx-auto" />
-            <p>チームに参加しました。ダッシュボードへ移動します...</p>
+            <p>チームに参加しました。</p>
+            <p className="text-sm text-muted-foreground">続けてログイン用パスワードを設定する画面へ移動します...</p>
           </div>
         ) : error ? (
           <p className="text-red-600 text-sm">{error}</p>

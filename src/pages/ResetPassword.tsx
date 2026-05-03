@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,8 @@ const schema = z.object({
 
 const ResetPassword = () => {
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const initial = params.get("initial") === "1";
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [ready, setReady] = useState(false);
@@ -53,10 +55,12 @@ const ResetPassword = () => {
   return (
     <div className="min-h-screen flex items-center justify-center p-8 bg-background">
       <div className="w-full max-w-sm animate-fade-up">
-        <p className="eyebrow mb-3">— New Password —</p>
-        <h1 className="display text-3xl mb-2">新しいパスワード</h1>
+        <p className="eyebrow mb-3">— {initial ? "Set Password" : "New Password"} —</p>
+        <h1 className="display text-3xl mb-2">{initial ? "ログイン用パスワード設定" : "新しいパスワード"}</h1>
         <p className="text-sm text-muted-foreground mb-8">
-          新しいパスワードをご設定ください。
+          {initial
+            ? "次回からはメールアドレスとここで設定するパスワードでログインできます。8文字以上で設定してください。"
+            : "新しいパスワードをご設定ください。"}
         </p>
 
         {!ready ? (
