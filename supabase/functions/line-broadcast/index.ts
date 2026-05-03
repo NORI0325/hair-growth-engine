@@ -31,6 +31,7 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const message: string = (body?.message || "").toString().trim();
     const segment: string = (body?.segment || "all").toString();
+    const customerIds: string[] = Array.isArray(body?.customer_ids) ? body.customer_ids.filter((x: any) => typeof x === "string") : [];
 
     if (!message || message.length < 2) {
       return new Response(JSON.stringify({ success: false, message: "メッセージを入力してください" }),
@@ -59,18 +60,22 @@ Deno.serve(async (req) => {
       .not("line_user_id", "is", null)
       .eq("is_test", false);
 
-    const today = new Date();
-    if (segment === "active") {
-      const c = new Date(today); c.setDate(c.getDate() - 90);
-      q = q.gte("last_visit_date", c.toISOString().split("T")[0]);
-    } else if (segment === "at_risk") {
-      const c1 = new Date(today); c1.setDate(c1.getDate() - 180);
-      const c2 = new Date(today); c2.setDate(c2.getDate() - 90);
-      q = q.gte("last_visit_date", c1.toISOString().split("T")[0])
-           .lt("last_visit_date", c2.toISOString().split("T")[0]);
-    } else if (segment === "dormant") {
-      const c = new Date(today); c.setDate(c.getDate() - 180);
-      q = q.lt("last_visit_date", c.toISOString().split("T")[0]);
+    if (customerIds.length > 0) {
+      q = q.in("id", customerIds);
+    } else {
+      const today = new Date();
+      if (segment === "active") {
+        const c = new Date(today); c.setDate(c.getDate() - 90);
+        q = q.gte("last_visit_date", c.toISOString().split("T")[0]);
+      } else if (segment === "at_risk") {
+        const c1 = new Date(today); c1.setDate(c1.getDate() - 180);
+        const c2 = new Date(today); c2.setDate(c2.getDate() - 90);
+        q = q.gte("last_visit_date", c1.toISOString().split("T")[0])
+             .lt("last_visit_date", c2.toISOString().split("T")[0]);
+      } else if (segment === "dormant") {
+        const c = new Date(today); c.setDate(c.getDate() - 180);
+        q = q.lt("last_visit_date", c.toISOString().split("T")[0]);
+      }
     }
 
     const { data: targets } = await q.limit(2000);
