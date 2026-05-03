@@ -868,7 +868,11 @@ const Settings = () => {
             </section>
 
             {/* 外部予約サイト */}
-            <section className="space-y-5 pt-6 border-t border-border">
+            <section
+              id="inbound"
+              className={`space-y-5 pt-6 border-t border-border scroll-mt-24 ${highlightSection === "inbound" ? "ring-2 ring-gold/60 ring-offset-4 ring-offset-background animate-pulse-once" : ""}`}
+              ref={(el) => { if (el && highlightSection === "inbound") el.scrollIntoView({ behavior: "smooth", block: "start" }); }}
+            >
               <SectionTitle icon={Inbox} title="外部予約サイト自動連携"
                 desc="ホットペッパー / minimo / 楽天Beautyの予約通知メールを下記アドレスへ転送するだけ。DNSや専門設定は一切不要、コピー＆ペーストで完了します。" />
 
