@@ -4,10 +4,11 @@ import { useAuth } from "@/hooks/useAuth";
 import { useCurrentLocationId } from "@/hooks/useLocations";
 import AppLayout from "@/components/AppLayout";
 import PageHeader from "@/components/PageHeader";
-import { Loader2 } from "lucide-react";
+import { Loader2, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Link } from "react-router-dom";
 
 import FullCalendar from "@fullcalendar/react";
 import resourceTimegridPlugin from "@fullcalendar/resource-timegrid";
