@@ -483,7 +483,7 @@ Deno.serve(async (req) => {
             ? "\n\n🎁 交換できるアイテム:\n" + (items || []).map((i: any) =>
                 `${i.points_cost >= balance ? "🔒" : "✅"} ${i.points_cost.toLocaleString()}pt ${i.name}`).join("\n")
             : "";
-          await replyMessage(replyToken,
+          await replyLine(accessToken, replyToken,
             `${linkedCustomer.full_name}様の現在のポイント残高\n\n💎 ${balance.toLocaleString()} pt${itemsText}\n\nマイページで交換できます🌸`);
           continue;
         }
