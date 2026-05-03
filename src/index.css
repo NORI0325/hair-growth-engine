@@ -118,15 +118,25 @@
 
   body {
     @apply bg-background text-foreground;
-    font-family: "Inter", "Noto Serif JP", -apple-system, BlinkMacSystemFont, sans-serif;
+    /* 本文は読みやすいサンセリフを優先。見出しのみセリフで上質感を保つ */
+    font-family: "Inter", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", -apple-system, BlinkMacSystemFont, sans-serif;
     font-feature-settings: "palt", "kern";
-    letter-spacing: 0.01em;
-    /* 日本語の自然な折り返し（文節単位） + 禁則処理 */
+    /* 14px ベースに引き上げ（旧: 規定の12px相当が混在） */
+    font-size: 14px;
+    line-height: 1.75;
+    letter-spacing: 0.015em;
     word-break: auto-phrase;
     line-break: strict;
     overflow-wrap: anywhere;
     hanging-punctuation: allow-end;
+    /* コントラスト微増：foregroundをそのまま、ただし極小テキストの可読性を底上げ */
   }
+
+  /* 極小テキスト（10px / 11px）の使用を抑制し、最低でも12pxに底上げ */
+  .text-\[10px\], .text-\[11px\] { font-size: 12px !important; line-height: 1.65 !important; }
+  .text-\[9px\] { font-size: 11px !important; }
+  /* muted-foregroundが薄すぎる箇所が多いので少し濃く */
+  
 
   /* auto-phrase 未対応ブラウザ向けフォールバック */
   @supports not (word-break: auto-phrase) {
