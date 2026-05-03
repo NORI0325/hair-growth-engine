@@ -2,11 +2,13 @@ import { useEffect, useState } from "react";
 import AppLayout from "@/components/AppLayout";
 import PageHeader from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
-import { Download, Loader2, Shield, ExternalLink, AlertCircle, CheckCircle2, History } from "lucide-react";
+import { Download, Loader2, Shield, ExternalLink, AlertCircle, CheckCircle2, History, Clock, MessageCircle } from "lucide-react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
+import { HeroFlow, StepDownload, StepDevMode, StepLoadUnpacked, StepScan } from "@/components/salonboard/StepIllustration";
+import HandsOnChecklist from "@/components/salonboard/HandsOnChecklist";
 
 interface ImportLog {
   id: string;
@@ -18,6 +20,13 @@ interface ImportLog {
   status: string;
   error: string | null;
 }
+
+const STEPS = [
+  { n: "01", title: "ZIPを解凍", caption: "ダウンロードしたファイルをダブルクリック", Illust: StepDownload },
+  { n: "02", title: "デベロッパーモードON", caption: "chrome://extensions の右上トグル", Illust: StepDevMode },
+  { n: "03", title: "フォルダを読み込む", caption: "「パッケージ化されていない拡張機能」", Illust: StepLoadUnpacked },
+  { n: "04", title: "サロンボードへ送信", caption: "ボタン1つで顧客データが流入", Illust: StepScan },
+];
 
 const SalonBoardExport = () => {
   const { user } = useAuth();
@@ -75,116 +84,105 @@ const SalonBoardExport = () => {
         description="ホットペッパービューティーから安全に顧客データをSalon Boostへ取り込みます。CSVは作成されず、直接サーバーへ送信されます。"
       />
 
-      <div className="max-w-3xl space-y-8 mt-10">
-        {/* セキュリティの仕組み */}
+      <div className="max-w-5xl space-y-12 mt-10">
+        {/* HERO — animated flow + 3-min promise */}
+        <section className="border border-border bg-gradient-to-b from-cream to-background p-8 md:p-12">
+          <div className="flex items-center gap-2 mb-4">
+            <Clock className="w-4 h-4 text-gold" />
+            <p className="eyebrow text-gold">— 3 minutes to done —</p>
+          </div>
+          <h2 className="display text-2xl md:text-3xl mb-3">読まずに分かる、4ステップだけ。</h2>
+          <p className="text-sm text-muted-foreground mb-8 max-w-2xl">
+            DLして、Chromeに入れて、サロンボードでボタンを1回押す。それで顧客データが Salon Boost に流れ始めます。
+          </p>
+          <HeroFlow className="w-full max-w-3xl mx-auto" />
+        </section>
+
+        {/* Security badges */}
         <section className="border border-gold/30 bg-gold/5 p-8">
           <div className="flex items-center gap-3 mb-4">
             <Shield className="w-5 h-5 text-gold" />
             <p className="eyebrow text-gold">— Security Design —</p>
           </div>
-          <h2 className="display text-xl mb-4">あなたの顧客データを守る設計</h2>
-          <ul className="space-y-2 text-xs text-muted-foreground leading-relaxed">
-            <li className="flex gap-3">
-              <CheckCircle2 className="w-4 h-4 text-gold shrink-0 mt-0.5" />
-              <span><strong className="text-foreground">CSVは作成されません</strong>。データは拡張機能から直接Salon Boostのサーバーへ送信されます。</span>
-            </li>
-            <li className="flex gap-3">
-              <CheckCircle2 className="w-4 h-4 text-gold shrink-0 mt-0.5" />
-              <span><strong className="text-foreground">ログイン中＋契約中のみ動作</strong>。解約後は拡張機能がロックされ、データ取込・再ダウンロード共に不可となります。</span>
-            </li>
-            <li className="flex gap-3">
-              <CheckCircle2 className="w-4 h-4 text-gold shrink-0 mt-0.5" />
-              <span><strong className="text-foreground">取込履歴を記録</strong>。誰がいつ何件取り込んだかをすべて監査ログに保存します。</span>
-            </li>
-            <li className="flex gap-3">
-              <CheckCircle2 className="w-4 h-4 text-gold shrink-0 mt-0.5" />
-              <span><strong className="text-foreground">店舗ごとに分離</strong>。マルチストア対応により、店舗ごとに独立してデータを管理できます。</span>
-            </li>
-          </ul>
-        </section>
-
-        {/* ダウンロード */}
-        <section className="border border-border p-8">
-          <p className="eyebrow mb-3">— Step 01 / Download —</p>
-          <h2 className="display text-2xl mb-4">拡張機能をダウンロード</h2>
-          <p className="text-sm text-muted-foreground leading-relaxed mb-6">
-            Chrome / Edge / Brave などの Chromium 系ブラウザで動作する専用拡張機能 <strong>v2.0.1</strong> です。
-            ダウンロードにはログインが必要で、ご契約が有効な間のみ利用可能です。
-          </p>
-          <Button
-            onClick={downloadExtension}
-            disabled={downloading}
-            className="rounded-none px-6 py-6 text-xs tracking-luxury bg-primary hover:bg-primary-glow"
-          >
-            {downloading ? (
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            ) : (
-              <Download className="w-4 h-4 mr-2 stroke-[1.5]" />
-            )}
-            拡張機能をダウンロード
-            <span className="ml-2 opacity-60 text-[10px]">v2.0.1 ZIP</span>
-          </Button>
-        </section>
-
-        {/* インストール */}
-        <section className="border border-border p-8">
-          <p className="eyebrow mb-3">— Step 02 / Install —</p>
-          <h2 className="display text-2xl mb-4">ブラウザにインストール</h2>
-          <ol className="space-y-3 text-sm leading-relaxed">
-            <li className="flex gap-4">
-              <span className="font-serif-en text-gold shrink-0">01.</span>
-              <span>ダウンロードした <code className="text-xs bg-secondary px-1.5 py-0.5">salon-boost-importer.zip</code> を解凍します</span>
-            </li>
-            <li className="flex gap-4">
-              <span className="font-serif-en text-gold shrink-0">02.</span>
-              <span>Chromeのアドレスバーに <code className="text-xs bg-secondary px-1.5 py-0.5">chrome://extensions</code> と入力</span>
-            </li>
-            <li className="flex gap-4">
-              <span className="font-serif-en text-gold shrink-0">03.</span>
-              <span>右上の「<strong>デベロッパーモード</strong>」をONにする</span>
-            </li>
-            <li className="flex gap-4">
-              <span className="font-serif-en text-gold shrink-0">04.</span>
-              <span>「<strong>パッケージ化されていない拡張機能を読み込む</strong>」をクリックし、解凍したフォルダを選択</span>
-            </li>
-            <li className="flex gap-4">
-              <span className="font-serif-en text-gold shrink-0">05.</span>
-              <span>パズルアイコンから「Salon Boost」を固定表示に</span>
-            </li>
-          </ol>
-        </section>
-
-        {/* 使い方 */}
-        <section className="border border-border p-8">
-          <p className="eyebrow mb-3">— Step 03 / Use —</p>
-          <h2 className="display text-2xl mb-4">使い方</h2>
-          <div className="space-y-5 text-sm leading-relaxed">
-            <div>
-              <h3 className="font-serif text-base mb-2 text-gold">① Salon Boost にログイン</h3>
-              <p className="text-muted-foreground">拡張機能アイコンをクリックし、Salon Boostのメールアドレスとパスワードでログインします。</p>
-            </div>
-            <div>
-              <h3 className="font-serif text-base mb-2 text-gold">② 取込先の店舗を選択</h3>
-              <p className="text-muted-foreground">複数店舗をご利用の方は、データを取り込む店舗を選択してください。</p>
-            </div>
-            <div>
-              <h3 className="font-serif text-base mb-2 text-gold">③ サロンボードでスキャン実行</h3>
-              <p className="text-muted-foreground">サロンボードにログインし「お客様一覧」を開いてから、まず「テスト取得」で動作確認、続いて「Salon Boost へ送信」で本番取込を実行します。</p>
-            </div>
-            <div>
-              <h3 className="font-serif text-base mb-2 text-gold">④ 顧客ページで確認</h3>
-              <p className="text-muted-foreground mb-3">取込完了後、Salon Boostの顧客ページで内容を確認できます。</p>
-              <Button asChild variant="outline" className="rounded-none">
-                <Link to="/customers">
-                  <ExternalLink className="w-3.5 h-3.5 mr-2 stroke-[1.5]" />
-                  顧客ページへ
-                </Link>
-              </Button>
-            </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-muted-foreground leading-relaxed">
+            {[
+              ["CSVは作成されません", "拡張機能から直接サーバーへ送信"],
+              ["契約中のみ動作", "解約後はロックされます"],
+              ["全取込を監査ログ記録", "誰がいつ何件を可視化"],
+              ["店舗ごとに完全分離", "他店舗データは見えません"],
+            ].map(([h, s]) => (
+              <div key={h} className="flex gap-3">
+                <CheckCircle2 className="w-4 h-4 text-gold shrink-0 mt-0.5" />
+                <span><strong className="text-foreground">{h}</strong>。{s}。</span>
+              </div>
+            ))}
           </div>
         </section>
 
-        {/* 取込履歴 */}
+        {/* VISUAL STEP CARDS */}
+        <section>
+          <div className="flex items-end justify-between mb-6">
+            <div>
+              <p className="eyebrow mb-2">— How it works —</p>
+              <h2 className="display text-2xl">4ステップで完了</h2>
+            </div>
+            <Button
+              onClick={downloadExtension}
+              disabled={downloading}
+              className="rounded-none px-6 py-5 text-xs tracking-luxury bg-primary hover:bg-primary-glow"
+            >
+              {downloading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2 stroke-[1.5]" />}
+              拡張機能をDL
+              <span className="ml-2 opacity-60 text-[10px]">v2.0.1</span>
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {STEPS.map(({ n, title, caption, Illust }) => (
+              <div key={n} className="border border-border bg-card hover:border-gold transition-colors">
+                <div className="aspect-[16/10] bg-cream border-b border-border overflow-hidden">
+                  <Illust className="w-full h-full" />
+                </div>
+                <div className="p-4">
+                  <p className="font-serif-en text-gold text-sm mb-1">{n}</p>
+                  <h3 className="font-serif text-base mb-1">{title}</h3>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">{caption}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* HANDS-ON CHECKLIST */}
+        <section className="border border-border p-8">
+          <div className="flex items-center justify-between mb-2">
+            <p className="eyebrow">— Hands-on Checklist —</p>
+          </div>
+          <h2 className="display text-2xl mb-2">実機で進める</h2>
+          <p className="text-sm text-muted-foreground mb-6">
+            進捗は自動保存。最後の「テスト取得成功」だけは取込ログから自動で検知します。
+          </p>
+          <HandsOnChecklist onDownload={downloadExtension} downloading={downloading} />
+        </section>
+
+        {/* Stuck? Help */}
+        <section className="border border-border bg-secondary/20 p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <MessageCircle className="w-5 h-5 text-gold shrink-0 mt-0.5" />
+            <div>
+              <p className="font-serif text-sm mb-0.5">途中で詰まったら、すぐ聞いてください。</p>
+              <p className="text-xs text-muted-foreground">サポートが画面共有でも対応します。</p>
+            </div>
+          </div>
+          <Button asChild variant="outline" className="rounded-none">
+            <Link to="/help">
+              <ExternalLink className="w-3.5 h-3.5 mr-2 stroke-[1.5]" />
+              ヘルプ・問い合わせ
+            </Link>
+          </Button>
+        </section>
+
+        {/* IMPORT HISTORY */}
         <section className="border border-border p-8">
           <div className="flex items-center gap-2 mb-3">
             <History className="w-4 h-4 text-gold" />
@@ -218,11 +216,11 @@ const SalonBoardExport = () => {
           )}
         </section>
 
-        {/* 注意事項 */}
-        <section className="border border-border bg-secondary/20 p-8">
+        {/* Notes */}
+        <section className="border border-border bg-secondary/20 p-6">
           <p className="eyebrow mb-3 text-muted-foreground">— Notes —</p>
-          <ul className="space-y-2 text-xs text-muted-foreground leading-relaxed">
-            <li>・ サーバー負荷を避けるため、ページ間隔は <strong>500ms以上</strong> を推奨します</li>
+          <ul className="space-y-1.5 text-xs text-muted-foreground leading-relaxed">
+            <li>・ ページ間隔は <strong>500ms以上</strong> を推奨します</li>
             <li>・ スキャン中はサロンボードのタブを操作しないでください</li>
             <li>・ ホットペッパービューティーの利用規約は事前にご確認ください</li>
             <li>・ ご解約後は拡張機能の動作・再ダウンロード共に停止されます</li>
