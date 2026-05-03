@@ -18,6 +18,7 @@ import {
 import HolidayNoticeBroadcast from "@/components/HolidayNoticeBroadcast";
 import SalonHoursEditor from "@/components/SalonHoursEditor";
 import ReactivationStagesEditor, { type ReactivationStage } from "@/components/ReactivationStagesEditor";
+import NotificationRecipientsBadge from "@/components/NotificationRecipientsBadge";
 
 const WEBHOOK_URL = "https://miyedioemkzhetphjzzg.supabase.co/functions/v1/line-webhook";
 
@@ -636,6 +637,7 @@ const Settings = () => {
               <SectionTitle icon={Bell} title="予約通知（複数人・メール／LINE対応）"
                 desc="新規予約・変更・キャンセルが入った瞬間に、ここで登録したスタッフへ通知が届きます。メール・LINEを宛先ごとに選べます（最大10件）。" />
 
+              <NotificationRecipientsBadge variant="settings" />
               {/* 主要メール（後方互換） */}
               <div>
                 <Label className="mb-2 block font-serif text-sm">代表メールアドレス</Label>

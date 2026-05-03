@@ -209,6 +209,9 @@ Deno.serve(async (req) => {
           `💇 ${menu}\n` +
           (customer?.phone ? `📞 ${customer.phone}\n` : "") +
           (booking.notes ? `📝 ${booking.notes}\n` : "") +
+          (eventType === "created" || eventType === "updated"
+            ? `\n📋 ご来店前に必ずカルテをご確認ください。\n`
+            : "") +
           `\n— ${salonName}`;
         const lr = await sendLinePush(profile.line_channel_access_token, r.line_user_id, lineMsg);
         ownerLineResults.push(lr.ok ? `${r.line_user_id}: sent` : `${r.line_user_id}: error`);
