@@ -23,16 +23,31 @@ interface Booking {
   is_test: boolean;
   staff_id: string | null;
   customer_id: string;
+  created_at: string;
+  external_source: string | null;
   customers: { full_name: string; phone: string | null; line_user_id: string | null } | null;
 }
 
 interface Staff { id: string; name: string; display_color: string; }
+
+type SortMode = "schedule" | "received";
 
 const statusInfo = (s: string) => {
   if (s === "confirmed") return { label: "確定", color: "text-gold" };
   if (s === "completed") return { label: "来店済", color: "text-success" };
   if (s === "cancelled") return { label: "キャンセル", color: "text-destructive" };
   return { label: "未確定", color: "text-muted-foreground" };
+};
+
+const sourceLabel = (s: string | null): string | null => {
+  if (!s || s === "manual") return null;
+  const map: Record<string, string> = {
+    hotpepper: "HotPepper",
+    minimo: "minimo",
+    rakuten_beauty: "楽天Beauty",
+    salonboard: "SalonBoard",
+  };
+  return map[s] || s;
 };
 
 const Bookings = () => {
@@ -42,6 +57,7 @@ const Bookings = () => {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
   const [messageBooking, setMessageBooking] = useState<Booking | null>(null);
+  const [sortMode, setSortMode] = useState<SortMode>("schedule");
 
   const load = async () => {
     if (!user || !locationId) { setBookings([]); setStaff([]); setLoading(false); return; }
@@ -49,7 +65,7 @@ const Bookings = () => {
     const [b, s] = await Promise.all([
       supabase
         .from("bookings")
-        .select("id, customer_id, booking_date, booking_time, menu, notes, status, revenue, campaign_id, is_test, staff_id, customers(full_name, phone, line_user_id)")
+        .select("id, customer_id, booking_date, booking_time, menu, notes, status, revenue, campaign_id, is_test, staff_id, created_at, external_source, customers(full_name, phone, line_user_id)")
         .eq("location_id", locationId)
         .order("booking_date", { ascending: true })
         .order("booking_time", { ascending: true }),
@@ -107,11 +123,20 @@ const Bookings = () => {
     setBookings((prev) => prev.filter((b) => b.id !== id));
   };
 
+  const flatByReceived = [...bookings].sort((a, b) =>
+    new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+
   const grouped = bookings.reduce((acc, b) => {
     if (!acc[b.booking_date]) acc[b.booking_date] = [];
     acc[b.booking_date].push(b);
     return acc;
   }, {} as Record<string, Booking[]>);
+
+  const fmtReceived = (iso: string) => {
+    const d = new Date(iso);
+    return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  };
 
   return (
     <AppLayout>
@@ -120,6 +145,23 @@ const Bookings = () => {
         title="予約"
         description={`${bookings.length} 件の再会が予定されています`}
       />
+
+      <div className="flex justify-end mb-6">
+        <div className="inline-flex border border-border">
+          <button
+            className={`px-4 py-2 text-xs tracking-luxury ${sortMode === "schedule" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"}`}
+            onClick={() => setSortMode("schedule")}
+          >
+            予定日時順
+          </button>
+          <button
+            className={`px-4 py-2 text-xs tracking-luxury border-l border-border ${sortMode === "received" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"}`}
+            onClick={() => setSortMode("received")}
+          >
+            受信日時順
+          </button>
+        </div>
+      </div>
 
       {loading ? (
         <div className="py-24 text-center">
@@ -132,23 +174,33 @@ const Bookings = () => {
         </div>
       ) : (
         <div className="space-y-16">
-          {Object.entries(grouped).map(([date, items]) => {
-            const d = new Date(date);
+          {(sortMode === "received"
+            ? [["__received__", flatByReceived] as const]
+            : Object.entries(grouped) as ReadonlyArray<readonly [string, Booking[]]>
+          ).map(([date, items]) => {
+            const isReceivedMode = date === "__received__";
+            const d = isReceivedMode ? null : new Date(date);
             return (
               <div key={date}>
-                <div className="flex items-baseline gap-6 mb-6">
-                  <div className="font-serif-en text-5xl text-gold/70 italic">
-                    {String(d.getDate()).padStart(2, "0")}
+                {isReceivedMode ? (
+                  <div className="mb-6">
+                    <div className="eyebrow text-[10px] text-muted-foreground">— Sorted by Received Time —</div>
                   </div>
-                  <div>
-                    <div className="font-serif text-base">
-                      {d.toLocaleDateString("ja-JP", { year: "numeric", month: "long" })}
+                ) : (
+                  <div className="flex items-baseline gap-6 mb-6">
+                    <div className="font-serif-en text-5xl text-gold/70 italic">
+                      {String(d!.getDate()).padStart(2, "0")}
                     </div>
-                    <div className="eyebrow text-[10px]">
-                      {d.toLocaleDateString("en-US", { weekday: "long" })}
+                    <div>
+                      <div className="font-serif text-base">
+                        {d!.toLocaleDateString("ja-JP", { year: "numeric", month: "long" })}
+                      </div>
+                      <div className="eyebrow text-[10px]">
+                        {d!.toLocaleDateString("en-US", { weekday: "long" })}
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
                 <div className="border-t border-border">
                   {items.map(b => {
                     const status = statusInfo(b.status);
@@ -156,19 +208,26 @@ const Bookings = () => {
                       <div key={b.id} className="grid grid-cols-12 gap-4 py-6 border-b border-border/60 items-center hover:bg-secondary/30 transition-colors">
                         <div className="col-span-2">
                           <div className="font-serif-en text-2xl">{b.booking_time.slice(0, 5)}</div>
+                          {isReceivedMode && (
+                            <div className="text-[10px] text-muted-foreground">{b.booking_date.replace(/-/g, "/").slice(5)}</div>
+                          )}
                           <span className={`inline-flex items-center gap-1.5 text-[10px] font-serif mt-1 ${status.color}`}>
                             <span className="w-1 h-1 rounded-full bg-current" />
                             {status.label}
                           </span>
                         </div>
                         <div className="col-span-3">
-                          <div className="font-serif text-sm flex items-center gap-2">
+                          <div className="font-serif text-sm flex items-center gap-2 flex-wrap">
                             {b.customers?.full_name || "—"}
                             {b.is_test && (
                               <span className="text-[9px] px-1.5 py-0.5 border border-destructive/40 text-destructive tracking-luxury">TEST</span>
                             )}
+                            {sourceLabel(b.external_source) && (
+                              <span className="text-[9px] px-1.5 py-0.5 border border-gold/40 text-gold tracking-luxury">{sourceLabel(b.external_source)}</span>
+                            )}
                           </div>
                           <div className="text-xs text-muted-foreground">{b.customers?.phone || ""}</div>
+                          <div className="text-[10px] text-muted-foreground/70 mt-0.5">受信 {fmtReceived(b.created_at)}</div>
                         </div>
                         <div className="col-span-3 text-sm font-serif text-muted-foreground">
                           {b.menu}

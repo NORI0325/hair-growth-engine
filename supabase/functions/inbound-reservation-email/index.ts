@@ -10,6 +10,49 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") || "";
 
+// 日本語メールの文字コード自動判定 & デコード
+// SALON BOARD等は ISO-2022-JP で送信される。文字化けしたままAIに渡すとハルシネーションの温床。
+function decodeJapaneseIfNeeded(input: string): string {
+  if (!input) return input;
+  // ISO-2022-JP のエスケープシーケンスが含まれる場合
+  if (input.includes("\x1B$B") || input.includes("\x1b$B") || input.includes("$B") && input.includes("(B")) {
+    try {
+      // 文字列を一旦バイト列として解釈し直す（Latin-1 として byte-preserving）
+      const bytes = new Uint8Array(input.length);
+      for (let i = 0; i < input.length; i++) bytes[i] = input.charCodeAt(i) & 0xff;
+      const decoded = new TextDecoder("iso-2022-jp", { fatal: false }).decode(bytes);
+      // 化け文字（U+FFFD）が多すぎる場合はオリジナルを返す
+      const replacementCount = (decoded.match(/\uFFFD/g) || []).length;
+      if (replacementCount < decoded.length * 0.05) return decoded;
+    } catch (e) { console.warn("ISO-2022-JP decode failed:", e); }
+  }
+  return input;
+}
+
+// charsetを明示指定して再デコード
+function decodeWithCharset(input: string, charset: string): string {
+  if (!input || !charset) return input;
+  const cs = charset.toLowerCase().replace(/[_-]/g, "");
+  const map: Record<string, string> = {
+    "iso2022jp": "iso-2022-jp",
+    "shiftjis": "shift_jis",
+    "sjis": "shift_jis",
+    "windows31j": "shift_jis",
+    "eucjp": "euc-jp",
+    "utf8": "utf-8",
+  };
+  const target = map[cs] || charset.toLowerCase();
+  if (target === "utf-8") return input;
+  try {
+    const bytes = new Uint8Array(input.length);
+    for (let i = 0; i < input.length; i++) bytes[i] = input.charCodeAt(i) & 0xff;
+    return new TextDecoder(target, { fatal: false }).decode(bytes);
+  } catch (e) {
+    console.warn(`decode ${target} failed:`, e);
+    return input;
+  }
+}
+
 // Resend Inbound API から本文を取得（webhookにはメタデータしか含まれないため）
 async function fetchInboundEmailBody(emailId: string): Promise<{ text: string; html: string; subject: string; from: string; to: string[] } | null> {
   if (!RESEND_API_KEY || !emailId) return null;
@@ -22,10 +65,31 @@ async function fetchInboundEmailBody(emailId: string): Promise<{ text: string; h
       return null;
     }
     const data = await res.json();
+    // headersから charset を抽出
+    let charset = "";
+    const headers = data.headers || {};
+    const ct = headers["Content-Type"] || headers["content-type"] || "";
+    const m = String(ct).match(/charset=["']?([\w-]+)/i);
+    if (m) charset = m[1];
+
+    let text = data.text || "";
+    let html = data.html || "";
+    let subject = data.subject || "";
+
+    if (charset) {
+      text = decodeWithCharset(text, charset);
+      html = decodeWithCharset(html, charset);
+      subject = decodeWithCharset(subject, charset);
+    }
+    // 補助: ISO-2022-JPエスケープが残っていれば追加デコード
+    text = decodeJapaneseIfNeeded(text);
+    html = decodeJapaneseIfNeeded(html);
+    subject = decodeJapaneseIfNeeded(subject);
+
     return {
-      text: data.text || "",
-      html: data.html || "",
-      subject: data.subject || "",
+      text,
+      html,
+      subject,
       from: typeof data.from === "string" ? data.from : (data.from?.email || ""),
       to: Array.isArray(data.to) ? data.to : (data.to ? [data.to] : []),
     };
@@ -59,7 +123,13 @@ function inferSourceFromContent(subject: string, text: string, fallback: string)
 async function aiExtractReservation(source: string, subject: string, text: string) {
   const systemPrompt = `あなたは美容室の予約通知メールから情報を構造化抽出するエキスパートです。
 受信元: ${source}
-返却するJSONのスキーマに厳密に従ってください。値が不明な場合はnullを返してください。`;
+
+【厳格ルール】
+- 本文に明示的に書かれている情報のみを抽出してください
+- 推測・補完・創作は絶対にしないでください。不明な値は必ず null を返す
+- 文字化け・判読不能な部分は null とし、extraction_confidence を "low" にしてください
+- 顧客氏名は本文の「氏名」「お客様名」欄から正確にコピーしてください（部分でも創作しない）
+- 文字化け（\\x1B$B のようなエスケープ、意味不明な記号列が多い）の場合は extraction_confidence=low`;
 
   const userPrompt = `以下の予約通知メールから情報を抽出してください。
 
@@ -79,7 +149,8 @@ ${text.slice(0, 8000)}`;
         properties: {
           is_reservation: { type: "boolean", description: "これが新規予約通知か（キャンセル・問い合わせはfalse）" },
           event_type: { type: "string", enum: ["created", "cancelled", "changed", "other"], description: "イベント種別" },
-          customer_name: { type: "string", description: "顧客氏名（漢字）" },
+          extraction_confidence: { type: "string", enum: ["high", "low"], description: "本文が明瞭で確実に抽出できたか" },
+          customer_name: { type: "string", description: "顧客氏名（本文に明示されているもののみ。文字化けしていれば null）" },
           customer_kana: { type: "string", description: "顧客カナ" },
           customer_phone: { type: "string", description: "電話番号（ハイフンなしの数字のみ）" },
           customer_email: { type: "string", description: "顧客メール" },
@@ -90,7 +161,7 @@ ${text.slice(0, 8000)}`;
           external_reservation_id: { type: "string", description: "サイト固有の予約番号" },
           notes: { type: "string", description: "備考・要望" },
         },
-        required: ["is_reservation", "event_type"],
+        required: ["is_reservation", "event_type", "extraction_confidence"],
         additionalProperties: false,
       },
     },
@@ -253,6 +324,10 @@ Deno.serve(async (req) => {
     }
   }
 
+  // 文字コード判定 & デコード（ISO-2022-JPなど）
+  text = decodeJapaneseIfNeeded(text);
+  subject = decodeJapaneseIfNeeded(subject);
+
   const parsed = parseInboundAddress(to);
   if (!parsed) {
     await supabase.from("external_reservation_logs").insert({
@@ -323,10 +398,42 @@ Deno.serve(async (req) => {
     });
   }
 
+  // 抽出結果の検証: AIがハルシネーションしていないか確認
+  // 顧客名が本文に含まれていなければ無効化（信頼度low扱い）
+  let confidence: "high" | "low" = extracted.extraction_confidence === "low" ? "low" : "high";
+  if (extracted.customer_name) {
+    const nm = String(extracted.customer_name).replace(/\s+/g, "");
+    const bodyClean = text.replace(/\s+/g, "");
+    // 名前の一部（最初の2文字以上）が本文に含まれているか
+    const nameKey = nm.slice(0, Math.min(2, nm.length));
+    if (nameKey && !bodyClean.includes(nameKey)) {
+      console.warn("AI hallucination detected: customer_name not in body:", extracted.customer_name);
+      extracted.customer_name = null;
+      confidence = "low";
+    }
+  }
+  // 文字化け検知（ISO-2022-JPエスケープが残っている / 制御文字が異常に多い）
+  const garbleScore = (text.match(/\x1B\$B/g) || []).length + (text.match(/\uFFFD/g) || []).length;
+  if (garbleScore > 5) {
+    confidence = "low";
+  }
+
   const phone = normalizePhone(extracted.customer_phone);
+  // 信頼度lowで氏名なしなら、自動登録せず needs_review として人手確認に
+  if (confidence === "low" && !extracted.customer_name && !phone) {
+    await supabase.from("external_reservation_logs").insert({
+      owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000),
+      parsed_data: { ...extracted, _confidence: confidence, _garble_score: garbleScore },
+      status: "needs_review", error: "low_confidence_no_identity",
+    });
+    return new Response(JSON.stringify({ ok: true, needs_review: true }), {
+      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   const fullName = (extracted.customer_name || "お客様").toString().slice(0, 100);
 
-  // 既存顧客マッチング（電話番号優先 → 氏名）
+  // 既存顧客マッチング（電話番号優先 → 氏名）。ただし氏名「お客様」では引かない
   let customerId: string | null = null;
   if (phone) {
     const { data: byPhone } = await supabase
@@ -337,7 +444,7 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (byPhone) customerId = byPhone.id;
   }
-  if (!customerId && fullName) {
+  if (!customerId && extracted.customer_name && fullName !== "お客様") {
     const { data: byName } = await supabase
       .from("customers")
       .select("id")
@@ -375,23 +482,94 @@ Deno.serve(async (req) => {
     customerId = newCust.id;
   }
 
-  // 重複チェック → 予約作成
+  // 重複チェック → 予約作成（賢いロジック）
   const externalId = extracted.external_reservation_id || `${source}-${extracted.booking_date}-${extracted.booking_time}-${phone || fullName}`;
 
   const { data: existing } = await supabase
     .from("bookings")
-    .select("id")
+    .select("id, customer_id, customers(full_name, phone)")
     .eq("owner_id", ownerId)
     .eq("external_source", source)
     .eq("external_reservation_id", externalId)
-    .maybeSingle();
+    .maybeSingle() as { data: any };
 
   if (existing) {
+    const existingName = (existing.customers?.full_name || "").trim();
+    const existingPhone = (existing.customers?.phone || "").trim();
+    const newName = fullName.trim();
+    const newPhone = (phone || "").trim();
+
+    // 既存予約が「お客様」（誤登録）または名前一致 → 更新
+    const isExistingPlaceholder = !existingName || existingName === "お客様";
+    const isSamePerson =
+      (newPhone && existingPhone && newPhone === existingPhone) ||
+      (newName && existingName && (newName === existingName || newName.includes(existingName) || existingName.includes(newName)));
+
+    if (isExistingPlaceholder || isSamePerson) {
+      // 既存予約を新しい正確なデータで更新
+      const updates: any = {
+        booking_date: extracted.booking_date,
+        booking_time: extracted.booking_time && /^\d{2}:\d{2}$/.test(extracted.booking_time) ? extracted.booking_time + ":00" : undefined,
+        menu: (extracted.menu || undefined),
+        revenue: extracted.revenue || undefined,
+        notes: extracted.notes ? String(extracted.notes).slice(0, 500) : undefined,
+      };
+      // 顧客差し替え（既存がプレースホルダーで、新規が確実な顧客なら）
+      if (isExistingPlaceholder && customerId && customerId !== existing.customer_id && extracted.customer_name) {
+        updates.customer_id = customerId;
+      }
+      // undefinedを除外
+      Object.keys(updates).forEach(k => updates[k] === undefined && delete updates[k]);
+
+      if (Object.keys(updates).length > 0) {
+        await supabase.from("bookings").update(updates).eq("id", existing.id);
+      }
+      await supabase.from("external_reservation_logs").insert({
+        owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000),
+        parsed_data: extracted, status: "updated", matched_customer_id: customerId, created_booking_id: existing.id,
+      });
+      return new Response(JSON.stringify({ ok: true, updated: true, booking_id: existing.id }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // 別人と判定 → サフィックスを付けて新規作成（needs_review）
+    console.warn(`Different person for same external_id ${externalId}: existing="${existingName}" new="${newName}"`);
+    // 以下、新規作成フローへ続く（externalIdを変える）
+    const altExternalId = `${externalId}-${Date.now().toString(36)}`;
+    const { data: booking2, error: bookErr2 } = await supabase
+      .from("bookings")
+      .insert({
+        owner_id: ownerId,
+        location_id: locationId,
+        customer_id: customerId,
+        booking_date: extracted.booking_date,
+        booking_time: extracted.booking_time && /^\d{2}:\d{2}$/.test(extracted.booking_time) ? extracted.booking_time + ":00" : "10:00:00",
+        menu: (extracted.menu || "メニュー未指定").toString().slice(0, 200),
+        notes: extracted.notes ? String(extracted.notes).slice(0, 500) : null,
+        status: "pending",
+        revenue: extracted.revenue || 0,
+        external_source: source,
+        external_reservation_id: altExternalId,
+      })
+      .select("id")
+      .single();
+    if (bookErr2) {
+      await supabase.from("external_reservation_logs").insert({
+        owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000),
+        parsed_data: extracted, status: "failed", matched_customer_id: customerId,
+        error: `booking_insert(conflict): ${bookErr2.message}`,
+      });
+      return new Response(JSON.stringify({ ok: false, reason: "booking_insert_failed" }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     await supabase.from("external_reservation_logs").insert({
       owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000),
-      parsed_data: extracted, status: "duplicate", matched_customer_id: customerId, created_booking_id: existing.id,
+      parsed_data: extracted, status: "needs_review", matched_customer_id: customerId,
+      created_booking_id: booking2.id, error: `same_external_id_different_person: existing=${existingName}`,
     });
-    return new Response(JSON.stringify({ ok: true, duplicate: true }), {
+    return new Response(JSON.stringify({ ok: true, conflict_resolved: true, booking_id: booking2.id }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
