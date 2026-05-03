@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import AppLayout from "@/components/AppLayout";
@@ -31,6 +31,9 @@ const DEFAULT_STAGES: ReactivationStage[] = [
 
 const Settings = () => {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const initialTab = searchParams.get("tab") || "store";
+  const highlightSection = searchParams.get("section");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -299,7 +302,7 @@ const Settings = () => {
       <PageHeader eyebrow="— Settings —" title="サロン設定" description="店舗・配信・連携をすべて管理" />
 
       <div className="max-w-3xl">
-        <Tabs defaultValue="store" className="w-full">
+        <Tabs defaultValue={initialTab} className="w-full">
           <TabsList className="grid w-full grid-cols-5 rounded-none bg-secondary/30 mb-8">
             <TabsTrigger value="store" className="rounded-none text-xs tracking-luxury data-[state=active]:bg-background data-[state=active]:text-gold">
               <Store className="w-3.5 h-3.5 mr-1.5" />店舗
@@ -865,7 +868,11 @@ const Settings = () => {
             </section>
 
             {/* 外部予約サイト */}
-            <section className="space-y-5 pt-6 border-t border-border">
+            <section
+              id="inbound"
+              className={`space-y-5 pt-6 border-t border-border scroll-mt-24 ${highlightSection === "inbound" ? "ring-2 ring-gold/60 ring-offset-4 ring-offset-background animate-pulse-once" : ""}`}
+              ref={(el) => { if (el && highlightSection === "inbound") el.scrollIntoView({ behavior: "smooth", block: "start" }); }}
+            >
               <SectionTitle icon={Inbox} title="外部予約サイト自動連携"
                 desc="ホットペッパー / minimo / 楽天Beautyの予約通知メールを下記アドレスへ転送するだけ。DNSや専門設定は一切不要、コピー＆ペーストで完了します。" />
 
