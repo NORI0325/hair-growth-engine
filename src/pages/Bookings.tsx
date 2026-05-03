@@ -174,23 +174,33 @@ const Bookings = () => {
         </div>
       ) : (
         <div className="space-y-16">
-          {Object.entries(grouped).map(([date, items]) => {
-            const d = new Date(date);
+          {(sortMode === "received"
+            ? [["__received__", flatByReceived] as const]
+            : Object.entries(grouped) as ReadonlyArray<readonly [string, Booking[]]>
+          ).map(([date, items]) => {
+            const isReceivedMode = date === "__received__";
+            const d = isReceivedMode ? null : new Date(date);
             return (
               <div key={date}>
-                <div className="flex items-baseline gap-6 mb-6">
-                  <div className="font-serif-en text-5xl text-gold/70 italic">
-                    {String(d.getDate()).padStart(2, "0")}
+                {isReceivedMode ? (
+                  <div className="mb-6">
+                    <div className="eyebrow text-[10px] text-muted-foreground">— Sorted by Received Time —</div>
                   </div>
-                  <div>
-                    <div className="font-serif text-base">
-                      {d.toLocaleDateString("ja-JP", { year: "numeric", month: "long" })}
+                ) : (
+                  <div className="flex items-baseline gap-6 mb-6">
+                    <div className="font-serif-en text-5xl text-gold/70 italic">
+                      {String(d!.getDate()).padStart(2, "0")}
                     </div>
-                    <div className="eyebrow text-[10px]">
-                      {d.toLocaleDateString("en-US", { weekday: "long" })}
+                    <div>
+                      <div className="font-serif text-base">
+                        {d!.toLocaleDateString("ja-JP", { year: "numeric", month: "long" })}
+                      </div>
+                      <div className="eyebrow text-[10px]">
+                        {d!.toLocaleDateString("en-US", { weekday: "long" })}
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
                 <div className="border-t border-border">
                   {items.map(b => {
                     const status = statusInfo(b.status);
