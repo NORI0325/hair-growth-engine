@@ -15,6 +15,8 @@ import { LocationSwitcher } from "@/components/LocationSwitcher";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import HelpWidget from "@/components/HelpWidget";
 import OnboardingTour from "@/components/OnboardingTour";
+import { useTenantRole } from "@/hooks/useTenant";
+import { useQuery } from "@tanstack/react-query";
 
 type NavItem = {
   to: string;
