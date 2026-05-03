@@ -122,7 +122,7 @@ const SalonBoardExport = () => {
               <Download className="w-4 h-4 mr-2 stroke-[1.5]" />
             )}
             拡張機能をダウンロード
-            <span className="ml-2 opacity-60 text-[10px]">v2.0 ZIP</span>
+            <span className="ml-2 opacity-60 text-[10px]">v2.0.1 ZIP</span>
           </Button>
         </section>
 
