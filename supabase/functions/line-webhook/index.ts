@@ -615,14 +615,14 @@ Deno.serve(async (req) => {
           .not("phone", "is", null)
           .limit(500);
 
-        const matched = (candidates || []).find(c => normalizePhone(c.phone || "") === phone);
+        const matches = (candidates || []).filter(c => normalizePhone(c.phone || "") === phone);
+        const matched = matches[0];
 
         if (!matched) {
-          // pendingに番号も記録（オーナーが見て手動連携できるよう）
           await supabase.from("line_pending_friends").upsert({
             owner_id: owner.id,
             line_user_id: userId,
-            last_message: text.slice(0, 200),
+            last_message: "[phone attempted]",
           }, { onConflict: "owner_id,line_user_id" });
 
           await replyLine(
@@ -630,6 +630,18 @@ Deno.serve(async (req) => {
             replyToken,
             `お電話番号が見つかりませんでした🙏\n\nお手数ですがお名前もメッセージでお送りいただけますと、担当者が確認のうえ連携いたします。`
           );
+          continue;
+        }
+
+        if (matches.length > 1) {
+          // 同一電話番号が複数顧客に紐付く（家族など）→ 自動連携せず手動レビュー
+          await supabase.from("line_pending_friends").upsert({
+            owner_id: owner.id,
+            line_user_id: userId,
+            last_message: `[duplicate phone: ${matches.length} matches]`,
+          }, { onConflict: "owner_id,line_user_id" });
+          await replyLine(accessToken, replyToken,
+            `同じお電話番号のお客様が複数登録されています。お手数ですがお名前もお送りください。担当者が確認のうえ連携いたします🙇‍♀️`);
           continue;
         }
 
@@ -644,10 +656,9 @@ Deno.serve(async (req) => {
 
         await supabase
           .from("customers")
-          .update({ line_user_id: userId })
+          .update({ line_user_id: userId, line_unfollowed_at: null })
           .eq("id", matched.id);
 
-        // 連携が成立したのでpending削除
         await supabase
           .from("line_pending_friends")
           .delete()
@@ -662,9 +673,10 @@ Deno.serve(async (req) => {
       }
 
       if (ev.type === "unfollow" && userId) {
+        // ソフト削除：line_user_idは残し、unfollow時刻を記録（再フォロー時に履歴継続）
         await supabase
           .from("customers")
-          .update({ line_user_id: null })
+          .update({ line_unfollowed_at: new Date().toISOString() })
           .eq("owner_id", owner.id)
           .eq("line_user_id", userId);
       }
