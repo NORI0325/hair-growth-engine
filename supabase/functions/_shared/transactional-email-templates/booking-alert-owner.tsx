@@ -52,6 +52,12 @@ const BookingAlertOwnerEmail = ({
             {notes ? <Row label="備考" value={notes} /> : null}
           </Section>
 
+          {eventType !== 'cancelled' ? (
+            <Section style={remindCard}>
+              <Text style={remindText}>📋 ご来店前に<strong>必ずカルテをご確認ください</strong>。アレルギー・薬剤履歴・好みの仕上がりなど、事故防止と満足度向上に直結します。</Text>
+            </Section>
+          ) : null}
+
           <Hr style={hr} />
           <Text style={footer}>
             {salonName ?? 'Salon Boost'} 予約通知
