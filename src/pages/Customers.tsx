@@ -225,8 +225,17 @@ const Customers = () => {
                       <FileText className="w-3 h-3 stroke-[1.5]" />
                       カルテ
                     </Link>
-                    {c.line_user_id && (
+                    {c.line_user_id ? (
                       <span title="LINE連携済み" className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-[#06C755] text-white text-[8px] font-bold leading-none">L</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setQrTarget({ id: c.id, name: c.full_name })}
+                        title="LINE個別連携QRを発行"
+                        className="inline-flex items-center justify-center w-5 h-5 border border-[#06C755]/40 text-[#06C755] hover:bg-[#06C755] hover:text-white transition-colors"
+                      >
+                        <QrCode className="w-3 h-3" />
+                      </button>
                     )}
                     {birthdayThisMonth && <span title="今月誕生日" className="text-[10px] text-gold">🎂</span>}
                   </div>
