@@ -52,8 +52,68 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { bookingId, eventType } = body;
-    if (!bookingId || !["created", "updated", "cancelled"].includes(eventType)) {
+    const { bookingId, eventType, ownerId: bodyOwnerId, payload } = body;
+
+    // === 特殊イベント: cancel_needs_review (キャンセルメールが届いたが該当予約特定不能) ===
+    if (eventType === "cancel_needs_review") {
+      const ownerId = bodyOwnerId;
+      if (!ownerId) {
+        return new Response(JSON.stringify({ error: "missing_owner_id" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("salon_name, owner_notification_email, line_channel_access_token, notification_recipients")
+        .eq("id", ownerId).maybeSingle();
+      const salonName = prof?.salon_name ?? "サロン";
+      const msg =
+        `⚠️ 要確認: キャンセルメールを受信しましたが、該当する予約を自動特定できませんでした。\n\n` +
+        `👤 ${payload?.customer_name ?? "(名前不明)"}\n` +
+        `📅 ${payload?.booking_date ?? "?"} ${payload?.booking_time ?? ""}\n` +
+        `🆔 ${payload?.external_reservation_id ?? "?"}\n\n` +
+        `管理画面の「受信ログ」から内容を確認し、該当予約を手動でキャンセルしてください。\n— ${salonName}`;
+
+      const recips: any[] = Array.isArray(prof?.notification_recipients) ? prof!.notification_recipients : [];
+      const results: string[] = [];
+      for (const r of recips) {
+        const channels = r.channels?.length ? r.channels : ["email"];
+        if (channels.includes("line") && r.line_user_id && prof?.line_channel_access_token) {
+          const lr = await sendLinePush(prof.line_channel_access_token, r.line_user_id, msg);
+          await supabase.from("line_message_log").insert({
+            owner_id: ownerId, line_user_id: r.line_user_id,
+            job_type: "cancel_needs_review", message: msg,
+            status: lr.ok ? "sent" : "failed", error: lr.ok ? null : lr.err,
+          });
+          results.push(`line:${r.line_user_id}:${lr.ok ? "sent" : "err"}`);
+        }
+        if (channels.includes("email") && r.email) {
+          // シンプルにbooking-alert-ownerテンプレを流用（notes欄に警告内容）
+          await supabase.functions.invoke("send-transactional-email", {
+            body: {
+              templateName: "booking-alert-owner",
+              recipientEmail: r.email,
+              idempotencyKey: `cancel-review-${payload?.log_id ?? Date.now()}-${r.email}`,
+              templateData: {
+                eventType: "cancelled",
+                customerName: `⚠️要確認 ${payload?.customer_name ?? ""}`,
+                bookingDate: payload?.booking_date ?? "-",
+                bookingTime: payload?.booking_time ?? "-",
+                menu: "(キャンセルメール受信・該当予約特定不能)",
+                notes: `外部ID: ${payload?.external_reservation_id ?? "?"}\n受信ログから手動確認をお願いします。`,
+                salonName,
+              },
+            },
+          });
+          results.push(`email:${r.email}:sent`);
+        }
+      }
+      return new Response(JSON.stringify({ success: true, results }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (!bookingId || !["created", "updated", "cancelled", "cancelled_by_customer"].includes(eventType)) {
       return new Response(JSON.stringify({ error: "invalid_payload" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -93,7 +153,8 @@ Deno.serve(async (req) => {
     const eventLabel =
       eventType === "created" ? "ご予約承りました"
         : eventType === "updated" ? "ご予約内容を変更しました"
-          : "ご予約をキャンセルしました";
+          : eventType === "cancelled_by_customer" ? "🆘 お客様がオンラインからキャンセルされました"
+            : "ご予約をキャンセルしました";
 
     const results: Record<string, unknown> = {};
 
@@ -192,7 +253,7 @@ Deno.serve(async (req) => {
     // === ③ お客様へメール（メール登録があれば）===
     if (customer?.email) {
       const templateName =
-        eventType === "cancelled" ? "booking-cancelled"
+        eventType === "cancelled" || eventType === "cancelled_by_customer" ? "booking-cancelled"
           : eventType === "updated" ? "booking-updated"
             : "booking-confirmation";
       const { error } = await supabase.functions.invoke("send-transactional-email", {
