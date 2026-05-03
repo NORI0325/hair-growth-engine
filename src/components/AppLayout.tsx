@@ -108,25 +108,25 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
   const { pathname } = useLocation();
   const [unreadInbox, setUnreadInbox] = useState(0);
   const role = useTenantRole();
+  const tenantId = useTenantId();
 
-  // 現在ログイン中アカウントが所属するサロン名（owner の場合は自分の profile.salon_name）
+  // 現在所属サロン名 + 自分のプロフィール
   const { data: account } = useQuery({
-    queryKey: ["sidebar-account", user?.id],
+    queryKey: ["sidebar-account", user?.id, tenantId],
     enabled: !!user,
     queryFn: async () => {
       if (!user) return null;
-      // 自分が member として所属する全テナントのサロン名
-      const { data: memberships } = await supabase
-        .from("tenant_members")
-        .select("tenant_id, role, profiles:profiles!tenant_members_tenant_id_fkey(salon_name)")
-        .eq("user_id", user.id)
-        .not("accepted_at", "is", null);
-      const { data: myProfile } = await supabase
-        .from("profiles")
-        .select("full_name, salon_name")
-        .eq("id", user.id)
-        .maybeSingle();
-      return { memberships: memberships ?? [], myProfile };
+      const [{ data: myProfile }, tenantProfileRes] = await Promise.all([
+        supabase.from("profiles").select("full_name, salon_name").eq("id", user.id).maybeSingle(),
+        tenantId
+          ? supabase.from("profiles").select("salon_name").eq("id", tenantId).maybeSingle()
+          : Promise.resolve({ data: null }),
+      ]);
+      return {
+        userName: myProfile?.full_name || user.email?.split("@")[0] || "ユーザー",
+        userEmail: user.email ?? "",
+        salonName: (tenantProfileRes as any).data?.salon_name || myProfile?.salon_name || "（サロン未設定）",
+      };
     },
   });
 
