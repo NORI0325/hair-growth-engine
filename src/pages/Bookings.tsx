@@ -230,7 +230,7 @@ const Bookings = () => {
                           <div className="text-xs text-muted-foreground">{b.customers?.phone || ""}</div>
                           <div className="text-[10px] text-muted-foreground/70 mt-0.5">受信 {fmtReceived(b.created_at)}</div>
                         </div>
-                        <div className="col-span-3 text-sm font-serif text-muted-foreground">
+                        <div className="col-span-2 text-sm font-serif text-muted-foreground">
                           {b.menu}
                           {b.notes && <div className="text-[11px] mt-1 italic">{b.notes}</div>}
                           {b.status === "completed" && (b.revenue ?? 0) > 0 && (
@@ -272,33 +272,34 @@ const Bookings = () => {
                             <span className="text-[10px] text-muted-foreground">—</span>
                           )}
                         </div>
-                        <div className="col-span-2 flex items-center justify-end gap-1">
-                          {b.status === "pending" && (
-                            <Button size="sm" variant="ghost" className="text-xs rounded-none h-8" onClick={() => updateStatus(b.id, "confirmed")}>
-                              確定
-                            </Button>
-                          )}
-                          {(b.status === "pending" || b.status === "confirmed") && (
-                            <>
-                              <Link
-                                to={`/customers/${b.customer_id}/chart`}
-                                className="inline-flex items-center gap-1 px-2 h-8 border border-gold/40 text-gold hover:bg-gold hover:text-background transition-colors text-[10px] tracking-luxury"
-                                title="カルテを開く"
-                              >
-                                <FileText className="w-3 h-3" />
-                                カルテ
-                              </Link>
-                              <Button size="sm" variant="ghost" className="text-xs rounded-none h-8" title="お客様へ連絡" onClick={() => setMessageBooking(b)}>
-                                <MessageCircle className="w-3.5 h-3.5 stroke-[1.5]" />
+                        <div className="col-span-3 flex flex-col items-end gap-2">
+                          <Link
+                            to={`/customers/${b.customer_id}/chart`}
+                            className="inline-flex items-center gap-1.5 px-3 h-8 border border-gold/50 text-gold hover:bg-gold hover:text-background transition-colors text-xs tracking-luxury whitespace-nowrap"
+                            title="カルテを開く"
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                            カルテを開く
+                          </Link>
+                          <div className="flex items-center justify-end gap-1 flex-wrap">
+                            {b.status === "pending" && (
+                              <Button size="sm" variant="ghost" className="text-xs rounded-none h-8" onClick={() => updateStatus(b.id, "confirmed")}>
+                                確定
                               </Button>
-                              <Button size="sm" variant="ghost" className="text-xs rounded-none h-8" title="来店完了（売上を入力）" onClick={() => handleComplete(b)}>
-                                <CheckCircle2 className="w-3.5 h-3.5 stroke-[1.5]" />
-                              </Button>
-                              <Button size="sm" variant="ghost" className="text-xs rounded-none h-8" onClick={() => updateStatus(b.id, "cancelled")}>
-                                <XCircle className="w-3.5 h-3.5 stroke-[1.5]" />
-                              </Button>
-                            </>
-                          )}
+                            )}
+                            {(b.status === "pending" || b.status === "confirmed") && (
+                              <>
+                                <Button size="sm" variant="ghost" className="text-xs rounded-none h-8 w-8 p-0" title="お客様へ連絡" onClick={() => setMessageBooking(b)}>
+                                  <MessageCircle className="w-3.5 h-3.5 stroke-[1.5]" />
+                                </Button>
+                                <Button size="sm" variant="ghost" className="text-xs rounded-none h-8 w-8 p-0" title="来店完了（売上を入力）" onClick={() => handleComplete(b)}>
+                                  <CheckCircle2 className="w-3.5 h-3.5 stroke-[1.5]" />
+                                </Button>
+                                <Button size="sm" variant="ghost" className="text-xs rounded-none h-8 w-8 p-0" title="キャンセル" onClick={() => updateStatus(b.id, "cancelled")}>
+                                  <XCircle className="w-3.5 h-3.5 stroke-[1.5]" />
+                                </Button>
+                              </>
+                            )}
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
                               <Button size="sm" variant="ghost" className="text-xs rounded-none h-8 text-muted-foreground hover:text-destructive" title="予約を削除">
@@ -321,6 +322,7 @@ const Bookings = () => {
                               </AlertDialogFooter>
                             </AlertDialogContent>
                           </AlertDialog>
+                          </div>
                         </div>
                       </div>
                     );
