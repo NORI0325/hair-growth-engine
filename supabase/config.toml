@@ -23,6 +23,8 @@ project_id = "miyedioemkzhetphjzzg"
     verify_jwt = false
   [functions.line-broadcast]
     verify_jwt = true
+  [functions.bulk-broadcast]
+    verify_jwt = true
   [functions.line-setup-rich-menu]
     verify_jwt = true
   [functions.line-test-push]
