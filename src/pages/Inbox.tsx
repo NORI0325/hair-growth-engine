@@ -57,7 +57,8 @@ export default function Inbox() {
     let q = supabase
       .from("line_inbound_messages")
       .select("*")
-      .eq("location_id", locationId)
+      .eq("owner_id", user.id)
+      .or(`location_id.eq.${locationId},location_id.is.null`)
       .order("created_at", { ascending: false })
       .limit(200);
     if (filter === "unhandled") q = q.eq("handled", false);
