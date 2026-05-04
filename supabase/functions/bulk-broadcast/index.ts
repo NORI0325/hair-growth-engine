@@ -171,7 +171,7 @@ Deno.serve(async (req) => {
     }
     if (stateUpserts.length > 0) {
       await supabase.from("customer_communication_state")
-        .upsert(stateUpserts as any, { onConflict: "owner_id,customer_id" });
+        .upsert(stateUpserts as any, { onConflict: "customer_id" });
     }
 
     return new Response(JSON.stringify({ success: true, ...result }),
