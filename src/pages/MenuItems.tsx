@@ -217,7 +217,10 @@ const MenuItems = () => {
               <div className="md:col-span-1 flex items-center gap-2">
                 <Switch checked={item.active} onCheckedChange={(v) => update(item.id, { active: v })} />
               </div>
-              <div className="md:col-span-1 flex justify-end">
+              <div className="md:col-span-1 flex justify-end gap-1">
+                <Button size="icon" variant="ghost" onClick={() => setMappingMenu(item)} title="媒体マッピング">
+                  <Plug className="w-4 h-4 text-muted-foreground hover:text-gold" />
+                </Button>
                 <Button size="icon" variant="ghost" onClick={() => remove(item.id)}>
                   <Trash2 className="w-4 h-4 text-muted-foreground hover:text-destructive" />
                 </Button>
