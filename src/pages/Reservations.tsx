@@ -10,7 +10,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Check, X, Loader2, MessageSquare, Calendar, Copy, Sparkles, Clock } from "lucide-react";
+import { Check, X, Loader2, MessageSquare, Calendar, Copy, Sparkles, Clock, BarChart3, Bell } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 interface ReservationRequest {
   id: string;
