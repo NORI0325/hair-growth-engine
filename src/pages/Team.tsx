@@ -171,22 +171,35 @@ const Team = () => {
         <Card className="p-6">
           <h2 className="font-semibold mb-4">現在のメンバー</h2>
           <div className="space-y-3">
-            {members.map((m) => (
-              <div key={m.user_id} className="flex items-center justify-between border-b pb-3 last:border-0">
-                <div>
-                  <p className="font-medium">{(m as any).profiles?.full_name ?? m.user_id.slice(0, 8)}</p>
-                  <p className="text-xs text-muted-foreground">{m.user_id}</p>
+            {members.map((m) => {
+              const allLoc = !m.location_ids || m.location_ids.length === 0;
+              return (
+                <div key={m.user_id} className="flex items-start justify-between border-b pb-3 last:border-0 gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium truncate">{m.full_name || (m.email ? m.email.split("@")[0] : m.user_id.slice(0, 8))}</p>
+                    {m.email && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                        <Mail className="w-3 h-3" />{m.email}
+                      </p>
+                    )}
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      🏢 {allLoc ? "全店舗アクセス可" : (m.location_names || []).join(" / ")}
+                    </p>
+                    {!m.accepted_at && (
+                      <Badge variant="outline" className="mt-1 text-[10px]">未承諾</Badge>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Badge>{m.role}</Badge>
+                    {canManage && m.role !== "owner" && (
+                      <Button size="sm" variant="ghost" onClick={() => removeMember(m.user_id)}>
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Badge>{m.role}</Badge>
-                  {canManage && m.role !== "owner" && (
-                    <Button size="sm" variant="ghost" onClick={() => removeMember(m.user_id)}>
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  )}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </Card>
 
