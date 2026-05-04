@@ -68,16 +68,34 @@ Deno.serve(async (req) => {
       .eq("is_test", false)
       .in("id", customerIds);
 
-    const list = targets || [];
+    let list = targets || [];
     const isValidLineUserId = (s: string | null) => !!s && /^U[0-9a-f]{32}$/i.test(s);
+
+    // クールダウン: N日以内に何らかの配信実績がある顧客をスキップ
+    let cooldownSkipped = 0;
+    if (skipRecentDays > 0 && list.length > 0) {
+      const cutoff = new Date(Date.now() - skipRecentDays * 86400000).toISOString();
+      const { data: states } = await supabase
+        .from("customer_communication_state")
+        .select("customer_id, last_sent_at")
+        .eq("owner_id", user.id)
+        .in("customer_id", list.map((c: any) => c.id))
+        .gte("last_sent_at", cutoff);
+      const recentSet = new Set((states || []).map((s: any) => s.customer_id));
+      const before = list.length;
+      list = list.filter((c: any) => !recentSet.has(c.id));
+      cooldownSkipped = before - list.length;
+    }
 
     const result = {
       total: list.length,
+      cooldown_skipped: cooldownSkipped,
       line: { sent: 0, failed: 0, skipped: 0 },
       sms: { sent: 0, failed: 0, skipped: 0 },
       email: { sent: 0, failed: 0, skipped: 0 },
     };
     const lineLogs: any[] = [];
+    const stateUpserts: any[] = [];
 
     for (const c of list) {
       const personalText = message.replace(/\{\{name\}\}/g, c.full_name || "お客様");
