@@ -51,6 +51,7 @@ import CustomerChart from "./pages/CustomerChart";
 import Commission from "./pages/Commission";
 import Retention from "./pages/Retention";
 import Reservations from "./pages/Reservations";
+import ReservationAction from "./pages/ReservationAction";
 import NotFound from "./pages/NotFound";
 import { LocationProvider } from "@/hooks/useLocations";
 
