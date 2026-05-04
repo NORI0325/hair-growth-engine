@@ -267,6 +267,14 @@ ${body.proposal_message}
         .update({ final_action: "proposed", decided_at: new Date().toISOString() })
         .eq("request_id", rr.id);
     } catch {}
+
+    return new Response(JSON.stringify({ success: true }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  // ============================================================
+  // ACTION: reject（却下）
   // ============================================================
   if (body.action === "reject") {
     const customerName = rr.display_name || "お客様";
