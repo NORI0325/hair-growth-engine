@@ -665,6 +665,51 @@ Deno.serve(async (req) => {
             continue;
           }
 
+          // ============= 未連携：氏名のみ完全一致1件で自動連携 =============
+          // 漢字/カタカナの氏名トークン抽出 → customers.full_name と完全一致するものを探す
+          const detected = detectFields(text);
+          if (detected.name && !detected.phone && !detected.email) {
+            const { data: nameMatches } = await supabase
+              .from("customers")
+              .select("id, full_name, line_user_id")
+              .eq("owner_id", owner.id)
+              .eq("full_name", detected.name)
+              .is("line_user_id", null)
+              .limit(2);
+            if (nameMatches && nameMatches.length === 1) {
+              const m = nameMatches[0];
+              await supabase.from("customers")
+                .update({ line_user_id: userId, line_unfollowed_at: null })
+                .eq("id", m.id);
+              await supabase.from("line_pending_friends")
+                .delete().eq("owner_id", owner.id).eq("line_user_id", userId);
+              await supabase.from("line_field_detections").insert({
+                owner_id: owner.id,
+                customer_id: m.id,
+                line_user_id: userId,
+                raw_text: text.slice(0, 500),
+                detected,
+                applied: { name_link: detected.name },
+                needs_confirmation: false,
+              });
+              await replyLine(accessToken, replyToken,
+                `✅ ${m.full_name}様、連携が完了しました🌸\n\n次回のご予約案内・特典クーポンをこちらのトークでお届けします。\n\n— ${owner.salon_name || "サロン"}`);
+              continue;
+            }
+            if (nameMatches && nameMatches.length > 1) {
+              // 同姓同名複数 → 手動レビュー
+              await supabase.from("line_pending_friends").upsert({
+                owner_id: owner.id,
+                line_user_id: userId,
+                display_name: displayName,
+                last_message: `[name dup: ${detected.name}]`,
+              }, { onConflict: "owner_id,line_user_id" });
+              await replyLine(accessToken, replyToken,
+                `${detected.name}様、ありがとうございます🙇‍♀️\n同じお名前のお客様が複数いらっしゃるため、お電話番号もお送りいただけますか？\n（例：090-1234-5678）`);
+              continue;
+            }
+          }
+
           let guideMsg: string;
           const greetingLike = isGreetingOrSimpleText(text);
           if (greetingLike) {
