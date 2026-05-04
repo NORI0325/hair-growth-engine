@@ -133,7 +133,7 @@ const SalonBoardExport = () => {
             >
               {downloading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2 stroke-[1.5]" />}
               拡張機能をDL
-              <span className="ml-2 opacity-60 text-[10px]">v2.0.2</span>
+              <span className="ml-2 opacity-60 text-[10px]">v2.1.3</span>
             </Button>
           </div>
 
