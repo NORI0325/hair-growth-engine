@@ -754,6 +754,7 @@ export type Database = {
           email: string | null
           first_imported_at: string | null
           full_name: string
+          gender: Database["public"]["Enums"]["customer_gender"]
           id: string
           imported_from: string | null
           is_test: boolean
@@ -783,6 +784,7 @@ export type Database = {
           email?: string | null
           first_imported_at?: string | null
           full_name: string
+          gender?: Database["public"]["Enums"]["customer_gender"]
           id?: string
           imported_from?: string | null
           is_test?: boolean
@@ -812,6 +814,7 @@ export type Database = {
           email?: string | null
           first_imported_at?: string | null
           full_name?: string
+          gender?: Database["public"]["Enums"]["customer_gender"]
           id?: string
           imported_from?: string | null
           is_test?: boolean
@@ -2747,6 +2750,7 @@ export type Database = {
         | "cancelled"
         | "no_show"
       campaign_status: "draft" | "sending" | "sent" | "failed"
+      customer_gender: "female" | "male" | "other" | "unknown"
       customer_segment: "active" | "at_risk" | "dormant" | "new"
       job_approval_status: "auto" | "pending_approval" | "approved" | "rejected"
       retention_segment:
@@ -2892,6 +2896,7 @@ export const Constants = {
         "no_show",
       ],
       campaign_status: ["draft", "sending", "sent", "failed"],
+      customer_gender: ["female", "male", "other", "unknown"],
       customer_segment: ["active", "at_risk", "dormant", "new"],
       job_approval_status: ["auto", "pending_approval", "approved", "rejected"],
       retention_segment: [
