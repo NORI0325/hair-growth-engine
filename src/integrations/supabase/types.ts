@@ -1901,6 +1901,56 @@ export type Database = {
         }
         Relationships: []
       }
+      reservation_action_tokens: {
+        Row: {
+          action: string
+          created_at: string
+          expires_at: string
+          id: string
+          owner_id: string
+          recipient_line_user_id: string | null
+          request_id: string
+          token_hash: string
+          used_at: string | null
+          used_ip: string | null
+          used_ua: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          expires_at: string
+          id?: string
+          owner_id: string
+          recipient_line_user_id?: string | null
+          request_id: string
+          token_hash: string
+          used_at?: string | null
+          used_ip?: string | null
+          used_ua?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          owner_id?: string
+          recipient_line_user_id?: string | null
+          request_id?: string
+          token_hash?: string
+          used_at?: string | null
+          used_ip?: string | null
+          used_ua?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reservation_action_tokens_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "reservation_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       reservation_ai_logs: {
         Row: {
           ai_confidence: number | null

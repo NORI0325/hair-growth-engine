@@ -9,6 +9,7 @@ import {
   isOutsideBusinessHoursJst,
   todayJstIso,
 } from "../_shared/reservation-intent.ts";
+import { signActionToken, hashToken, publicAppOrigin } from "../_shared/reservation-token.ts";
 
 // LINE署名検証 (HMAC-SHA256)
 async function verifySignature(secret: string, body: string, signature: string): Promise<boolean> {
@@ -664,13 +665,44 @@ Deno.serve(async (req) => {
                       (r: any) => r?.line_user_id && (r?.channels || ["line"]).includes("line"),
                     );
                     if (lineRecipients.length > 0 && accessToken) {
-                      const dashboardUrl = `${Deno.env.get("SUPABASE_URL")?.replace("https://miyedioemkzhetphjzzg.supabase.co", "https://saronboost.com") || "https://saronboost.com"}/reservations`;
+                      const appOrigin = publicAppOrigin();
+                      const dashboardUrl = `${appOrigin}/reservations`;
+
+                      // 🆕 ワンタイムリンク発行（48h）
+                      const actionUrls: Record<string, string> = {};
+                      try {
+                        const actions: Array<"approve"|"propose"|"reject"> = ["approve","propose","reject"];
+                        const expiresAt = new Date(Date.now() + 48*60*60*1000).toISOString();
+                        for (const act of actions) {
+                          const tok = await signActionToken({
+                            request_id: rrInserted.id,
+                            action: act,
+                            owner_id: owner.id,
+                          });
+                          const tHash = await hashToken(tok);
+                          await supabase.from("reservation_action_tokens").insert({
+                            request_id: rrInserted.id,
+                            owner_id: owner.id,
+                            token_hash: tHash,
+                            action: act,
+                            expires_at: expiresAt,
+                          });
+                          const path = act === "approve" ? "a" : act === "propose" ? "p" : "r";
+                          actionUrls[act] = `${appOrigin}/r/${path}/${tok}`;
+                        }
+                      } catch (e) {
+                        console.error("[reservation-intent] token issue failed:", e);
+                      }
+
                       const dateLine = parsed.desiredDateCandidates?.[0]
                         ? `📅 ${parsed.desiredDateCandidates[0].date || "?"} ${parsed.desiredDateCandidates[0].timeRange || ""}`
                         : "📅 (日時未確定)";
                       const menuLine = parsed.desiredMenu ? `💇 ${parsed.desiredMenu}` : "";
                       const staffLine = parsed.desiredStaffName ? `👤 ${parsed.desiredStaffName}様ご指名` : "";
                       const outsideTag = isOutsideHours ? "【営業時間外受付】\n" : "";
+                      const linkBlock = actionUrls.approve
+                        ? `\n\n━━━━━━━━━━━\nLINEから直接操作:\n✅ 承認 → ${actionUrls.approve}\n📅 別日時提案 → ${actionUrls.propose}\n❌ 却下 → ${actionUrls.reject}\n（リンク有効期限48時間）`
+                        : "";
                       const notifMsg = `${outsideTag}🌸 LINE予約希望が届きました
 お客様: ${linkedCustomer.full_name}様
 ${dateLine}
@@ -681,8 +713,7 @@ ${staffLine}
 ${text.slice(0, 200)}${text.length > 200 ? "…" : ""}
 
 AI信頼度: ${parsed.confidence}/100
-👉 ${dashboardUrl}
-（承認・調整はダッシュボードで）`;
+👉 ダッシュボード: ${dashboardUrl}${linkBlock}`;
                       let okCount = 0;
                       for (const r of lineRecipients) {
                         const pr = await sendLinePush(accessToken, r.line_user_id, notifMsg);
