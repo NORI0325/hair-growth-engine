@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { HeroFlow, StepDownload, StepDevMode, StepLoadUnpacked, StepScan } from "@/components/salonboard/StepIllustration";
 import HandsOnChecklist from "@/components/salonboard/HandsOnChecklist";
+import ExtensionDownloadConsentDialog from "@/components/salonboard/ExtensionDownloadConsentDialog";
 
 interface ImportLog {
   id: string;
@@ -31,6 +32,7 @@ const STEPS = [
 const SalonBoardExport = () => {
   const { user } = useAuth();
   const [downloading, setDownloading] = useState(false);
+  const [consentOpen, setConsentOpen] = useState(false);
   const [logs, setLogs] = useState<ImportLog[]>([]);
 
   const loadLogs = async () => {
