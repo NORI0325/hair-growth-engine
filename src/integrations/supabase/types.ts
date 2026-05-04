@@ -1901,6 +1901,74 @@ export type Database = {
         }
         Relationships: []
       }
+      reservation_ai_logs: {
+        Row: {
+          ai_confidence: number | null
+          ai_extracted: Json | null
+          ai_is_reservation: boolean | null
+          ai_summary: string | null
+          created_at: string
+          customer_id: string | null
+          decided_at: string | null
+          false_positive: boolean | null
+          final_action: string | null
+          final_corrected: boolean | null
+          id: string
+          keyword_score: number | null
+          needs_clarification_fields: string[] | null
+          owner_id: string
+          raw_message: string
+          request_id: string | null
+          staff_feedback: string | null
+        }
+        Insert: {
+          ai_confidence?: number | null
+          ai_extracted?: Json | null
+          ai_is_reservation?: boolean | null
+          ai_summary?: string | null
+          created_at?: string
+          customer_id?: string | null
+          decided_at?: string | null
+          false_positive?: boolean | null
+          final_action?: string | null
+          final_corrected?: boolean | null
+          id?: string
+          keyword_score?: number | null
+          needs_clarification_fields?: string[] | null
+          owner_id: string
+          raw_message: string
+          request_id?: string | null
+          staff_feedback?: string | null
+        }
+        Update: {
+          ai_confidence?: number | null
+          ai_extracted?: Json | null
+          ai_is_reservation?: boolean | null
+          ai_summary?: string | null
+          created_at?: string
+          customer_id?: string | null
+          decided_at?: string | null
+          false_positive?: boolean | null
+          final_action?: string | null
+          final_corrected?: boolean | null
+          id?: string
+          keyword_score?: number | null
+          needs_clarification_fields?: string[] | null
+          owner_id?: string
+          raw_message?: string
+          request_id?: string | null
+          staff_feedback?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reservation_ai_logs_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "reservation_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       reservation_requests: {
         Row: {
           ai_confidence: number
@@ -1934,6 +2002,8 @@ export type Database = {
           salonboard_transfer_text: string | null
           salonboard_transferred_at: string | null
           staff_memo: string | null
+          staff_notification_status: string | null
+          staff_notified_at: string | null
           status: Database["public"]["Enums"]["reservation_request_status"]
           updated_at: string
         }
@@ -1969,6 +2039,8 @@ export type Database = {
           salonboard_transfer_text?: string | null
           salonboard_transferred_at?: string | null
           staff_memo?: string | null
+          staff_notification_status?: string | null
+          staff_notified_at?: string | null
           status?: Database["public"]["Enums"]["reservation_request_status"]
           updated_at?: string
         }
@@ -2004,6 +2076,8 @@ export type Database = {
           salonboard_transfer_text?: string | null
           salonboard_transferred_at?: string | null
           staff_memo?: string | null
+          staff_notification_status?: string | null
+          staff_notified_at?: string | null
           status?: Database["public"]["Enums"]["reservation_request_status"]
           updated_at?: string
         }

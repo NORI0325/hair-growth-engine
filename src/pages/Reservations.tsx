@@ -10,7 +10,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Check, X, Loader2, MessageSquare, Calendar, Copy, Sparkles, Clock } from "lucide-react";
+import { Check, X, Loader2, MessageSquare, Calendar, Copy, Sparkles, Clock, BarChart3, Bell } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 interface ReservationRequest {
   id: string;
@@ -28,6 +29,23 @@ interface ReservationRequest {
   created_at: string;
   salonboard_transfer_text: string | null;
   customers?: { full_name: string; phone: string | null } | null;
+  staff_notified_at?: string | null;
+  staff_notification_status?: string | null;
+}
+
+interface AILog {
+  id: string;
+  raw_message: string;
+  keyword_score: number | null;
+  ai_confidence: number | null;
+  ai_summary: string | null;
+  ai_is_reservation: boolean | null;
+  final_action: string | null;
+  final_corrected: boolean | null;
+  false_positive: boolean | null;
+  needs_clarification_fields: string[] | null;
+  created_at: string;
+  decided_at: string | null;
 }
 
 const STATUS_COLUMNS = [
@@ -48,9 +66,11 @@ function jpDate(ymd?: string | null): string {
 export default function Reservations() {
   const { user } = useAuth();
   const [items, setItems] = useState<ReservationRequest[]>([]);
+  const [aiLogs, setAiLogs] = useState<AILog[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [dialog, setDialog] = useState<{ mode: "approve" | "propose" | "reject"; req: ReservationRequest } | null>(null);
+  const [tab, setTab] = useState<"board" | "logs">("board");
 
   // フォーム状態
   const [confirmedDate, setConfirmedDate] = useState("");
@@ -63,13 +83,21 @@ export default function Reservations() {
   const load = async () => {
     if (!user) return;
     setLoading(true);
-    const { data, error } = await supabase
-      .from("reservation_requests")
-      .select("*, customers:customer_id(full_name, phone)")
-      .order("created_at", { ascending: false })
-      .limit(200);
+    const [{ data, error }, { data: logs }] = await Promise.all([
+      supabase
+        .from("reservation_requests")
+        .select("*, customers:customer_id(full_name, phone)")
+        .order("created_at", { ascending: false })
+        .limit(200),
+      supabase
+        .from("reservation_ai_logs")
+        .select("id, raw_message, keyword_score, ai_confidence, ai_summary, ai_is_reservation, final_action, final_corrected, false_positive, needs_clarification_fields, created_at, decided_at")
+        .order("created_at", { ascending: false })
+        .limit(100),
+    ]);
     if (error) toast.error(error.message);
     setItems((data as any) || []);
+    setAiLogs((logs as any) || []);
     setLoading(false);
   };
 
@@ -154,77 +182,101 @@ export default function Reservations() {
 
       {loading ? (
         <div className="flex items-center justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
-      ) : items.length === 0 ? (
-        <div className="text-center py-16 text-muted-foreground">
-          <MessageSquare className="h-12 w-12 mx-auto mb-3 opacity-40" />
-          <p>まだ仮予約はありません。</p>
-          <p className="text-sm mt-2">LINE公式アカウントに予約希望が届くとここに表示されます。</p>
-        </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-          {grouped.map(col => (
-            <div key={col.key} className="space-y-3">
-              <div className={`px-3 py-2 border ${col.tone} text-sm font-semibold flex items-center justify-between`}>
-                <span>{col.label}</span>
-                <Badge variant="outline" className="rounded-none">{col.items.length}</Badge>
+        <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
+          <TabsList className="rounded-none mb-4">
+            <TabsTrigger value="board" className="rounded-none">仮予約ボード</TabsTrigger>
+            <TabsTrigger value="logs" className="rounded-none gap-2">
+              <BarChart3 className="h-3 w-3" />AI解析ログ
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="board">
+            {items.length === 0 ? (
+              <div className="text-center py-16 text-muted-foreground">
+                <MessageSquare className="h-12 w-12 mx-auto mb-3 opacity-40" />
+                <p>まだ仮予約はありません。</p>
+                <p className="text-sm mt-2">LINE公式アカウントに予約希望が届くとここに表示されます。</p>
               </div>
-              <div className="space-y-3">
-                {col.items.map(req => (
-                  <div key={req.id} className="border border-border bg-card p-3 space-y-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="font-semibold text-sm">{req.customers?.full_name || req.display_name || "(未連携)"}</div>
-                      <Badge variant="outline" className="rounded-none text-[10px] flex items-center gap-1">
-                        <Sparkles className="h-3 w-3" />{req.ai_confidence}
-                      </Badge>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+                {grouped.map(col => (
+                  <div key={col.key} className="space-y-3">
+                    <div className={`px-3 py-2 border ${col.tone} text-sm font-semibold flex items-center justify-between`}>
+                      <span>{col.label}</span>
+                      <Badge variant="outline" className="rounded-none">{col.items.length}</Badge>
                     </div>
-                    {req.outside_hours_notified && (
-                      <Badge variant="outline" className="rounded-none text-[10px] bg-amber-50 text-amber-800 border-amber-300 flex items-center gap-1 w-fit">
-                        <Clock className="h-3 w-3" />営業時間外受付
-                      </Badge>
-                    )}
-                    <div className="text-xs space-y-1">
-                      {req.desired_date_candidates?.length > 0 && (
-                        <div>📅 {req.desired_date_candidates.slice(0,3).map((c: any) => `${jpDate(c.date)}${c.time_range ? `(${c.time_range})` : ""}`).join(" / ")}</div>
+                    <div className="space-y-3">
+                      {col.items.map(req => (
+                        <div key={req.id} className="border border-border bg-card p-3 space-y-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="font-semibold text-sm">{req.customers?.full_name || req.display_name || "(未連携)"}</div>
+                            <Badge variant="outline" className="rounded-none text-[10px] flex items-center gap-1">
+                              <Sparkles className="h-3 w-3" />{req.ai_confidence}
+                            </Badge>
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                            {req.outside_hours_notified && (
+                              <Badge variant="outline" className="rounded-none text-[10px] bg-amber-50 text-amber-800 border-amber-300 flex items-center gap-1">
+                                <Clock className="h-3 w-3" />営業時間外
+                              </Badge>
+                            )}
+                            {req.staff_notified_at && (
+                              <Badge variant="outline" className="rounded-none text-[10px] bg-emerald-50 text-emerald-800 border-emerald-300 flex items-center gap-1">
+                                <Bell className="h-3 w-3" />スタッフ通知済
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="text-xs space-y-1">
+                            {req.desired_date_candidates?.length > 0 && (
+                              <div>📅 {req.desired_date_candidates.slice(0,3).map((c: any) => `${jpDate(c.date)}${c.time_range ? `(${c.time_range})` : ""}`).join(" / ")}</div>
+                            )}
+                            {req.desired_menu && <div>💇 {req.desired_menu}</div>}
+                            {req.desired_staff_name && <div>👤 {req.desired_staff_name}様</div>}
+                            {req.needs_clarification_fields?.length > 0 && (
+                              <div className="text-amber-700">⚠ 不足: {req.needs_clarification_fields.join(", ")}</div>
+                            )}
+                          </div>
+                          <div className="text-xs text-muted-foreground bg-muted/40 p-2 border border-border whitespace-pre-wrap">
+                            {req.raw_message.slice(0, 200)}{req.raw_message.length > 200 ? "…" : ""}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground">
+                            {new Date(req.created_at).toLocaleString("ja-JP")}
+                          </div>
+                          {(req.status === "awaiting_approval" || req.status === "pending_clarification") && (
+                            <div className="flex flex-wrap gap-1 pt-1">
+                              <Button size="sm" variant="default" className="h-7 text-xs flex-1 rounded-none" onClick={() => openApprove(req)} disabled={busy === req.id}>
+                                <Check className="h-3 w-3 mr-1" />確定
+                              </Button>
+                              <Button size="sm" variant="outline" className="h-7 text-xs rounded-none" onClick={() => openPropose(req)} disabled={busy === req.id}>
+                                <Calendar className="h-3 w-3 mr-1" />調整
+                              </Button>
+                              <Button size="sm" variant="outline" className="h-7 text-xs rounded-none" onClick={() => openReject(req)} disabled={busy === req.id}>
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          )}
+                          {req.status === "completed" && req.salonboard_transfer_text && (
+                            <Button size="sm" variant="outline" className="h-7 text-xs w-full rounded-none" onClick={() => copySalonboard(req)}>
+                              <Copy className="h-3 w-3 mr-1" />サロンボード転記用コピー
+                            </Button>
+                          )}
+                        </div>
+                      ))}
+                      {col.items.length === 0 && (
+                        <div className="text-xs text-center text-muted-foreground py-6">なし</div>
                       )}
-                      {req.desired_menu && <div>💇 {req.desired_menu}</div>}
-                      {req.desired_staff_name && <div>👤 {req.desired_staff_name}様</div>}
-                      {req.needs_clarification_fields?.length > 0 && (
-                        <div className="text-amber-700">⚠ 不足: {req.needs_clarification_fields.join(", ")}</div>
-                      )}
                     </div>
-                    <div className="text-xs text-muted-foreground bg-muted/40 p-2 border border-border whitespace-pre-wrap">
-                      {req.raw_message.slice(0, 200)}{req.raw_message.length > 200 ? "…" : ""}
-                    </div>
-                    <div className="text-[10px] text-muted-foreground">
-                      {new Date(req.created_at).toLocaleString("ja-JP")}
-                    </div>
-                    {(req.status === "awaiting_approval" || req.status === "pending_clarification") && (
-                      <div className="flex flex-wrap gap-1 pt-1">
-                        <Button size="sm" variant="default" className="h-7 text-xs flex-1 rounded-none" onClick={() => openApprove(req)} disabled={busy === req.id}>
-                          <Check className="h-3 w-3 mr-1" />確定
-                        </Button>
-                        <Button size="sm" variant="outline" className="h-7 text-xs rounded-none" onClick={() => openPropose(req)} disabled={busy === req.id}>
-                          <Calendar className="h-3 w-3 mr-1" />調整
-                        </Button>
-                        <Button size="sm" variant="outline" className="h-7 text-xs rounded-none" onClick={() => openReject(req)} disabled={busy === req.id}>
-                          <X className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    )}
-                    {req.status === "completed" && req.salonboard_transfer_text && (
-                      <Button size="sm" variant="outline" className="h-7 text-xs w-full rounded-none" onClick={() => copySalonboard(req)}>
-                        <Copy className="h-3 w-3 mr-1" />サロンボード転記用コピー
-                      </Button>
-                    )}
                   </div>
                 ))}
-                {col.items.length === 0 && (
-                  <div className="text-xs text-center text-muted-foreground py-6">なし</div>
-                )}
               </div>
-            </div>
-          ))}
-        </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="logs">
+            <AILogsPanel logs={aiLogs} />
+          </TabsContent>
+        </Tabs>
       )}
 
       <Dialog open={!!dialog} onOpenChange={(o) => !o && setDialog(null)}>
@@ -271,5 +323,97 @@ export default function Reservations() {
         </DialogContent>
       </Dialog>
     </AppLayout>
+  );
+}
+
+function AILogsPanel({ logs }: { logs: AILog[] }) {
+  if (logs.length === 0) {
+    return (
+      <div className="text-center py-16 text-muted-foreground">
+        <BarChart3 className="h-12 w-12 mx-auto mb-3 opacity-40" />
+        <p>まだAI解析ログはありません。</p>
+      </div>
+    );
+  }
+
+  // サマリ統計
+  const total = logs.length;
+  const decided = logs.filter(l => l.final_action);
+  const approvedCount = logs.filter(l => l.final_action === "approved").length;
+  const correctedCount = logs.filter(l => l.final_corrected).length;
+  const fpCount = logs.filter(l => l.false_positive).length;
+  const avgConf = logs.reduce((s, l) => s + (l.ai_confidence || 0), 0) / total;
+  const approvalRate = decided.length > 0 ? Math.round((approvedCount / decided.length) * 100) : 0;
+  const accuracy = decided.length > 0
+    ? Math.round(((decided.length - correctedCount - fpCount) / decided.length) * 100)
+    : 0;
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <StatCard label="解析数" value={`${total}件`} sub="直近100件" />
+        <StatCard label="平均信頼度" value={`${avgConf.toFixed(0)}/100`} sub="AI抽出スコア" />
+        <StatCard label="承認率" value={`${approvalRate}%`} sub={`承認/判断済 ${approvedCount}/${decided.length}`} />
+        <StatCard label="精度" value={`${accuracy}%`} sub={`修正${correctedCount} 誤検出${fpCount}`} />
+      </div>
+
+      <div className="border border-border bg-card">
+        <div className="px-4 py-2 border-b border-border bg-muted/30 text-xs font-semibold tracking-wider uppercase">
+          解析ログ（直近100件）
+        </div>
+        <div className="divide-y divide-border max-h-[600px] overflow-y-auto">
+          {logs.map(log => (
+            <div key={log.id} className="px-4 py-3 text-xs space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="rounded-none text-[10px]">
+                    キーワード {log.keyword_score ?? "-"}
+                  </Badge>
+                  <Badge variant="outline" className="rounded-none text-[10px] flex items-center gap-1">
+                    <Sparkles className="h-3 w-3" />信頼度 {log.ai_confidence ?? "-"}
+                  </Badge>
+                  {log.final_action && (
+                    <Badge variant="outline" className={`rounded-none text-[10px] ${
+                      log.final_action === "approved" ? "bg-emerald-50 text-emerald-800 border-emerald-300"
+                      : log.final_action === "rejected" ? "bg-rose-50 text-rose-800 border-rose-300"
+                      : "bg-blue-50 text-blue-800 border-blue-300"
+                    }`}>
+                      {log.final_action === "approved" ? "確定" : log.final_action === "rejected" ? "却下" : "提案"}
+                    </Badge>
+                  )}
+                  {log.final_corrected && (
+                    <Badge variant="outline" className="rounded-none text-[10px] bg-amber-50 text-amber-800 border-amber-300">
+                      手修正あり
+                    </Badge>
+                  )}
+                  {log.false_positive && (
+                    <Badge variant="outline" className="rounded-none text-[10px] bg-rose-50 text-rose-800 border-rose-300">
+                      誤検出
+                    </Badge>
+                  )}
+                </div>
+                <span className="text-muted-foreground text-[10px]">
+                  {new Date(log.created_at).toLocaleString("ja-JP")}
+                </span>
+              </div>
+              {log.ai_summary && <div className="text-muted-foreground">📝 {log.ai_summary}</div>}
+              <div className="text-muted-foreground bg-muted/30 p-2 border border-border whitespace-pre-wrap line-clamp-3">
+                {log.raw_message.slice(0, 250)}{log.raw_message.length > 250 ? "…" : ""}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="border border-border bg-card p-3">
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="text-2xl font-semibold mt-1">{value}</div>
+      {sub && <div className="text-[10px] text-muted-foreground mt-1">{sub}</div>}
+    </div>
   );
 }
