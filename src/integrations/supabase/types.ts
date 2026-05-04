@@ -1734,6 +1734,9 @@ export type Database = {
           line_add_friend_url: string | null
           line_channel_access_token: string | null
           line_channel_secret: string | null
+          line_reservation_auto_reply: string | null
+          line_reservation_enabled: boolean
+          line_reservation_outside_hours_reply: string | null
           notification_recipients: Json
           onboarding_completed_at: string | null
           onboarding_progress: Json
@@ -1781,6 +1784,9 @@ export type Database = {
           line_add_friend_url?: string | null
           line_channel_access_token?: string | null
           line_channel_secret?: string | null
+          line_reservation_auto_reply?: string | null
+          line_reservation_enabled?: boolean
+          line_reservation_outside_hours_reply?: string | null
           notification_recipients?: Json
           onboarding_completed_at?: string | null
           onboarding_progress?: Json
@@ -1828,6 +1834,9 @@ export type Database = {
           line_add_friend_url?: string | null
           line_channel_access_token?: string | null
           line_channel_secret?: string | null
+          line_reservation_auto_reply?: string | null
+          line_reservation_enabled?: boolean
+          line_reservation_outside_hours_reply?: string | null
           notification_recipients?: Json
           onboarding_completed_at?: string | null
           onboarding_progress?: Json
@@ -1888,6 +1897,114 @@ export type Database = {
           segment?: Database["public"]["Enums"]["retention_segment"]
           subject?: string | null
           tone?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      reservation_requests: {
+        Row: {
+          ai_confidence: number
+          ai_model: string | null
+          ai_parsed: Json
+          approved_at: string | null
+          approved_by: string | null
+          auto_reply_sent_at: string | null
+          confirmed_date: string | null
+          confirmed_menu: string | null
+          confirmed_staff_id: string | null
+          confirmed_time: string | null
+          created_at: string
+          customer_id: string | null
+          desired_date_candidates: Json
+          desired_menu: string | null
+          desired_menu_items: string[] | null
+          desired_staff_id: string | null
+          desired_staff_name: string | null
+          display_name: string | null
+          id: string
+          line_user_id: string | null
+          location_id: string | null
+          needs_clarification_fields: string[]
+          outside_hours_notified: boolean
+          owner_id: string
+          raw_message: string
+          rejected_at: string | null
+          rejected_by: string | null
+          rejection_reason: string | null
+          salonboard_transfer_text: string | null
+          salonboard_transferred_at: string | null
+          staff_memo: string | null
+          status: Database["public"]["Enums"]["reservation_request_status"]
+          updated_at: string
+        }
+        Insert: {
+          ai_confidence?: number
+          ai_model?: string | null
+          ai_parsed?: Json
+          approved_at?: string | null
+          approved_by?: string | null
+          auto_reply_sent_at?: string | null
+          confirmed_date?: string | null
+          confirmed_menu?: string | null
+          confirmed_staff_id?: string | null
+          confirmed_time?: string | null
+          created_at?: string
+          customer_id?: string | null
+          desired_date_candidates?: Json
+          desired_menu?: string | null
+          desired_menu_items?: string[] | null
+          desired_staff_id?: string | null
+          desired_staff_name?: string | null
+          display_name?: string | null
+          id?: string
+          line_user_id?: string | null
+          location_id?: string | null
+          needs_clarification_fields?: string[]
+          outside_hours_notified?: boolean
+          owner_id: string
+          raw_message: string
+          rejected_at?: string | null
+          rejected_by?: string | null
+          rejection_reason?: string | null
+          salonboard_transfer_text?: string | null
+          salonboard_transferred_at?: string | null
+          staff_memo?: string | null
+          status?: Database["public"]["Enums"]["reservation_request_status"]
+          updated_at?: string
+        }
+        Update: {
+          ai_confidence?: number
+          ai_model?: string | null
+          ai_parsed?: Json
+          approved_at?: string | null
+          approved_by?: string | null
+          auto_reply_sent_at?: string | null
+          confirmed_date?: string | null
+          confirmed_menu?: string | null
+          confirmed_staff_id?: string | null
+          confirmed_time?: string | null
+          created_at?: string
+          customer_id?: string | null
+          desired_date_candidates?: Json
+          desired_menu?: string | null
+          desired_menu_items?: string[] | null
+          desired_staff_id?: string | null
+          desired_staff_name?: string | null
+          display_name?: string | null
+          id?: string
+          line_user_id?: string | null
+          location_id?: string | null
+          needs_clarification_fields?: string[]
+          outside_hours_notified?: boolean
+          owner_id?: string
+          raw_message?: string
+          rejected_at?: string | null
+          rejected_by?: string | null
+          rejection_reason?: string | null
+          salonboard_transfer_text?: string | null
+          salonboard_transferred_at?: string | null
+          staff_memo?: string | null
+          status?: Database["public"]["Enums"]["reservation_request_status"]
           updated_at?: string
         }
         Relationships: []
@@ -2840,6 +2957,13 @@ export type Database = {
       customer_gender: "female" | "male" | "other" | "unknown"
       customer_segment: "active" | "at_risk" | "dormant" | "new"
       job_approval_status: "auto" | "pending_approval" | "approved" | "rejected"
+      reservation_request_status:
+        | "pending_clarification"
+        | "awaiting_approval"
+        | "approved"
+        | "rejected"
+        | "completed"
+        | "expired"
       retention_segment:
         | "cold_1"
         | "warm_mid"
@@ -2986,6 +3110,14 @@ export const Constants = {
       customer_gender: ["female", "male", "other", "unknown"],
       customer_segment: ["active", "at_risk", "dormant", "new"],
       job_approval_status: ["auto", "pending_approval", "approved", "rejected"],
+      reservation_request_status: [
+        "pending_clarification",
+        "awaiting_approval",
+        "approved",
+        "rejected",
+        "completed",
+        "expired",
+      ],
       retention_segment: [
         "cold_1",
         "warm_mid",
