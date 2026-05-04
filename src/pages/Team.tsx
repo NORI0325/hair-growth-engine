@@ -39,21 +39,37 @@ const Team = () => {
 
   const load = async () => {
     if (!tenantId) return;
-    const { data: m } = await supabase
-      .from("tenant_members")
-      .select("user_id, role, accepted_at")
-      .eq("tenant_id", tenantId);
-    const rows = (m as any[]) ?? [];
-    const ids = rows.map((r) => r.user_id);
-    let profilesMap: Record<string, { full_name: string | null }> = {};
-    if (ids.length > 0) {
-      const { data: profs } = await supabase
-        .from("profiles")
-        .select("id, full_name")
-        .in("id", ids);
-      profilesMap = Object.fromEntries((profs ?? []).map((p: any) => [p.id, { full_name: p.full_name }]));
+    // 詳細RPC（マネージャー以上が呼び出し可能）
+    const { data: detail, error: detailErr } = await supabase.rpc("get_tenant_members_detail", { _tenant_id: tenantId });
+    if (!detailErr && detail) {
+      setMembers((detail as any[]).map((r) => ({
+        user_id: r.user_id,
+        role: r.role,
+        accepted_at: r.accepted_at,
+        full_name: r.full_name,
+        email: r.email,
+        location_ids: r.location_ids ?? [],
+        location_names: r.location_names ?? [],
+      })));
+    } else {
+      // フォールバック（権限不足時など）
+      const { data: m } = await supabase
+        .from("tenant_members")
+        .select("user_id, role, accepted_at")
+        .eq("tenant_id", tenantId);
+      const rows = (m as any[]) ?? [];
+      const ids = rows.map((r) => r.user_id);
+      let profilesMap: Record<string, { full_name: string | null }> = {};
+      if (ids.length > 0) {
+        const { data: profs } = await supabase
+          .from("profiles")
+          .select("id, full_name")
+          .in("id", ids);
+        profilesMap = Object.fromEntries((profs ?? []).map((p: any) => [p.id, { full_name: p.full_name }]));
+      }
+      setMembers(rows.map((r) => ({ ...r, full_name: profilesMap[r.user_id]?.full_name ?? null })));
     }
-    setMembers(rows.map((r) => ({ ...r, profiles: profilesMap[r.user_id] ?? { full_name: null } })) as any);
+
     const { data: i } = await supabase
       .from("tenant_invitations")
       .select("id, email, role, expires_at, accepted_at, location_ids")
