@@ -11,7 +11,6 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { CustomerMessageDialog } from "@/components/CustomerMessageDialog";
 import { toast } from "sonner";
 import { format } from "date-fns";
-import { useCurrentLocationId } from "@/hooks/useLocations";
 
 interface InboundMsg {
   id: string;
@@ -44,7 +43,6 @@ const URGENCY_STYLES: Record<string, { label: string; className: string }> = {
 
 export default function Inbox() {
   const { user } = useAuth();
-  const locationId = useCurrentLocationId();
   const [messages, setMessages] = useState<InboundMsg[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"unhandled" | "all" | "critical">("unhandled");
@@ -52,13 +50,12 @@ export default function Inbox() {
   const [replyTo, setReplyTo] = useState<InboundMsg | null>(null);
 
   const load = async () => {
-    if (!user || !locationId) { setMessages([]); setLoading(false); return; }
+    if (!user) { setMessages([]); setLoading(false); return; }
     setLoading(true);
     let q = supabase
       .from("line_inbound_messages")
       .select("*")
       .eq("owner_id", user.id)
-      .or(`location_id.eq.${locationId},location_id.is.null`)
       .order("created_at", { ascending: false })
       .limit(200);
     if (filter === "unhandled") q = q.eq("handled", false);
@@ -70,14 +67,14 @@ export default function Inbox() {
 
   useEffect(() => {
     load();
-    if (!user || !locationId) return;
+    if (!user) return;
     const ch = supabase
       .channel("inbox-page")
       .on("postgres_changes", { event: "*", schema: "public", table: "line_inbound_messages", filter: `owner_id=eq.${user.id}` }, load)
       .subscribe();
     return () => { supabase.removeChannel(ch); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, filter, locationId]);
+  }, [user, filter]);
 
   const markHandled = async (id: string, handled: boolean) => {
     const { error } = await supabase
