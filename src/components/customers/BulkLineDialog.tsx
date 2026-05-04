@@ -1,10 +1,10 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, Send, MessageCircle, Mail, Smartphone, Sparkles, Users, Filter } from "lucide-react";
+import { Loader2, Send, MessageCircle, Mail, Smartphone, Sparkles, Users, Filter, Save, BookmarkPlus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -30,20 +30,39 @@ interface Props {
 type Gender = "female" | "male" | "other" | "unknown";
 type AgeGroup = "teens" | "20s" | "30s" | "40s" | "50s" | "60s+";
 
-const ageGroupOf = (b: string | null | undefined): AgeGroup | null => {
-  if (!b) return null;
-  const d = new Date(b); if (isNaN(d.getTime())) return null;
-  const now = new Date();
-  let a = now.getFullYear() - d.getFullYear();
-  const m = now.getMonth() - d.getMonth();
-  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) a--;
-  if (a < 20) return "teens";
-  if (a < 30) return "20s";
-  if (a < 40) return "30s";
-  if (a < 50) return "40s";
-  if (a < 60) return "50s";
-  return "60s+";
-};
+interface SegmentState {
+  genders: Gender[];
+  ages: AgeGroup[];
+  vipOnly: boolean;
+  daysMin: string;
+  daysMax: string;
+  menuKw: string;
+  visitMin: string;
+  visitMax: string;
+  spentMin: string;
+  spentMax: string;
+  staffIds: string[];
+  birthdayMonths: number[];
+  tagIdsAny: string[];
+  excludeTagIds: string[];
+  hasEmail: boolean;
+  hasPhone: boolean;
+  hasLine: boolean;
+  cycleDays: string;
+  toleranceDays: string;
+  excludeRecentBookingDays: string;
+}
+
+const emptySegment = (): SegmentState => ({
+  genders: [], ages: [], vipOnly: false,
+  daysMin: "", daysMax: "", menuKw: "",
+  visitMin: "", visitMax: "", spentMin: "", spentMax: "",
+  staffIds: [], birthdayMonths: [],
+  tagIdsAny: [], excludeTagIds: [],
+  hasEmail: false, hasPhone: false, hasLine: false,
+  cycleDays: "", toleranceDays: "7",
+  excludeRecentBookingDays: "",
+});
 
 const PRESETS: { key: string; label: string; subject: string; body: string; tip: string }[] = [
   {
@@ -87,38 +106,77 @@ const BulkLineDialog = ({ open, onClose, customers }: Props) => {
   const [skipRecent, setSkipRecent] = useState(true);
   const [skipDays, setSkipDays] = useState(7);
 
-  // セグメント絞込み
-  const [genders, setGenders] = useState<Gender[]>([]);
-  const [ages, setAges] = useState<AgeGroup[]>([]);
-  const [vipOnly, setVipOnly] = useState(false);
-  const [daysMin, setDaysMin] = useState<string>("");
-  const [daysMax, setDaysMax] = useState<string>("");
-  const [menuKw, setMenuKw] = useState("");
+  const [seg, setSeg] = useState<SegmentState>(emptySegment());
+  const updateSeg = <K extends keyof SegmentState>(k: K, v: SegmentState[K]) =>
+    setSeg((s) => ({ ...s, [k]: v }));
+
+  // 補助マスタ
+  const [staffOptions, setStaffOptions] = useState<{ id: string; name: string }[]>([]);
+  const [tagOptions, setTagOptions] = useState<{ id: string; name: string; color: string }[]>([]);
+  const [savedSegments, setSavedSegments] = useState<{ id: string; name: string; conditions: any }[]>([]);
+
+  // サーバープレビュー
+  const [serverPreview, setServerPreview] = useState<{ total: number; line: number; sms: number; email: number; segment_skipped: number; recent_booking_skipped: number; cooldown_skipped: number } | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   const toggle = <T,>(arr: T[], v: T): T[] => arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v];
 
-  // ブラウザ側で絞込み後の対象数をプレビュー
-  const filteredCount = useMemo(() => {
-    return customers.filter((c) => {
-      if (genders.length > 0 && !genders.includes((c.gender || "unknown") as Gender)) return false;
-      if (ages.length > 0) {
-        const ag = ageGroupOf(c.birthday);
-        if (!ag || !ages.includes(ag)) return false;
-      }
-      if (vipOnly) {
-        const isVip = (c.total_spent || 0) >= 150000 || (c.visit_count || 0) >= 15;
-        if (!isVip) return false;
-      }
-      if (daysMin || daysMax) {
-        const ds = c.last_visit_date ? Math.floor((Date.now() - new Date(c.last_visit_date).getTime()) / 86400000) : null;
-        if (ds === null) return false;
-        if (daysMin && ds < Number(daysMin)) return false;
-        if (daysMax && ds > Number(daysMax)) return false;
-      }
-      // メニューキーワードはサーバー側で再フィルタ
-      return true;
-    }).length;
-  }, [customers, genders, ages, vipOnly, daysMin, daysMax]);
+  // 初回マスタ読込
+  useEffect(() => {
+    if (!open) return;
+    (async () => {
+      const [{ data: staff }, { data: tags }, { data: segs }] = await Promise.all([
+        supabase.from("staff").select("id, name").eq("active", true).order("name"),
+        supabase.from("customer_tags" as any).select("id, name, color").order("sort_order"),
+        supabase.from("broadcast_segments" as any).select("id, name, conditions").order("updated_at", { ascending: false }),
+      ]);
+      setStaffOptions((staff || []) as any);
+      setTagOptions((tags || []) as any);
+      setSavedSegments((segs || []) as any);
+    })();
+  }, [open]);
+
+  // セグメントをAPI形式に変換
+  const buildSegmentPayload = useCallback(() => ({
+    genders: seg.genders,
+    age_groups: seg.ages,
+    vip_only: seg.vipOnly,
+    days_since_min: seg.daysMin ? Number(seg.daysMin) : null,
+    days_since_max: seg.daysMax ? Number(seg.daysMax) : null,
+    menu_keyword: seg.menuKw || null,
+    visit_count_min: seg.visitMin ? Number(seg.visitMin) : null,
+    visit_count_max: seg.visitMax ? Number(seg.visitMax) : null,
+    total_spent_min: seg.spentMin ? Number(seg.spentMin) : null,
+    total_spent_max: seg.spentMax ? Number(seg.spentMax) : null,
+    staff_ids: seg.staffIds,
+    birthday_months: seg.birthdayMonths,
+    tag_ids_any: seg.tagIdsAny,
+    exclude_tag_ids: seg.excludeTagIds,
+    has_email: seg.hasEmail,
+    has_phone: seg.hasPhone,
+    has_line: seg.hasLine,
+    recommended_cycle_days: seg.cycleDays ? Number(seg.cycleDays) : null,
+    recommended_tolerance_days: seg.toleranceDays ? Number(seg.toleranceDays) : null,
+  }), [seg]);
+
+  // サーバープレビュー（debounce）
+  useEffect(() => {
+    if (!open || customers.length === 0) return;
+    const timer = setTimeout(async () => {
+      setPreviewLoading(true);
+      const { data, error } = await supabase.functions.invoke("broadcast-preview", {
+        body: {
+          customer_ids: customers.map((c) => c.id),
+          segment: buildSegmentPayload(),
+          skip_recent_days: skipRecent ? skipDays : 0,
+          exclude_recent_booking_days: seg.excludeRecentBookingDays ? Number(seg.excludeRecentBookingDays) : 0,
+        },
+      });
+      setPreviewLoading(false);
+      if (!error && data) setServerPreview(data as any);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [open, customers, seg, skipRecent, skipDays, buildSegmentPayload]);
 
   const reach = useMemo(() => ({
     line: customers.filter((c) => /^U[0-9a-f]{32}$/i.test(c.line_user_id || "")).length,
@@ -131,24 +189,27 @@ const BulkLineDialog = ({ open, onClose, customers }: Props) => {
     if (!p) return;
     setMessage(p.body);
     setSubject(p.subject);
-    // セグメントも自動セット
-    if (k === "female-30s") { setGenders(["female"]); setAges(["30s"]); setVipOnly(false); }
-    if (k === "male") { setGenders(["male"]); setAges([]); setVipOnly(false); }
-    if (k === "vip") { setGenders([]); setAges([]); setVipOnly(true); }
-    if (k === "dormant") { setGenders([]); setAges([]); setVipOnly(false); setDaysMin("180"); setDaysMax(""); }
+    const ns = emptySegment();
+    if (k === "female-30s") { ns.genders = ["female"]; ns.ages = ["30s"]; }
+    if (k === "male") { ns.genders = ["male"]; }
+    if (k === "vip") { ns.vipOnly = true; }
+    if (k === "dormant") { ns.daysMin = "180"; }
+    setSeg(ns);
     toast.success(`「${p.label}」テンプレを適用しました`);
   };
 
   const aiSuggest = async () => {
     setAiLoading(true);
     const segDesc: string[] = [];
-    if (genders.length) segDesc.push(`性別: ${genders.join("/")}`);
-    if (ages.length) segDesc.push(`年代: ${ages.join("/")}`);
-    if (vipOnly) segDesc.push("VIPのみ");
-    if (daysMin || daysMax) segDesc.push(`最終来店: ${daysMin || "0"}〜${daysMax || "∞"}日`);
-    if (menuKw) segDesc.push(`前回メニュー: ${menuKw}を含む`);
+    if (seg.genders.length) segDesc.push(`性別: ${seg.genders.join("/")}`);
+    if (seg.ages.length) segDesc.push(`年代: ${seg.ages.join("/")}`);
+    if (seg.vipOnly) segDesc.push("VIPのみ");
+    if (seg.daysMin || seg.daysMax) segDesc.push(`最終来店: ${seg.daysMin || "0"}〜${seg.daysMax || "∞"}日`);
+    if (seg.menuKw) segDesc.push(`前回メニュー: ${seg.menuKw}を含む`);
+    if (seg.cycleDays) segDesc.push(`次回推奨日±${seg.toleranceDays || 7}日`);
     const segText = segDesc.length ? segDesc.join(" / ") : "全顧客";
-    const prompt = `美容サロンの一斉送信文面を作成してください。\n\n対象セグメント: ${segText}\n対象人数: ${filteredCount}名\n\n要件:\n- {{name}} {{last_menu}} {{days_since}} {{staff_name}} {{next_suggested_menu}} の変数を活用\n- 特別感とパーソナル感を出す\n- 具体的なオファー（割引/メニュー）を含める\n- LINE/メール両対応で250文字以内\n- 押し付けがましくなく、自然で温かみのある日本語\n\n本文のみ返してください（前置きや説明は不要）。`;
+    const target = serverPreview?.total ?? customers.length;
+    const prompt = `美容サロンの一斉送信文面を作成してください。\n\n対象セグメント: ${segText}\n対象人数: ${target}名\n\n要件:\n- {{name}} {{last_menu}} {{days_since}} {{staff_name}} {{next_suggested_menu}} の変数を活用\n- 特別感とパーソナル感を出す\n- 具体的なオファー（割引/メニュー）を含める\n- LINE/メール両対応で250文字以内\n- 押し付けがましくなく、自然で温かみのある日本語\n\n本文のみ返してください（前置きや説明は不要）。`;
     const { data, error } = await supabase.functions.invoke("ai-template-assistant", {
       body: { text: prompt, action: "custom", instruction: "上記要件に従って本文を作成してください", channel: useLine ? "line" : "email" },
     });
@@ -161,9 +222,44 @@ const BulkLineDialog = ({ open, onClose, customers }: Props) => {
     toast.success("AI提案を反映しました");
   };
 
+  const saveSegment = async () => {
+    const name = window.prompt("セグメント名を入力してください（例: 30代女性カラー客）");
+    if (!name) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { toast.error("ログイン状態を確認してください"); return; }
+    const { error } = await supabase.from("broadcast_segments" as any).insert({
+      owner_id: user.id, name, conditions: seg,
+    });
+    if (error) { toast.error("保存に失敗しました"); return; }
+    toast.success(`セグメント「${name}」を保存しました`);
+    const { data: segs } = await supabase.from("broadcast_segments" as any).select("id, name, conditions").order("updated_at", { ascending: false });
+    setSavedSegments((segs || []) as any);
+  };
+
+  const loadSegment = (id: string) => {
+    const s = savedSegments.find((x) => x.id === id);
+    if (!s) return;
+    setSeg({ ...emptySegment(), ...(s.conditions || {}) });
+    toast.success(`「${s.name}」を読み込みました`);
+  };
+
+  const deleteSegment = async (id: string) => {
+    if (!confirm("このセグメントを削除しますか？")) return;
+    const { error } = await supabase.from("broadcast_segments" as any).delete().eq("id", id);
+    if (error) { toast.error("削除に失敗しました"); return; }
+    setSavedSegments((s) => s.filter((x) => x.id !== id));
+    toast.success("削除しました");
+  };
+
   const send = async () => {
     if (message.trim().length < 2) { toast.error("メッセージを入力してください"); return; }
     if (!useLine && !useSms && !useEmail) { toast.error("送信チャネルを選択してください"); return; }
+    if (serverPreview && serverPreview.total === 0) {
+      if (!confirm("対象が0名です。それでも送信しますか？")) return;
+    }
+    if (serverPreview && serverPreview.total > 50) {
+      if (!confirm(`${serverPreview.total}名に送信します。よろしいですか？`)) return;
+    }
     setSending(true);
     const channels: string[] = [];
     if (useLine) channels.push("line");
@@ -174,13 +270,8 @@ const BulkLineDialog = ({ open, onClose, customers }: Props) => {
         message, subject, channels,
         customer_ids: customers.map((c) => c.id),
         skip_recent_days: skipRecent ? skipDays : 0,
-        segment: {
-          genders, age_groups: ages,
-          days_since_min: daysMin ? Number(daysMin) : null,
-          days_since_max: daysMax ? Number(daysMax) : null,
-          vip_only: vipOnly,
-          menu_keyword: menuKw || null,
-        },
+        exclude_recent_booking_days: seg.excludeRecentBookingDays ? Number(seg.excludeRecentBookingDays) : 0,
+        segment: buildSegmentPayload(),
       },
     });
     setSending(false);
@@ -193,13 +284,11 @@ const BulkLineDialog = ({ open, onClose, customers }: Props) => {
     if (useLine) parts.push(`LINE ${d.line.sent}/${d.line.sent + d.line.failed + d.line.skipped}`);
     if (useSms) parts.push(`SMS ${d.sms.sent}/${d.sms.sent + d.sms.failed + d.sms.skipped}`);
     if (useEmail) parts.push(`メール ${d.email.sent}/${d.email.sent + d.email.failed + d.email.skipped}`);
-    const seg = d?.segment_skipped || 0;
-    const cs = d?.cooldown_skipped || 0;
-    const skipMsg = [
-      seg > 0 ? `セグメント外${seg}名` : "",
-      cs > 0 ? `クールダウン${cs}名` : "",
-    ].filter(Boolean).join(" ／ ");
-    toast.success(`送信完了: ${parts.join(" · ")}${skipMsg ? ` ／ ${skipMsg}スキップ` : ""}`);
+    const skipped: string[] = [];
+    if (d.segment_skipped > 0) skipped.push(`セグメント外${d.segment_skipped}名`);
+    if (d.recent_booking_skipped > 0) skipped.push(`直近予約済${d.recent_booking_skipped}名`);
+    if (d.cooldown_skipped > 0) skipped.push(`クールダウン${d.cooldown_skipped}名`);
+    toast.success(`送信完了: ${parts.join(" · ")}${skipped.length ? ` ／ ${skipped.join("・")}スキップ` : ""}`);
     setMessage("");
     onClose();
   };
@@ -207,9 +296,11 @@ const BulkLineDialog = ({ open, onClose, customers }: Props) => {
   const preview = customers.slice(0, 5).map((c) => c.full_name).join(" / ")
     + (customers.length > 5 ? ` 他${customers.length - 5}名` : "");
 
+  const months = [1,2,3,4,5,6,7,8,9,10,11,12];
+
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="rounded-none max-w-2xl max-h-[92vh] overflow-y-auto">
+      <DialogContent className="rounded-none max-w-3xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="font-serif flex items-center gap-2">
             <Send className="w-4 h-4 text-gold" />
@@ -217,15 +308,55 @@ const BulkLineDialog = ({ open, onClose, customers }: Props) => {
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
+          {/* 対象サマリ + サーバープレビュー */}
           <div className="border border-border bg-secondary/30 p-3">
             <div className="flex items-center justify-between mb-1.5">
               <p className="eyebrow text-[10px]">— Recipients —</p>
-              <p className="text-[10px] text-muted-foreground">
-                選択 <span className="font-serif-en text-foreground">{customers.length}</span> ／ 絞込後 <span className="font-serif-en text-gold">{filteredCount}</span> 名
+              <p className="text-[10px] text-muted-foreground flex items-center gap-2">
+                {previewLoading && <Loader2 className="w-3 h-3 animate-spin" />}
+                選択 <span className="font-serif-en text-foreground">{customers.length}</span>
+                ／ 配信対象 <span className="font-serif-en text-gold text-base">{serverPreview?.total ?? "—"}</span> 名
               </p>
             </div>
             <p className="text-[11px] text-muted-foreground truncate">{preview}</p>
+            {serverPreview && (
+              <div className="mt-2 grid grid-cols-3 gap-2 text-[10px]">
+                <div className="border border-border p-1.5 text-center">
+                  <div className="text-[9px] text-muted-foreground">LINE可</div>
+                  <div className="font-serif-en">{serverPreview.line}</div>
+                </div>
+                <div className="border border-border p-1.5 text-center">
+                  <div className="text-[9px] text-muted-foreground">SMS可</div>
+                  <div className="font-serif-en">{serverPreview.sms}</div>
+                </div>
+                <div className="border border-border p-1.5 text-center">
+                  <div className="text-[9px] text-muted-foreground">メール可</div>
+                  <div className="font-serif-en">{serverPreview.email}</div>
+                </div>
+              </div>
+            )}
           </div>
+
+          {/* 保存セグメント */}
+          {savedSegments.length > 0 && (
+            <div>
+              <p className="eyebrow text-[10px] mb-2 flex items-center gap-1.5"><BookmarkPlus className="w-3 h-3" />— 保存済みセグメント —</p>
+              <div className="flex gap-1.5 flex-wrap">
+                {savedSegments.map((s) => (
+                  <div key={s.id} className="flex items-center border border-border">
+                    <button type="button" onClick={() => loadSegment(s.id)}
+                      className="px-2.5 py-1 text-[11px] hover:bg-gold/5">
+                      {s.name}
+                    </button>
+                    <button type="button" onClick={() => deleteSegment(s.id)}
+                      className="px-1.5 py-1 border-l border-border hover:bg-destructive/10 text-muted-foreground hover:text-destructive">
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* プリセット */}
           <div>
@@ -243,14 +374,22 @@ const BulkLineDialog = ({ open, onClose, customers }: Props) => {
 
           {/* セグメント絞込み */}
           <div className="border border-border bg-secondary/20 p-3 space-y-3">
-            <p className="eyebrow text-[10px] flex items-center gap-1.5"><Filter className="w-3 h-3" />— 配信前の絞込み —</p>
+            <div className="flex items-center justify-between">
+              <p className="eyebrow text-[10px] flex items-center gap-1.5"><Filter className="w-3 h-3" />— 配信前の絞込み —</p>
+              <div className="flex gap-1.5">
+                <Button type="button" size="sm" variant="ghost" onClick={() => setSeg(emptySegment())}
+                  className="rounded-none h-6 text-[10px]">クリア</Button>
+                <Button type="button" size="sm" variant="ghost" onClick={saveSegment}
+                  className="rounded-none h-6 text-[10px]"><Save className="w-3 h-3 mr-1" />保存</Button>
+              </div>
+            </div>
 
             <div>
               <p className="text-[10px] text-muted-foreground mb-1.5">性別</p>
               <div className="flex gap-1.5 flex-wrap">
                 {(["female","male","other","unknown"] as Gender[]).map((g) => (
-                  <button key={g} type="button" onClick={() => setGenders(toggle(genders, g))}
-                    className={`px-2.5 py-1 text-[11px] border ${genders.includes(g) ? "bg-gold/10 border-gold text-gold" : "border-border hover:bg-secondary"}`}>
+                  <button key={g} type="button" onClick={() => updateSeg("genders", toggle(seg.genders, g))}
+                    className={`px-2.5 py-1 text-[11px] border ${seg.genders.includes(g) ? "bg-gold/10 border-gold text-gold" : "border-border hover:bg-secondary"}`}>
                     {g === "female" ? "女性" : g === "male" ? "男性" : g === "other" ? "その他" : "未設定"}
                   </button>
                 ))}
@@ -261,9 +400,21 @@ const BulkLineDialog = ({ open, onClose, customers }: Props) => {
               <p className="text-[10px] text-muted-foreground mb-1.5">年代</p>
               <div className="flex gap-1.5 flex-wrap">
                 {(["teens","20s","30s","40s","50s","60s+"] as AgeGroup[]).map((a) => (
-                  <button key={a} type="button" onClick={() => setAges(toggle(ages, a))}
-                    className={`px-2.5 py-1 text-[11px] border ${ages.includes(a) ? "bg-gold/10 border-gold text-gold" : "border-border hover:bg-secondary"}`}>
+                  <button key={a} type="button" onClick={() => updateSeg("ages", toggle(seg.ages, a))}
+                    className={`px-2.5 py-1 text-[11px] border ${seg.ages.includes(a) ? "bg-gold/10 border-gold text-gold" : "border-border hover:bg-secondary"}`}>
                     {a === "teens" ? "10代" : a === "60s+" ? "60代+" : a}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <p className="text-[10px] text-muted-foreground mb-1.5">誕生月（複数選択可）</p>
+              <div className="flex gap-1 flex-wrap">
+                {months.map((m) => (
+                  <button key={m} type="button" onClick={() => updateSeg("birthdayMonths", toggle(seg.birthdayMonths, m))}
+                    className={`px-2 py-0.5 text-[10px] border ${seg.birthdayMonths.includes(m) ? "bg-gold/10 border-gold text-gold" : "border-border hover:bg-secondary"}`}>
+                    {m}月
                   </button>
                 ))}
               </div>
@@ -273,22 +424,119 @@ const BulkLineDialog = ({ open, onClose, customers }: Props) => {
               <div>
                 <p className="text-[10px] text-muted-foreground mb-1.5">最終来店からの日数</p>
                 <div className="flex items-center gap-1.5">
-                  <Input type="number" placeholder="最小" value={daysMin} onChange={(e) => setDaysMin(e.target.value)} className="rounded-none h-8 text-xs" />
+                  <Input type="number" placeholder="最小" value={seg.daysMin} onChange={(e) => updateSeg("daysMin", e.target.value)} className="rounded-none h-8 text-xs" />
                   <span className="text-[10px] text-muted-foreground">〜</span>
-                  <Input type="number" placeholder="最大" value={daysMax} onChange={(e) => setDaysMax(e.target.value)} className="rounded-none h-8 text-xs" />
-                  <span className="text-[10px] text-muted-foreground">日</span>
+                  <Input type="number" placeholder="最大" value={seg.daysMax} onChange={(e) => updateSeg("daysMax", e.target.value)} className="rounded-none h-8 text-xs" />
                 </div>
               </div>
               <div>
                 <p className="text-[10px] text-muted-foreground mb-1.5">前回メニューに含む</p>
-                <Input placeholder="例: カラー" value={menuKw} onChange={(e) => setMenuKw(e.target.value)} className="rounded-none h-8 text-xs" />
+                <Input placeholder="例: カラー" value={seg.menuKw} onChange={(e) => updateSeg("menuKw", e.target.value)} className="rounded-none h-8 text-xs" />
+              </div>
+              <div>
+                <p className="text-[10px] text-muted-foreground mb-1.5">来店回数</p>
+                <div className="flex items-center gap-1.5">
+                  <Input type="number" placeholder="最小" value={seg.visitMin} onChange={(e) => updateSeg("visitMin", e.target.value)} className="rounded-none h-8 text-xs" />
+                  <span className="text-[10px] text-muted-foreground">〜</span>
+                  <Input type="number" placeholder="最大" value={seg.visitMax} onChange={(e) => updateSeg("visitMax", e.target.value)} className="rounded-none h-8 text-xs" />
+                </div>
+              </div>
+              <div>
+                <p className="text-[10px] text-muted-foreground mb-1.5">累計売上 (円)</p>
+                <div className="flex items-center gap-1.5">
+                  <Input type="number" placeholder="最小" value={seg.spentMin} onChange={(e) => updateSeg("spentMin", e.target.value)} className="rounded-none h-8 text-xs" />
+                  <span className="text-[10px] text-muted-foreground">〜</span>
+                  <Input type="number" placeholder="最大" value={seg.spentMax} onChange={(e) => updateSeg("spentMax", e.target.value)} className="rounded-none h-8 text-xs" />
+                </div>
+              </div>
+            </div>
+
+            {/* 次回推奨日 */}
+            <div>
+              <p className="text-[10px] text-muted-foreground mb-1.5">次回来店推奨日（来店周期 ± 許容日数）</p>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-muted-foreground">周期</span>
+                <Input type="number" placeholder="例: 45" value={seg.cycleDays} onChange={(e) => updateSeg("cycleDays", e.target.value)} className="rounded-none h-8 text-xs w-20" />
+                <span className="text-[10px] text-muted-foreground">日 ±</span>
+                <Input type="number" value={seg.toleranceDays} onChange={(e) => updateSeg("toleranceDays", e.target.value)} className="rounded-none h-8 text-xs w-16" />
+                <span className="text-[10px] text-muted-foreground">日（"そろそろ"客に絞る）</span>
+              </div>
+            </div>
+
+            {/* 担当スタッフ */}
+            {staffOptions.length > 0 && (
+              <div>
+                <p className="text-[10px] text-muted-foreground mb-1.5">担当スタッフ</p>
+                <div className="flex gap-1.5 flex-wrap">
+                  {staffOptions.map((s) => (
+                    <button key={s.id} type="button" onClick={() => updateSeg("staffIds", toggle(seg.staffIds, s.id))}
+                      className={`px-2.5 py-1 text-[11px] border ${seg.staffIds.includes(s.id) ? "bg-gold/10 border-gold text-gold" : "border-border hover:bg-secondary"}`}>
+                      {s.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* タグ */}
+            {tagOptions.length > 0 && (
+              <>
+                <div>
+                  <p className="text-[10px] text-muted-foreground mb-1.5">タグ（いずれかを持つ）</p>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {tagOptions.map((t) => (
+                      <button key={t.id} type="button" onClick={() => updateSeg("tagIdsAny", toggle(seg.tagIdsAny, t.id))}
+                        className={`px-2.5 py-1 text-[11px] border ${seg.tagIdsAny.includes(t.id) ? "bg-gold/10 border-gold text-gold" : "border-border hover:bg-secondary"}`}
+                        style={seg.tagIdsAny.includes(t.id) ? undefined : { borderLeftWidth: 3, borderLeftColor: t.color }}>
+                        {t.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[10px] text-muted-foreground mb-1.5">タグで除外</p>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {tagOptions.map((t) => (
+                      <button key={t.id} type="button" onClick={() => updateSeg("excludeTagIds", toggle(seg.excludeTagIds, t.id))}
+                        className={`px-2.5 py-1 text-[11px] border ${seg.excludeTagIds.includes(t.id) ? "bg-destructive/10 border-destructive text-destructive" : "border-border hover:bg-secondary"}`}>
+                        {t.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* チャネル所持 */}
+            <div>
+              <p className="text-[10px] text-muted-foreground mb-1.5">配信先所持</p>
+              <div className="flex gap-3 flex-wrap text-[11px]">
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <Checkbox checked={seg.hasLine} onCheckedChange={(v) => updateSeg("hasLine", !!v)} />LINE登録あり
+                </label>
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <Checkbox checked={seg.hasEmail} onCheckedChange={(v) => updateSeg("hasEmail", !!v)} />メールあり
+                </label>
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <Checkbox checked={seg.hasPhone} onCheckedChange={(v) => updateSeg("hasPhone", !!v)} />電話あり
+                </label>
               </div>
             </div>
 
             <label className="flex items-center gap-2 cursor-pointer">
-              <Checkbox checked={vipOnly} onCheckedChange={(v) => setVipOnly(!!v)} />
+              <Checkbox checked={seg.vipOnly} onCheckedChange={(v) => updateSeg("vipOnly", !!v)} />
               <span className="text-[11px]">VIP（Gold以上）のみに絞る</span>
             </label>
+
+            {/* 直近予約除外 */}
+            <div>
+              <p className="text-[10px] text-muted-foreground mb-1.5">今後の予約済み顧客を除外（ダブり防止）</p>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-muted-foreground">今後</span>
+                <Input type="number" placeholder="例: 14" value={seg.excludeRecentBookingDays} onChange={(e) => updateSeg("excludeRecentBookingDays", e.target.value)} className="rounded-none h-8 text-xs w-20" />
+                <span className="text-[10px] text-muted-foreground">日以内に予約がある人を除外（空欄で無効）</span>
+              </div>
+            </div>
           </div>
 
           {/* チャネル */}
@@ -376,7 +624,7 @@ const BulkLineDialog = ({ open, onClose, customers }: Props) => {
           <Button onClick={send} disabled={sending} className="rounded-none bg-gold hover:bg-gold/90 text-foreground">
             {sending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-3.5 h-3.5 mr-2" />}
             <Users className="w-3 h-3 mr-1" />
-            最大{filteredCount}名へ送信
+            {serverPreview?.total ?? "—"}名へ送信
           </Button>
         </DialogFooter>
       </DialogContent>

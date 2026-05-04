@@ -299,6 +299,39 @@ export type Database = {
         }
         Relationships: []
       }
+      broadcast_segments: {
+        Row: {
+          conditions: Json
+          created_at: string
+          description: string | null
+          id: string
+          location_id: string | null
+          name: string
+          owner_id: string
+          updated_at: string
+        }
+        Insert: {
+          conditions?: Json
+          created_at?: string
+          description?: string | null
+          id?: string
+          location_id?: string | null
+          name: string
+          owner_id: string
+          updated_at?: string
+        }
+        Update: {
+          conditions?: Json
+          created_at?: string
+          description?: string | null
+          id?: string
+          location_id?: string | null
+          name?: string
+          owner_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       campaign_sends: {
         Row: {
           booked_at: string | null
@@ -805,6 +838,60 @@ export type Database = {
           owner_id?: string
           sort_order?: number
           title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      customer_tag_assignments: {
+        Row: {
+          created_at: string
+          customer_id: string
+          id: string
+          owner_id: string
+          tag_id: string
+        }
+        Insert: {
+          created_at?: string
+          customer_id: string
+          id?: string
+          owner_id: string
+          tag_id: string
+        }
+        Update: {
+          created_at?: string
+          customer_id?: string
+          id?: string
+          owner_id?: string
+          tag_id?: string
+        }
+        Relationships: []
+      }
+      customer_tags: {
+        Row: {
+          color: string
+          created_at: string
+          id: string
+          name: string
+          owner_id: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          id?: string
+          name: string
+          owner_id: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          id?: string
+          name?: string
+          owner_id?: string
+          sort_order?: number
           updated_at?: string
         }
         Relationships: []

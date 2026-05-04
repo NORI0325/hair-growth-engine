@@ -10,6 +10,8 @@ import { Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { CustomerInsightsPanel } from "@/components/CustomerInsightsPanel";
 import CustomerDeliveryTimeline from "@/components/CustomerDeliveryTimeline";
+import CustomerTagEditor from "@/components/CustomerTagEditor";
+import { useAuth } from "@/hooks/useAuth";
 
 const schema = z.object({
   full_name: z.string().trim().min(1, "お名前は必須です").max(100),
@@ -50,6 +52,7 @@ interface Props {
 }
 
 const EditCustomerDialog = ({ customer, open, onOpenChange, onSaved }: Props) => {
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [form, setForm] = useState({
@@ -193,6 +196,9 @@ const EditCustomerDialog = ({ customer, open, onOpenChange, onSaved }: Props) =>
               rows={3}
               className="w-full rounded-none border-x-0 border-t-0 border-b border-input bg-transparent px-0 py-2 text-sm focus-visible:outline-none focus-visible:border-gold resize-none" />
           </div>
+
+          {/* タグ管理（一斉送信のセグメントに利用） */}
+          <CustomerTagEditor customerId={customer.id} ownerId={user?.id ?? null} />
 
           {/* 自動配信オプトアウト */}
           <div className="border border-border p-4 bg-muted/30">
