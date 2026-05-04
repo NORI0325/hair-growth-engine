@@ -151,16 +151,21 @@ export type Database = {
           id: string
           is_nominated: boolean
           is_test: boolean
+          last_synced_at: string | null
           location_id: string | null
           menu: string
           menus: string[] | null
+          needs_manual_review: boolean
           notes: string | null
           owner_id: string
           revenue: number | null
+          source_channel: string | null
           source_job_id: string | null
           source_template: string | null
           staff_id: string | null
           status: Database["public"]["Enums"]["booking_status"]
+          sync_error_message: string | null
+          sync_status: string
           total_duration_minutes: number | null
           total_price: number | null
           updated_at: string
@@ -177,16 +182,21 @@ export type Database = {
           id?: string
           is_nominated?: boolean
           is_test?: boolean
+          last_synced_at?: string | null
           location_id?: string | null
           menu: string
           menus?: string[] | null
+          needs_manual_review?: boolean
           notes?: string | null
           owner_id: string
           revenue?: number | null
+          source_channel?: string | null
           source_job_id?: string | null
           source_template?: string | null
           staff_id?: string | null
           status?: Database["public"]["Enums"]["booking_status"]
+          sync_error_message?: string | null
+          sync_status?: string
           total_duration_minutes?: number | null
           total_price?: number | null
           updated_at?: string
@@ -203,16 +213,21 @@ export type Database = {
           id?: string
           is_nominated?: boolean
           is_test?: boolean
+          last_synced_at?: string | null
           location_id?: string | null
           menu?: string
           menus?: string[] | null
+          needs_manual_review?: boolean
           notes?: string | null
           owner_id?: string
           revenue?: number | null
+          source_channel?: string | null
           source_job_id?: string | null
           source_template?: string | null
           staff_id?: string | null
           status?: Database["public"]["Enums"]["booking_status"]
+          sync_error_message?: string | null
+          sync_status?: string
           total_duration_minutes?: number | null
           total_price?: number | null
           updated_at?: string
@@ -412,6 +427,54 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      channel_integrations: {
+        Row: {
+          channel: string
+          created_at: string
+          enabled: boolean
+          failure_count: number
+          id: string
+          last_error: string | null
+          last_status: string | null
+          last_synced_at: string | null
+          location_id: string | null
+          note: string | null
+          owner_id: string
+          sync_enabled: boolean
+          updated_at: string
+        }
+        Insert: {
+          channel: string
+          created_at?: string
+          enabled?: boolean
+          failure_count?: number
+          id?: string
+          last_error?: string | null
+          last_status?: string | null
+          last_synced_at?: string | null
+          location_id?: string | null
+          note?: string | null
+          owner_id: string
+          sync_enabled?: boolean
+          updated_at?: string
+        }
+        Update: {
+          channel?: string
+          created_at?: string
+          enabled?: boolean
+          failure_count?: number
+          id?: string
+          last_error?: string | null
+          last_status?: string | null
+          last_synced_at?: string | null
+          location_id?: string | null
+          note?: string | null
+          owner_id?: string
+          sync_enabled?: boolean
+          updated_at?: string
+        }
+        Relationships: []
       }
       chart_treatments: {
         Row: {
@@ -1529,6 +1592,50 @@ export type Database = {
           },
         ]
       }
+      menu_channel_mappings: {
+        Row: {
+          channel: string
+          created_at: string
+          external_id: string | null
+          external_name: string | null
+          id: string
+          location_id: string | null
+          menu_id: string
+          owner_id: string
+          updated_at: string
+        }
+        Insert: {
+          channel: string
+          created_at?: string
+          external_id?: string | null
+          external_name?: string | null
+          id?: string
+          location_id?: string | null
+          menu_id: string
+          owner_id: string
+          updated_at?: string
+        }
+        Update: {
+          channel?: string
+          created_at?: string
+          external_id?: string | null
+          external_name?: string | null
+          id?: string
+          location_id?: string | null
+          menu_id?: string
+          owner_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "menu_channel_mappings_menu_id_fkey"
+            columns: ["menu_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       menu_items: {
         Row: {
           active: boolean
@@ -2325,6 +2432,50 @@ export type Database = {
         }
         Relationships: []
       }
+      staff_channel_mappings: {
+        Row: {
+          channel: string
+          created_at: string
+          external_id: string | null
+          external_name: string | null
+          id: string
+          location_id: string | null
+          owner_id: string
+          staff_id: string
+          updated_at: string
+        }
+        Insert: {
+          channel: string
+          created_at?: string
+          external_id?: string | null
+          external_name?: string | null
+          id?: string
+          location_id?: string | null
+          owner_id: string
+          staff_id: string
+          updated_at?: string
+        }
+        Update: {
+          channel?: string
+          created_at?: string
+          external_id?: string | null
+          external_name?: string | null
+          id?: string
+          location_id?: string | null
+          owner_id?: string
+          staff_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_channel_mappings_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       staff_commission_rules: {
         Row: {
           active: boolean
@@ -2607,6 +2758,109 @@ export type Database = {
           reason?: string
         }
         Relationships: []
+      }
+      sync_jobs: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          error_type: string | null
+          id: string
+          job_type: string
+          location_id: string | null
+          owner_id: string
+          request_payload: Json | null
+          reservation_id: string | null
+          response_payload: Json | null
+          retry_count: number
+          status: string
+          target_channel: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          error_type?: string | null
+          id?: string
+          job_type: string
+          location_id?: string | null
+          owner_id: string
+          request_payload?: Json | null
+          reservation_id?: string | null
+          response_payload?: Json | null
+          retry_count?: number
+          status?: string
+          target_channel: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          error_type?: string | null
+          id?: string
+          job_type?: string
+          location_id?: string | null
+          owner_id?: string
+          request_payload?: Json | null
+          reservation_id?: string | null
+          response_payload?: Json | null
+          retry_count?: number
+          status?: string
+          target_channel?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sync_jobs_reservation_id_fkey"
+            columns: ["reservation_id"]
+            isOneToOne: false
+            referencedRelation: "bookings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sync_logs: {
+        Row: {
+          channel: string | null
+          created_at: string
+          id: string
+          level: string
+          message: string
+          metadata: Json | null
+          owner_id: string
+          reservation_id: string | null
+          sync_job_id: string | null
+        }
+        Insert: {
+          channel?: string | null
+          created_at?: string
+          id?: string
+          level?: string
+          message: string
+          metadata?: Json | null
+          owner_id: string
+          reservation_id?: string | null
+          sync_job_id?: string | null
+        }
+        Update: {
+          channel?: string | null
+          created_at?: string
+          id?: string
+          level?: string
+          message?: string
+          metadata?: Json | null
+          owner_id?: string
+          reservation_id?: string | null
+          sync_job_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sync_logs_sync_job_id_fkey"
+            columns: ["sync_job_id"]
+            isOneToOne: false
+            referencedRelation: "sync_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       template_overrides: {
         Row: {
