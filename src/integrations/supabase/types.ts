@@ -934,6 +934,45 @@ export type Database = {
         }
         Relationships: []
       }
+      extension_download_consents: {
+        Row: {
+          consent_proper_use: boolean
+          consent_risk_self_responsibility: boolean
+          consent_unofficial: boolean
+          created_at: string
+          id: string
+          ip: string | null
+          tenant_id: string | null
+          terms_version: string
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          consent_proper_use?: boolean
+          consent_risk_self_responsibility?: boolean
+          consent_unofficial?: boolean
+          created_at?: string
+          id?: string
+          ip?: string | null
+          tenant_id?: string | null
+          terms_version: string
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          consent_proper_use?: boolean
+          consent_risk_self_responsibility?: boolean
+          consent_unofficial?: boolean
+          created_at?: string
+          id?: string
+          ip?: string | null
+          tenant_id?: string | null
+          terms_version?: string
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       extension_download_logs: {
         Row: {
           created_at: string

@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { HeroFlow, StepDownload, StepDevMode, StepLoadUnpacked, StepScan } from "@/components/salonboard/StepIllustration";
 import HandsOnChecklist from "@/components/salonboard/HandsOnChecklist";
+import ExtensionDownloadConsentDialog from "@/components/salonboard/ExtensionDownloadConsentDialog";
 
 interface ImportLog {
   id: string;
@@ -31,6 +32,7 @@ const STEPS = [
 const SalonBoardExport = () => {
   const { user } = useAuth();
   const [downloading, setDownloading] = useState(false);
+  const [consentOpen, setConsentOpen] = useState(false);
   const [logs, setLogs] = useState<ImportLog[]>([]);
 
   const loadLogs = async () => {
@@ -46,7 +48,15 @@ const SalonBoardExport = () => {
 
   useEffect(() => { loadLogs(); }, [user]);
 
-  const downloadExtension = async () => {
+  const openDownloadConsent = () => {
+    setConsentOpen(true);
+  };
+
+  const performDownload = async (consents: {
+    consent_unofficial: boolean;
+    consent_risk_self_responsibility: boolean;
+    consent_proper_use: boolean;
+  }) => {
     setDownloading(true);
     try {
       const { data: session } = await supabase.auth.getSession();
@@ -56,7 +66,12 @@ const SalonBoardExport = () => {
       }
       const url = `https://miyedioemkzhetphjzzg.supabase.co/functions/v1/download-extension`;
       const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${session.session.access_token}` },
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.session.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(consents),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -68,7 +83,10 @@ const SalonBoardExport = () => {
       a.download = "salon-boost-importer.zip";
       a.click();
       URL.revokeObjectURL(a.href);
-      toast.success("ダウンロードを開始しました");
+      toast.success("ダウンロードを開始しました", {
+        description: "⚠️ ZIPは必ず解凍してから読み込んでください",
+      });
+      setConsentOpen(false);
     } catch (e: any) {
       toast.error(e?.message || "ダウンロードに失敗しました");
     } finally {
@@ -127,7 +145,7 @@ const SalonBoardExport = () => {
               <h2 className="display text-2xl">4ステップで完了</h2>
             </div>
             <Button
-              onClick={downloadExtension}
+              onClick={openDownloadConsent}
               disabled={downloading}
               className="rounded-none px-6 py-5 text-xs tracking-luxury bg-primary hover:bg-primary-glow"
             >
@@ -162,7 +180,7 @@ const SalonBoardExport = () => {
           <p className="text-sm text-muted-foreground mb-6">
             進捗は自動保存。最後の「テスト取得成功」だけは取込ログから自動で検知します。
           </p>
-          <HandsOnChecklist onDownload={downloadExtension} downloading={downloading} />
+          <HandsOnChecklist onDownload={openDownloadConsent} downloading={downloading} />
         </section>
 
         {/* Stuck? Help */}
@@ -227,6 +245,13 @@ const SalonBoardExport = () => {
           </ul>
         </section>
       </div>
+
+      <ExtensionDownloadConsentDialog
+        open={consentOpen}
+        onOpenChange={setConsentOpen}
+        onConfirm={performDownload}
+        downloading={downloading}
+      />
     </AppLayout>
   );
 };

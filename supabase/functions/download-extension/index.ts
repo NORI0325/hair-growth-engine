@@ -9,6 +9,8 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
 
+const TERMS_VERSION = "v1.0-2026-05-04";
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -21,6 +23,26 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({ error: "ログインが必要です" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // 同意フラグを取得（POSTのみ）
+    let consentUnofficial = false;
+    let consentRiskSelf = false;
+    let consentProperUse = false;
+    if (req.method === "POST") {
+      try {
+        const body = await req.json();
+        consentUnofficial = body?.consent_unofficial === true;
+        consentRiskSelf = body?.consent_risk_self_responsibility === true;
+        consentProperUse = body?.consent_proper_use === true;
+      } catch (_) { /* ignore */ }
+    }
+
+    if (!consentUnofficial || !consentRiskSelf || !consentProperUse) {
+      return new Response(
+        JSON.stringify({ error: "免責事項3項目すべてへの同意が必要です", terms_version: TERMS_VERSION }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -73,12 +95,27 @@ Deno.serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
+    const ip = req.headers.get("x-forwarded-for") ?? null;
+    const ua = req.headers.get("user-agent") ?? null;
+
+    // 同意ログ記録（法的立証用）
+    await admin.from("extension_download_consents").insert({
+      user_id: user.id,
+      tenant_id: membership?.tenant_id ?? null,
+      terms_version: TERMS_VERSION,
+      consent_unofficial: consentUnofficial,
+      consent_risk_self_responsibility: consentRiskSelf,
+      consent_proper_use: consentProperUse,
+      ip,
+      user_agent: ua,
+    });
+
     // 監査ログ記録
     await admin.from("extension_download_logs").insert({
       user_id: user.id,
       tenant_id: membership?.tenant_id ?? null,
-      ip: req.headers.get("x-forwarded-for") ?? null,
-      user_agent: req.headers.get("user-agent") ?? null,
+      ip,
+      user_agent: ua,
       version: "2.1.3",
     });
 
