@@ -13,7 +13,15 @@ import { toast } from "sonner";
 import { Loader2, Trash2, Mail } from "lucide-react";
 import AppLayout from "@/components/AppLayout";
 
-interface Member { user_id: string; role: string; accepted_at: string | null; email?: string | null; full_name?: string | null }
+interface Member {
+  user_id: string;
+  role: string;
+  accepted_at: string | null;
+  email?: string | null;
+  full_name?: string | null;
+  location_names?: string[];
+  location_ids?: string[];
+}
 interface Invitation { id: string; email: string; role: string; expires_at: string; accepted_at: string | null; location_ids: string[] | null }
 
 const Team = () => {
