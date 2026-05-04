@@ -29,6 +29,8 @@ const BulkLineDialog = ({ open, onClose, customers }: Props) => {
   const [useLine, setUseLine] = useState(true);
   const [useSms, setUseSms] = useState(false);
   const [useEmail, setUseEmail] = useState(false);
+  const [skipRecent, setSkipRecent] = useState(true);
+  const [skipDays, setSkipDays] = useState(7);
 
   const reach = useMemo(() => ({
     line: customers.filter((c) => /^U[0-9a-f]{32}$/i.test(c.line_user_id || "")).length,
@@ -45,7 +47,7 @@ const BulkLineDialog = ({ open, onClose, customers }: Props) => {
     if (useSms) channels.push("sms");
     if (useEmail) channels.push("email");
     const { data, error } = await supabase.functions.invoke("bulk-broadcast", {
-      body: { message, subject, channels, customer_ids: customers.map((c) => c.id) },
+      body: { message, subject, channels, customer_ids: customers.map((c) => c.id), skip_recent_days: skipRecent ? skipDays : 0 },
     });
     setSending(false);
     if (error || !(data as any)?.success) {
@@ -57,7 +59,8 @@ const BulkLineDialog = ({ open, onClose, customers }: Props) => {
     if (useLine) parts.push(`LINE ${d.line.sent}/${d.line.sent + d.line.failed + d.line.skipped}`);
     if (useSms) parts.push(`SMS ${d.sms.sent}/${d.sms.sent + d.sms.failed + d.sms.skipped}`);
     if (useEmail) parts.push(`メール ${d.email.sent}/${d.email.sent + d.email.failed + d.email.skipped}`);
-    toast.success(`送信完了: ${parts.join(" · ")}`);
+    const cs = (d as any)?.cooldown_skipped || 0;
+    toast.success(`送信完了: ${parts.join(" · ")}${cs > 0 ? ` ／ クールダウンで${cs}名スキップ` : ""}`);
     setMessage("");
     onClose();
   };
@@ -130,6 +133,26 @@ const BulkLineDialog = ({ open, onClose, customers }: Props) => {
           <p className="text-[10px] text-muted-foreground">
             <code className="bg-secondary px-1">{`{{name}}`}</code> でお名前に自動置換されます ／ 連絡先未登録の方は自動的にスキップされます
           </p>
+
+          <div className="border border-border bg-secondary/20 p-3 space-y-2">
+            <label className="flex items-center gap-2.5 cursor-pointer">
+              <Checkbox checked={skipRecent} onCheckedChange={(v) => setSkipRecent(!!v)} />
+              <span className="text-xs">直近に配信済みのお客様には再送しない（クールダウン）</span>
+            </label>
+            {skipRecent && (
+              <div className="flex items-center gap-2 pl-6">
+                <span className="text-[11px] text-muted-foreground">過去</span>
+                <Input
+                  type="number" min={1} max={90}
+                  value={skipDays}
+                  onChange={(e) => setSkipDays(Math.max(1, Math.min(90, Number(e.target.value) || 1)))}
+                  className="rounded-none w-20 h-8 text-sm"
+                />
+                <span className="text-[11px] text-muted-foreground">日以内に配信した方をスキップ</span>
+              </div>
+            )}
+          </div>
+
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={onClose} className="rounded-none">キャンセル</Button>

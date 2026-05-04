@@ -38,6 +38,8 @@ Deno.serve(async (req) => {
     const useLine = channels.includes("line");
     const useSms = channels.includes("sms");
     const useEmail = channels.includes("email");
+    const skipRecentDays: number = Number.isFinite(Number(body?.skip_recent_days)) && Number(body?.skip_recent_days) > 0
+      ? Math.min(90, Math.floor(Number(body.skip_recent_days))) : 0;
 
     if (!message || message.length < 2) {
       return new Response(JSON.stringify({ success: false, message: "メッセージを入力してください" }),
@@ -66,19 +68,39 @@ Deno.serve(async (req) => {
       .eq("is_test", false)
       .in("id", customerIds);
 
-    const list = targets || [];
+    let list = targets || [];
     const isValidLineUserId = (s: string | null) => !!s && /^U[0-9a-f]{32}$/i.test(s);
+
+    // クールダウン: N日以内に何らかの配信実績がある顧客をスキップ
+    let cooldownSkipped = 0;
+    if (skipRecentDays > 0 && list.length > 0) {
+      const cutoff = new Date(Date.now() - skipRecentDays * 86400000).toISOString();
+      const { data: states } = await supabase
+        .from("customer_communication_state")
+        .select("customer_id, last_sent_at")
+        .eq("owner_id", user.id)
+        .in("customer_id", list.map((c: any) => c.id))
+        .gte("last_sent_at", cutoff);
+      const recentSet = new Set((states || []).map((s: any) => s.customer_id));
+      const before = list.length;
+      list = list.filter((c: any) => !recentSet.has(c.id));
+      cooldownSkipped = before - list.length;
+    }
 
     const result = {
       total: list.length,
+      cooldown_skipped: cooldownSkipped,
       line: { sent: 0, failed: 0, skipped: 0 },
       sms: { sent: 0, failed: 0, skipped: 0 },
       email: { sent: 0, failed: 0, skipped: 0 },
     };
     const lineLogs: any[] = [];
+    const stateUpserts: any[] = [];
 
     for (const c of list) {
       const personalText = message.replace(/\{\{name\}\}/g, c.full_name || "お客様");
+      let anySent = false;
+      let lastChannel: string | null = null;
 
       // LINE
       if (useLine) {
@@ -88,7 +110,8 @@ Deno.serve(async (req) => {
           result.line.skipped++;
         } else {
           const r = await sendLinePush(lineToken, c.line_user_id!, personalText);
-          if (r.ok) result.line.sent++; else result.line.failed++;
+          if (r.ok) { result.line.sent++; anySent = true; lastChannel = "line"; }
+          else result.line.failed++;
           lineLogs.push({
             owner_id: user.id, customer_id: c.id, job_type: "broadcast",
             line_user_id: c.line_user_id, message: personalText,
@@ -103,7 +126,7 @@ Deno.serve(async (req) => {
         if (!c.phone) { result.sms.skipped++; }
         else {
           const r = await sendSms(c.phone, personalText);
-          if (r.ok) result.sms.sent++;
+          if (r.ok) { result.sms.sent++; anySent = true; lastChannel = "sms"; }
           else if (r.skipped) result.sms.skipped++;
           else result.sms.failed++;
           await new Promise(res => setTimeout(res, 80));
@@ -127,13 +150,28 @@ Deno.serve(async (req) => {
               },
             },
           });
-          if (r.error) result.email.failed++; else result.email.sent++;
+          if (r.error) result.email.failed++;
+          else { result.email.sent++; anySent = true; lastChannel = "email"; }
         }
+      }
+
+      if (anySent) {
+        stateUpserts.push({
+          owner_id: user.id,
+          customer_id: c.id,
+          last_sent_at: new Date().toISOString(),
+          last_channel: lastChannel,
+          last_template_key: "bulk-broadcast",
+        });
       }
     }
 
     if (lineLogs.length > 0) {
       await supabase.from("line_message_log").insert(lineLogs as any);
+    }
+    if (stateUpserts.length > 0) {
+      await supabase.from("customer_communication_state")
+        .upsert(stateUpserts as any, { onConflict: "customer_id" });
     }
 
     return new Response(JSON.stringify({ success: true, ...result }),
