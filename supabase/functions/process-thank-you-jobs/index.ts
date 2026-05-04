@@ -139,7 +139,7 @@ Deno.serve(async (req) => {
         }
         const { data: profile } = await supabase
           .from("profiles")
-          .select("salon_name, google_review_url, line_channel_access_token, frequency_cap_days, frequency_cap_per_month")
+          .select("salon_name, google_review_url, line_channel_access_token, frequency_cap_days, frequency_cap_per_month, info_collection_enabled, info_collection_append_to_thanks")
           .eq("id", job.owner_id)
           .maybeSingle();
 
