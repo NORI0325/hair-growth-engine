@@ -24,14 +24,14 @@ type Props = {
 
 export default function ChannelMappingDialog({ open, onOpenChange, kind, targetId, targetName }: Props) {
   const { user } = useAuth();
-  const table = kind === "staff" ? "staff_channel_mappings" : "menu_channel_mappings";
+  const table = (kind === "staff" ? "staff_channel_mappings" : "menu_channel_mappings") as any;
   const fk = kind === "staff" ? "staff_id" : "menu_id";
   const [rows, setRows] = useState<Record<string, { external_name: string; external_id: string }>>({});
 
   useEffect(() => {
     if (!open || !targetId) return;
     (async () => {
-      const { data } = await supabase.from(table).select("channel, external_name, external_id").eq(fk, targetId);
+      const { data } = await (supabase as any).from(table).select("channel, external_name, external_id").eq(fk, targetId);
       const map: Record<string, { external_name: string; external_id: string }> = {};
       for (const c of CHANNELS) map[c.key] = { external_name: "", external_id: "" };
       for (const d of data || []) {
@@ -53,14 +53,13 @@ export default function ChannelMappingDialog({ open, onOpenChange, kind, targetI
         external_id: rows[c.key].external_id || null,
       }));
 
-    // 削除分: 空になったもの
     const empties = CHANNELS.filter((c) => !rows[c.key].external_name && !rows[c.key].external_id);
     for (const c of empties) {
-      await supabase.from(table).delete().eq(fk, targetId).eq("channel", c.key);
+      await (supabase as any).from(table).delete().eq(fk, targetId).eq("channel", c.key);
     }
 
     if (upserts.length > 0) {
-      const { error } = await supabase.from(table).upsert(upserts, { onConflict: `${fk},channel` });
+      const { error } = await (supabase as any).from(table).upsert(upserts, { onConflict: `${fk},channel` });
       if (error) { toast.error("保存失敗: " + error.message); return; }
     }
     toast.success("マッピングを保存しました");
