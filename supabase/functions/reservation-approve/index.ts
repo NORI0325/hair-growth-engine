@@ -281,8 +281,17 @@ ${body.proposal_message}
       })
       .eq("id", rr.id);
 
-    if (accessToken && rr.line_user_id) {
-      const replyMsg = body.reject_message || `${customerName}様
+    // 🆕 AIログを「rejected」で更新
+    try {
+      await supabase
+        .from("reservation_ai_logs")
+        .update({
+          final_action: "rejected",
+          false_positive: !!body.rejection_reason && /違|別|間違|予約じゃ/.test(body.rejection_reason),
+          decided_at: new Date().toISOString(),
+        })
+        .eq("request_id", rr.id);
+    } catch {}
 
 ご予約のお問い合わせありがとうございます🙇‍♀️
 
