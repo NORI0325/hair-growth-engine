@@ -182,77 +182,101 @@ export default function Reservations() {
 
       {loading ? (
         <div className="flex items-center justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
-      ) : items.length === 0 ? (
-        <div className="text-center py-16 text-muted-foreground">
-          <MessageSquare className="h-12 w-12 mx-auto mb-3 opacity-40" />
-          <p>まだ仮予約はありません。</p>
-          <p className="text-sm mt-2">LINE公式アカウントに予約希望が届くとここに表示されます。</p>
-        </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-          {grouped.map(col => (
-            <div key={col.key} className="space-y-3">
-              <div className={`px-3 py-2 border ${col.tone} text-sm font-semibold flex items-center justify-between`}>
-                <span>{col.label}</span>
-                <Badge variant="outline" className="rounded-none">{col.items.length}</Badge>
+        <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
+          <TabsList className="rounded-none mb-4">
+            <TabsTrigger value="board" className="rounded-none">仮予約ボード</TabsTrigger>
+            <TabsTrigger value="logs" className="rounded-none gap-2">
+              <BarChart3 className="h-3 w-3" />AI解析ログ
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="board">
+            {items.length === 0 ? (
+              <div className="text-center py-16 text-muted-foreground">
+                <MessageSquare className="h-12 w-12 mx-auto mb-3 opacity-40" />
+                <p>まだ仮予約はありません。</p>
+                <p className="text-sm mt-2">LINE公式アカウントに予約希望が届くとここに表示されます。</p>
               </div>
-              <div className="space-y-3">
-                {col.items.map(req => (
-                  <div key={req.id} className="border border-border bg-card p-3 space-y-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="font-semibold text-sm">{req.customers?.full_name || req.display_name || "(未連携)"}</div>
-                      <Badge variant="outline" className="rounded-none text-[10px] flex items-center gap-1">
-                        <Sparkles className="h-3 w-3" />{req.ai_confidence}
-                      </Badge>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+                {grouped.map(col => (
+                  <div key={col.key} className="space-y-3">
+                    <div className={`px-3 py-2 border ${col.tone} text-sm font-semibold flex items-center justify-between`}>
+                      <span>{col.label}</span>
+                      <Badge variant="outline" className="rounded-none">{col.items.length}</Badge>
                     </div>
-                    {req.outside_hours_notified && (
-                      <Badge variant="outline" className="rounded-none text-[10px] bg-amber-50 text-amber-800 border-amber-300 flex items-center gap-1 w-fit">
-                        <Clock className="h-3 w-3" />営業時間外受付
-                      </Badge>
-                    )}
-                    <div className="text-xs space-y-1">
-                      {req.desired_date_candidates?.length > 0 && (
-                        <div>📅 {req.desired_date_candidates.slice(0,3).map((c: any) => `${jpDate(c.date)}${c.time_range ? `(${c.time_range})` : ""}`).join(" / ")}</div>
+                    <div className="space-y-3">
+                      {col.items.map(req => (
+                        <div key={req.id} className="border border-border bg-card p-3 space-y-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="font-semibold text-sm">{req.customers?.full_name || req.display_name || "(未連携)"}</div>
+                            <Badge variant="outline" className="rounded-none text-[10px] flex items-center gap-1">
+                              <Sparkles className="h-3 w-3" />{req.ai_confidence}
+                            </Badge>
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                            {req.outside_hours_notified && (
+                              <Badge variant="outline" className="rounded-none text-[10px] bg-amber-50 text-amber-800 border-amber-300 flex items-center gap-1">
+                                <Clock className="h-3 w-3" />営業時間外
+                              </Badge>
+                            )}
+                            {req.staff_notified_at && (
+                              <Badge variant="outline" className="rounded-none text-[10px] bg-emerald-50 text-emerald-800 border-emerald-300 flex items-center gap-1">
+                                <Bell className="h-3 w-3" />スタッフ通知済
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="text-xs space-y-1">
+                            {req.desired_date_candidates?.length > 0 && (
+                              <div>📅 {req.desired_date_candidates.slice(0,3).map((c: any) => `${jpDate(c.date)}${c.time_range ? `(${c.time_range})` : ""}`).join(" / ")}</div>
+                            )}
+                            {req.desired_menu && <div>💇 {req.desired_menu}</div>}
+                            {req.desired_staff_name && <div>👤 {req.desired_staff_name}様</div>}
+                            {req.needs_clarification_fields?.length > 0 && (
+                              <div className="text-amber-700">⚠ 不足: {req.needs_clarification_fields.join(", ")}</div>
+                            )}
+                          </div>
+                          <div className="text-xs text-muted-foreground bg-muted/40 p-2 border border-border whitespace-pre-wrap">
+                            {req.raw_message.slice(0, 200)}{req.raw_message.length > 200 ? "…" : ""}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground">
+                            {new Date(req.created_at).toLocaleString("ja-JP")}
+                          </div>
+                          {(req.status === "awaiting_approval" || req.status === "pending_clarification") && (
+                            <div className="flex flex-wrap gap-1 pt-1">
+                              <Button size="sm" variant="default" className="h-7 text-xs flex-1 rounded-none" onClick={() => openApprove(req)} disabled={busy === req.id}>
+                                <Check className="h-3 w-3 mr-1" />確定
+                              </Button>
+                              <Button size="sm" variant="outline" className="h-7 text-xs rounded-none" onClick={() => openPropose(req)} disabled={busy === req.id}>
+                                <Calendar className="h-3 w-3 mr-1" />調整
+                              </Button>
+                              <Button size="sm" variant="outline" className="h-7 text-xs rounded-none" onClick={() => openReject(req)} disabled={busy === req.id}>
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          )}
+                          {req.status === "completed" && req.salonboard_transfer_text && (
+                            <Button size="sm" variant="outline" className="h-7 text-xs w-full rounded-none" onClick={() => copySalonboard(req)}>
+                              <Copy className="h-3 w-3 mr-1" />サロンボード転記用コピー
+                            </Button>
+                          )}
+                        </div>
+                      ))}
+                      {col.items.length === 0 && (
+                        <div className="text-xs text-center text-muted-foreground py-6">なし</div>
                       )}
-                      {req.desired_menu && <div>💇 {req.desired_menu}</div>}
-                      {req.desired_staff_name && <div>👤 {req.desired_staff_name}様</div>}
-                      {req.needs_clarification_fields?.length > 0 && (
-                        <div className="text-amber-700">⚠ 不足: {req.needs_clarification_fields.join(", ")}</div>
-                      )}
                     </div>
-                    <div className="text-xs text-muted-foreground bg-muted/40 p-2 border border-border whitespace-pre-wrap">
-                      {req.raw_message.slice(0, 200)}{req.raw_message.length > 200 ? "…" : ""}
-                    </div>
-                    <div className="text-[10px] text-muted-foreground">
-                      {new Date(req.created_at).toLocaleString("ja-JP")}
-                    </div>
-                    {(req.status === "awaiting_approval" || req.status === "pending_clarification") && (
-                      <div className="flex flex-wrap gap-1 pt-1">
-                        <Button size="sm" variant="default" className="h-7 text-xs flex-1 rounded-none" onClick={() => openApprove(req)} disabled={busy === req.id}>
-                          <Check className="h-3 w-3 mr-1" />確定
-                        </Button>
-                        <Button size="sm" variant="outline" className="h-7 text-xs rounded-none" onClick={() => openPropose(req)} disabled={busy === req.id}>
-                          <Calendar className="h-3 w-3 mr-1" />調整
-                        </Button>
-                        <Button size="sm" variant="outline" className="h-7 text-xs rounded-none" onClick={() => openReject(req)} disabled={busy === req.id}>
-                          <X className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    )}
-                    {req.status === "completed" && req.salonboard_transfer_text && (
-                      <Button size="sm" variant="outline" className="h-7 text-xs w-full rounded-none" onClick={() => copySalonboard(req)}>
-                        <Copy className="h-3 w-3 mr-1" />サロンボード転記用コピー
-                      </Button>
-                    )}
                   </div>
                 ))}
-                {col.items.length === 0 && (
-                  <div className="text-xs text-center text-muted-foreground py-6">なし</div>
-                )}
               </div>
-            </div>
-          ))}
-        </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="logs">
+            <AILogsPanel logs={aiLogs} />
+          </TabsContent>
+        </Tabs>
       )}
 
       <Dialog open={!!dialog} onOpenChange={(o) => !o && setDialog(null)}>
