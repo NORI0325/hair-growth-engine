@@ -432,9 +432,14 @@ const Customers = () => {
         customers={selectedAll.map((c) => ({
           id: c.id,
           full_name: c.full_name,
-          email: (c as any).email,
-          phone: (c as any).phone,
-          line_user_id: (c as any).line_user_id,
+          email: c.email,
+          phone: c.phone,
+          line_user_id: c.line_user_id,
+          birthday: c.birthday,
+          gender: (c as any).gender,
+          last_visit_date: c.last_visit_date,
+          visit_count: c.visit_count,
+          total_spent: c.total_spent,
         }))}
       />
 
