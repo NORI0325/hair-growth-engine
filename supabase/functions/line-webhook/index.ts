@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
 import { replyLine, sendLinePush, normalizePhone } from "../_shared/line-push.ts";
+import { detectFields } from "../_shared/line-field-detector.ts";
 
 // LINE署名検証 (HMAC-SHA256)
 async function verifySignature(secret: string, body: string, signature: string): Promise<boolean> {
@@ -455,13 +456,73 @@ Deno.serve(async (req) => {
         // 既存顧客にline_user_idが既に紐付いているか（再フォロー時はソフト復活）
         const { data: linkedCustomer } = await supabase
           .from("customers")
-          .select("id, full_name, line_unfollowed_at")
+          .select("id, full_name, line_unfollowed_at, email, birthday, phone, info_request_last_sent_at, info_request_pending")
           .eq("owner_id", owner.id)
           .eq("line_user_id", userId)
           .maybeSingle();
         if (linkedCustomer?.line_unfollowed_at) {
           await supabase.from("customers")
             .update({ line_unfollowed_at: null }).eq("id", linkedCustomer.id);
+        }
+
+        // ============= 多項目自動検出（連携済み顧客） =============
+        // 例: "09012345678 tanaka@test.com 1990/5/12" → 全部まとめて反映
+        if (linkedCustomer) {
+          const detected = detectFields(text);
+          const applied: Record<string, any> = {};
+          const updates: Record<string, any> = {};
+
+          // メアド: 未登録のみ自動セット（既登録なら確認スキップ＝今回は既存優先）
+          if (detected.email && !linkedCustomer.email) {
+            updates.email = detected.email;
+            applied.email = detected.email;
+          }
+          // 誕生日: 未登録のみ自動セット
+          if (detected.birthday && !linkedCustomer.birthday) {
+            // 年なし(2000-MM-DD)の場合、依頼直近30分以内なら採用、それ以外でも年なしは「誕生日依頼」直後のみ採用
+            const now = Date.now();
+            const lastReq = linkedCustomer.info_request_last_sent_at
+              ? new Date(linkedCustomer.info_request_last_sent_at).getTime() : 0;
+            const within30min = lastReq > 0 && (now - lastReq) <= 30 * 60 * 1000;
+            const pending = (linkedCustomer.info_request_pending || {}) as Record<string, boolean>;
+            const yearKnown = !detected.birthday.startsWith("2000-") || /1990|1991|1992|1993|1994|1995|1996|1997|1998|1999|200[0-9]|201[0-9]/.test(text);
+            if (yearKnown || (within30min && pending.birthday)) {
+              updates.birthday = detected.birthday;
+              applied.birthday = detected.birthday;
+            }
+          }
+          // 電話番号: 未登録のみ自動セット
+          if (detected.phone && !linkedCustomer.phone) {
+            updates.phone = detected.phone;
+            applied.phone = detected.phone;
+          }
+
+          if (Object.keys(updates).length > 0) {
+            await supabase.from("customers").update(updates).eq("id", linkedCustomer.id);
+            await supabase.from("line_field_detections").insert({
+              owner_id: owner.id,
+              customer_id: linkedCustomer.id,
+              line_user_id: userId,
+              raw_text: text.slice(0, 500),
+              detected,
+              applied,
+              needs_confirmation: false,
+            });
+            // 反映確認の返信
+            const labels: string[] = [];
+            if (applied.email) labels.push(`📧 メール: ${applied.email}`);
+            if (applied.birthday) {
+              const yearless = String(applied.birthday).startsWith("2000-");
+              const display = yearless
+                ? String(applied.birthday).slice(5).replace("-", "/")
+                : applied.birthday;
+              labels.push(`🎂 誕生日: ${display}`);
+            }
+            if (applied.phone) labels.push(`📞 電話: ${applied.phone}`);
+            await replyLine(accessToken, replyToken,
+              `✅ ${linkedCustomer.full_name}様、ご登録ありがとうございます🌸\n\n${labels.join("\n")}\n\nお得情報をピンポイントでお届けします。\n\n— ${owner.salon_name || "サロン"}`);
+            continue;
+          }
         }
 
         // ============= ポイント残高照会キーワード =============
