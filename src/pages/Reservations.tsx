@@ -29,6 +29,23 @@ interface ReservationRequest {
   created_at: string;
   salonboard_transfer_text: string | null;
   customers?: { full_name: string; phone: string | null } | null;
+  staff_notified_at?: string | null;
+  staff_notification_status?: string | null;
+}
+
+interface AILog {
+  id: string;
+  raw_message: string;
+  keyword_score: number | null;
+  ai_confidence: number | null;
+  ai_summary: string | null;
+  ai_is_reservation: boolean | null;
+  final_action: string | null;
+  final_corrected: boolean | null;
+  false_positive: boolean | null;
+  needs_clarification_fields: string[] | null;
+  created_at: string;
+  decided_at: string | null;
 }
 
 const STATUS_COLUMNS = [
