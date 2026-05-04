@@ -170,6 +170,24 @@ ${body.confirmed_staff_id ? "担当: 指定あり" : ""}
       })
       .eq("id", rr.id);
 
+    // 🆕 AIログを「approved」で更新（手修正検出）
+    try {
+      const aiCands = (rr.ai_parsed as any)?.desiredDateCandidates?.[0];
+      const corrected =
+        (aiCands?.date && aiCands.date !== body.confirmed_date) ||
+        (rr.desired_menu && menu !== rr.desired_menu);
+      await supabase
+        .from("reservation_ai_logs")
+        .update({
+          final_action: "approved",
+          final_corrected: !!corrected,
+          decided_at: new Date().toISOString(),
+        })
+        .eq("request_id", rr.id);
+    } catch (e) {
+      console.error("[reservation-approve] ai log update failed:", e);
+    }
+
     // LINE自動返信
     if (accessToken && rr.line_user_id) {
       const extra = body.extra_message ? `\n\n${body.extra_message}` : "";
