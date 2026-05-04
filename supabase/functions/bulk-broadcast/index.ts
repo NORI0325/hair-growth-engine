@@ -3,6 +3,34 @@ import { corsHeaders } from "../_shared/cors.ts";
 import { sendLinePush } from "../_shared/line-push.ts";
 import { sendSms } from "../_shared/twilio-sms.ts";
 
+// 年代計算
+const ageGroupOf = (birthday: string | null): string | null => {
+  if (!birthday) return null;
+  const b = new Date(birthday);
+  if (isNaN(b.getTime())) return null;
+  const now = new Date();
+  let age = now.getFullYear() - b.getFullYear();
+  const m = now.getMonth() - b.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < b.getDate())) age--;
+  if (age < 20) return "teens";
+  if (age < 30) return "20s";
+  if (age < 40) return "30s";
+  if (age < 50) return "40s";
+  if (age < 60) return "50s";
+  return "60s+";
+};
+
+// 次回提案メニュー（簡易ロジック）
+const nextSuggestedMenu = (lastMenu: string | null): string => {
+  const m = (lastMenu || "").toLowerCase();
+  if (/カラー|color/.test(m)) return "リタッチカラー＋トリートメント";
+  if (/パーマ|perm/.test(m)) return "パーマメンテナンス＋トリートメント";
+  if (/縮毛|矯正/.test(m)) return "前髪縮毛矯正＋カット";
+  if (/カット|cut/.test(m)) return "カット＋カラー";
+  if (/スパ|spa|トリート/.test(m)) return "ヘッドスパ＋トリートメント";
+  return "カット＋カラー";
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -41,6 +69,14 @@ Deno.serve(async (req) => {
     const skipRecentDays: number = Number.isFinite(Number(body?.skip_recent_days)) && Number(body?.skip_recent_days) > 0
       ? Math.min(90, Math.floor(Number(body.skip_recent_days))) : 0;
 
+    // セグメント絞り込み（性別/年代/最終来店日数/VIP/前回メニューキーワード）
+    const segGenders: string[] = Array.isArray(body?.segment?.genders) ? body.segment.genders : [];
+    const segAges: string[] = Array.isArray(body?.segment?.age_groups) ? body.segment.age_groups : [];
+    const segDaysMin: number | null = Number.isFinite(Number(body?.segment?.days_since_min)) ? Number(body.segment.days_since_min) : null;
+    const segDaysMax: number | null = Number.isFinite(Number(body?.segment?.days_since_max)) ? Number(body.segment.days_since_max) : null;
+    const segVipOnly: boolean = !!body?.segment?.vip_only;
+    const segMenuKeyword: string = (body?.segment?.menu_keyword || "").toString().trim().toLowerCase();
+
     if (!message || message.length < 2) {
       return new Response(JSON.stringify({ success: false, message: "メッセージを入力してください" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -63,12 +99,66 @@ Deno.serve(async (req) => {
     const salonName = (profile as any)?.salon_name || "サロン";
 
     const { data: targets } = await supabase.from("customers")
-      .select("id, full_name, email, phone, line_user_id")
+      .select("id, full_name, email, phone, line_user_id, birthday, gender, last_visit_date, visit_count, total_spent")
       .eq("owner_id", user.id)
       .eq("is_test", false)
       .in("id", customerIds);
 
-    let list = targets || [];
+    let list = (targets || []) as any[];
+
+    // 各顧客の最新トリートメント・スタッフ取得
+    const ids = list.map((c) => c.id);
+    let lastTreatmentMap: Record<string, { menu: string | null; staff_name: string | null }> = {};
+    if (ids.length > 0) {
+      const { data: treats } = await supabase
+        .from("chart_treatments")
+        .select("customer_id, menu_summary, staff_id, treatment_date")
+        .eq("owner_id", user.id)
+        .in("customer_id", ids)
+        .order("treatment_date", { ascending: false });
+      const seen = new Set<string>();
+      const staffIds = new Set<string>();
+      const tmpMap: Record<string, { menu: string | null; staff_id: string | null }> = {};
+      for (const t of treats || []) {
+        if (seen.has(t.customer_id)) continue;
+        seen.add(t.customer_id);
+        tmpMap[t.customer_id] = { menu: t.menu_summary, staff_id: t.staff_id };
+        if (t.staff_id) staffIds.add(t.staff_id);
+      }
+      let staffNames: Record<string, string> = {};
+      if (staffIds.size > 0) {
+        const { data: staff } = await supabase.from("staff").select("id, name").in("id", Array.from(staffIds));
+        for (const s of staff || []) staffNames[s.id] = s.name;
+      }
+      for (const [cid, v] of Object.entries(tmpMap)) {
+        lastTreatmentMap[cid] = { menu: v.menu, staff_name: v.staff_id ? (staffNames[v.staff_id] || null) : null };
+      }
+    }
+
+    // セグメントフィルタ適用
+    const isVip = (c: any) => (c.total_spent || 0) >= 150000 || (c.visit_count || 0) >= 15;
+    const daysSince = (c: any) => c.last_visit_date ? Math.floor((Date.now() - new Date(c.last_visit_date).getTime()) / 86400000) : null;
+
+    let segmentSkipped = 0;
+    const beforeSeg = list.length;
+    list = list.filter((c) => {
+      if (segGenders.length > 0 && !segGenders.includes(c.gender || "unknown")) return false;
+      if (segAges.length > 0) {
+        const ag = ageGroupOf(c.birthday);
+        if (!ag || !segAges.includes(ag)) return false;
+      }
+      const ds = daysSince(c);
+      if (segDaysMin !== null && (ds === null || ds < segDaysMin)) return false;
+      if (segDaysMax !== null && (ds === null || ds > segDaysMax)) return false;
+      if (segVipOnly && !isVip(c)) return false;
+      if (segMenuKeyword) {
+        const m = (lastTreatmentMap[c.id]?.menu || "").toLowerCase();
+        if (!m.includes(segMenuKeyword)) return false;
+      }
+      return true;
+    });
+    segmentSkipped = beforeSeg - list.length;
+
     const isValidLineUserId = (s: string | null) => !!s && /^U[0-9a-f]{32}$/i.test(s);
 
     // クールダウン: N日以内に何らかの配信実績がある顧客をスキップ
@@ -89,6 +179,7 @@ Deno.serve(async (req) => {
 
     const result = {
       total: list.length,
+      segment_skipped: segmentSkipped,
       cooldown_skipped: cooldownSkipped,
       line: { sent: 0, failed: 0, skipped: 0 },
       sms: { sent: 0, failed: 0, skipped: 0 },
@@ -97,8 +188,24 @@ Deno.serve(async (req) => {
     const lineLogs: any[] = [];
     const stateUpserts: any[] = [];
 
+    const personalize = (tpl: string, c: any): string => {
+      const lt = lastTreatmentMap[c.id];
+      const lastMenu = lt?.menu || "前回のメニュー";
+      const staff = lt?.staff_name || "担当スタッフ";
+      const ds = daysSince(c);
+      const daysSinceText = ds === null ? "" : `${ds}日`;
+      const next = nextSuggestedMenu(lt?.menu);
+      return tpl
+        .replace(/\{\{name\}\}/g, c.full_name || "お客様")
+        .replace(/\{\{last_menu\}\}/g, lastMenu)
+        .replace(/\{\{staff_name\}\}/g, staff)
+        .replace(/\{\{days_since\}\}/g, daysSinceText)
+        .replace(/\{\{next_suggested_menu\}\}/g, next)
+        .replace(/\{\{salon_name\}\}/g, salonName);
+    };
+
     for (const c of list) {
-      const personalText = message.replace(/\{\{name\}\}/g, c.full_name || "お客様");
+      const personalText = personalize(message, c);
       let anySent = false;
       let lastChannel: string | null = null;
 
