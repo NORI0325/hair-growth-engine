@@ -100,6 +100,8 @@ const navGroups: NavGroup[] = [
       { to: "/import", label: "インポート", en: "Import", icon: Upload },
       { to: "/inbound-logs", label: "予約取込ログ", en: "Inbound Logs", icon: Radio },
       { to: "/salonboard-export", label: "サロンボード抽出", en: "SB Export", icon: Download },
+      { to: "/channel-integrations", label: "外部媒体連携", en: "Integrations", icon: Plug },
+      { to: "/sync-review", label: "要確認キュー", en: "Sync Review", icon: AlertTriangle },
     ],
   },
 ];
