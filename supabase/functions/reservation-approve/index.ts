@@ -293,7 +293,10 @@ ${body.proposal_message}
         .eq("request_id", rr.id);
     } catch {}
 
-ご予約のお問い合わせありがとうございます🙇‍♀️
+    if (accessToken && rr.line_user_id) {
+      const replyMsg = body.reject_message || `${customerName}様
+
+ご予約のお問い合わせありがとうございます。
 
 申し訳ございません、ご希望の日時はあいにくお席が満席となっております。
 別日でのご相談を承りますので、よろしければ改めてご希望をお送りください。
