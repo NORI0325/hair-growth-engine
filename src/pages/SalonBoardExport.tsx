@@ -145,7 +145,7 @@ const SalonBoardExport = () => {
               <h2 className="display text-2xl">4ステップで完了</h2>
             </div>
             <Button
-              onClick={downloadExtension}
+              onClick={openDownloadConsent}
               disabled={downloading}
               className="rounded-none px-6 py-5 text-xs tracking-luxury bg-primary hover:bg-primary-glow"
             >
@@ -180,7 +180,7 @@ const SalonBoardExport = () => {
           <p className="text-sm text-muted-foreground mb-6">
             進捗は自動保存。最後の「テスト取得成功」だけは取込ログから自動で検知します。
           </p>
-          <HandsOnChecklist onDownload={downloadExtension} downloading={downloading} />
+          <HandsOnChecklist onDownload={openDownloadConsent} downloading={downloading} />
         </section>
 
         {/* Stuck? Help */}
