@@ -99,6 +99,8 @@ Deno.serve(async (req) => {
 
     for (const c of list) {
       const personalText = message.replace(/\{\{name\}\}/g, c.full_name || "お客様");
+      let anySent = false;
+      let lastChannel: string | null = null;
 
       // LINE
       if (useLine) {
@@ -108,7 +110,8 @@ Deno.serve(async (req) => {
           result.line.skipped++;
         } else {
           const r = await sendLinePush(lineToken, c.line_user_id!, personalText);
-          if (r.ok) result.line.sent++; else result.line.failed++;
+          if (r.ok) { result.line.sent++; anySent = true; lastChannel = "line"; }
+          else result.line.failed++;
           lineLogs.push({
             owner_id: user.id, customer_id: c.id, job_type: "broadcast",
             line_user_id: c.line_user_id, message: personalText,
@@ -123,7 +126,7 @@ Deno.serve(async (req) => {
         if (!c.phone) { result.sms.skipped++; }
         else {
           const r = await sendSms(c.phone, personalText);
-          if (r.ok) result.sms.sent++;
+          if (r.ok) { result.sms.sent++; anySent = true; lastChannel = "sms"; }
           else if (r.skipped) result.sms.skipped++;
           else result.sms.failed++;
           await new Promise(res => setTimeout(res, 80));
@@ -147,13 +150,28 @@ Deno.serve(async (req) => {
               },
             },
           });
-          if (r.error) result.email.failed++; else result.email.sent++;
+          if (r.error) result.email.failed++;
+          else { result.email.sent++; anySent = true; lastChannel = "email"; }
         }
+      }
+
+      if (anySent) {
+        stateUpserts.push({
+          owner_id: user.id,
+          customer_id: c.id,
+          last_sent_at: new Date().toISOString(),
+          last_channel: lastChannel,
+          last_template_key: "bulk-broadcast",
+        });
       }
     }
 
     if (lineLogs.length > 0) {
       await supabase.from("line_message_log").insert(lineLogs as any);
+    }
+    if (stateUpserts.length > 0) {
+      await supabase.from("customer_communication_state")
+        .upsert(stateUpserts as any, { onConflict: "owner_id,customer_id" });
     }
 
     return new Response(JSON.stringify({ success: true, ...result }),
