@@ -437,6 +437,16 @@ Deno.serve(async (req) => {
           if (r.ok) {
             channelUsed = "line";
             console.log(`[LINE] ${job.job_type} → ${customer.line_user_id}`);
+            // 未収集情報の依頼を同梱した場合、依頼日時を記録（30日連投防止＋誕生日30分窓判定）
+            if (infoRequestApplied) {
+              const pending: Record<string, boolean> = {};
+              if (!customer.birthday) pending.birthday = true;
+              if (!customer.email) pending.email = true;
+              await supabase.from("customers").update({
+                info_request_last_sent_at: new Date().toISOString(),
+                info_request_pending: pending,
+              }).eq("id", customer.id);
+            }
           } else {
             lastErr = `line: ${r.err}`;
           }
