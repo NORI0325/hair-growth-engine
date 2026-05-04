@@ -73,7 +73,7 @@ export default function Inbox() {
     if (!user || !locationId) return;
     const ch = supabase
       .channel("inbox-page")
-      .on("postgres_changes", { event: "*", schema: "public", table: "line_inbound_messages", filter: `location_id=eq.${locationId}` }, load)
+      .on("postgres_changes", { event: "*", schema: "public", table: "line_inbound_messages", filter: `owner_id=eq.${user.id}` }, load)
       .subscribe();
     return () => { supabase.removeChannel(ch); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
