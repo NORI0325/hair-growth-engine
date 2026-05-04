@@ -398,6 +398,29 @@ Deno.serve(async (req) => {
         let channelUsed: "line" | "email" | "sms" | "none" = "none";
         let lastErr: string | undefined;
 
+        // ====== サンキュー系LINE末尾に「未収集情報のお願い」を自動同梱 ======
+        // 対象: thank_you / aftercare / next_suggestion （来店後フォロー系）かつ LINE連携済み
+        let infoRequestApplied = false;
+        const APPEND_TARGET_JOBS = new Set(["thank_you", "aftercare", "next_suggestion"]);
+        if (
+          hasLine
+          && APPEND_TARGET_JOBS.has(job.job_type)
+          && (profile as any)?.info_collection_enabled !== false
+          && (profile as any)?.info_collection_append_to_thanks !== false
+        ) {
+          const missing: string[] = [];
+          if (!customer.birthday) missing.push("🎂 誕生日（例：1990/5/12）— 誕生月クーポンをお届け");
+          if (!customer.email) missing.push("📧 メールアドレス — 限定クーポンの案内に");
+          // 30日以内に依頼済みなら今回はスキップ（しつこくしない）
+          const lastReq = customer.info_request_last_sent_at
+            ? new Date(customer.info_request_last_sent_at as any).getTime() : 0;
+          const within30days = lastReq > 0 && (Date.now() - lastReq) < 30 * 24 * 60 * 60 * 1000;
+          if (missing.length > 0 && !within30days) {
+            body = body + `\n\n────────\nP.S. よろしければ、以下をこのトークに送ってください✨\n${missing.join("\n")}`;
+            infoRequestApplied = true;
+          }
+        }
+
         // 1) LINE
         if (channelUsed === "none" && hasLine) {
           const r = await sendLinePush(lineToken!, customer.line_user_id!, body);
