@@ -66,9 +66,11 @@ function jpDate(ymd?: string | null): string {
 export default function Reservations() {
   const { user } = useAuth();
   const [items, setItems] = useState<ReservationRequest[]>([]);
+  const [aiLogs, setAiLogs] = useState<AILog[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [dialog, setDialog] = useState<{ mode: "approve" | "propose" | "reject"; req: ReservationRequest } | null>(null);
+  const [tab, setTab] = useState<"board" | "logs">("board");
 
   // フォーム状態
   const [confirmedDate, setConfirmedDate] = useState("");
@@ -81,13 +83,21 @@ export default function Reservations() {
   const load = async () => {
     if (!user) return;
     setLoading(true);
-    const { data, error } = await supabase
-      .from("reservation_requests")
-      .select("*, customers:customer_id(full_name, phone)")
-      .order("created_at", { ascending: false })
-      .limit(200);
+    const [{ data, error }, { data: logs }] = await Promise.all([
+      supabase
+        .from("reservation_requests")
+        .select("*, customers:customer_id(full_name, phone)")
+        .order("created_at", { ascending: false })
+        .limit(200),
+      supabase
+        .from("reservation_ai_logs")
+        .select("id, raw_message, keyword_score, ai_confidence, ai_summary, ai_is_reservation, final_action, final_corrected, false_positive, needs_clarification_fields, created_at, decided_at")
+        .order("created_at", { ascending: false })
+        .limit(100),
+    ]);
     if (error) toast.error(error.message);
     setItems((data as any) || []);
+    setAiLogs((logs as any) || []);
     setLoading(false);
   };
 
