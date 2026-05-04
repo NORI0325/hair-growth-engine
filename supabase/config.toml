@@ -63,3 +63,7 @@ project_id = "miyedioemkzhetphjzzg"
     verify_jwt = false
   [functions.send-briefing]
     verify_jwt = false
+  [functions.reservation-action-resolve]
+    verify_jwt = false
+  [functions.reservation-action-execute]
+    verify_jwt = false
