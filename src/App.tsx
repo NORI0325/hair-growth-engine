@@ -50,6 +50,7 @@ import HelpCenter from "./pages/HelpCenter";
 import CustomerChart from "./pages/CustomerChart";
 import Commission from "./pages/Commission";
 import Retention from "./pages/Retention";
+import Reservations from "./pages/Reservations";
 import NotFound from "./pages/NotFound";
 import { LocationProvider } from "@/hooks/useLocations";
 
@@ -83,6 +84,7 @@ const App = () => (
             <Route path="/calendar" element={<ProtectedRoute><CalendarPage /></ProtectedRoute>} />
             <Route path="/inbound-logs" element={<ProtectedRoute><InboundLogs /></ProtectedRoute>} />
             <Route path="/approvals" element={<ProtectedRoute><Approvals /></ProtectedRoute>} />
+            <Route path="/reservations" element={<ProtectedRoute><Reservations /></ProtectedRoute>} />
             <Route path="/delivery" element={<ProtectedRoute><DeliveryDashboard /></ProtectedRoute>} />
             <Route path="/ab-tests" element={<ProtectedRoute><ABTests /></ProtectedRoute>} />
             <Route path="/segment-templates" element={<ProtectedRoute><SegmentTemplates /></ProtectedRoute>} />

@@ -2,6 +2,13 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
 import { replyLine, sendLinePush, normalizePhone } from "../_shared/line-push.ts";
 import { detectFields } from "../_shared/line-field-detector.ts";
+import {
+  quickReservationIntent,
+  parseReservationWithAI,
+  buildReservationAutoReply,
+  isOutsideBusinessHoursJst,
+  todayJstIso,
+} from "../_shared/reservation-intent.ts";
 
 // LINE署名検証 (HMAC-SHA256)
 async function verifySignature(secret: string, body: string, signature: string): Promise<boolean> {
@@ -267,7 +274,7 @@ Deno.serve(async (req) => {
   // 全プロフィールから access_token を持つものを取得（secretは未設定も許容しフォールバック）
   const { data: profiles } = await supabase
     .from("profiles")
-    .select("id, salon_name, line_channel_access_token, line_channel_secret, open_time, close_time, auto_reply_enabled, auto_reply_message, auto_reply_use_ai")
+    .select("id, salon_name, line_channel_access_token, line_channel_secret, open_time, close_time, auto_reply_enabled, auto_reply_message, auto_reply_use_ai, line_reservation_enabled")
     .not("line_channel_access_token", "is", null);
 
   if (!profiles || profiles.length === 0) {
@@ -522,6 +529,111 @@ Deno.serve(async (req) => {
             await replyLine(accessToken, replyToken,
               `✅ ${linkedCustomer.full_name}様、ご登録ありがとうございます🌸\n\n${labels.join("\n")}\n\nお得情報をピンポイントでお届けします。\n\n— ${owner.salon_name || "サロン"}`);
             continue;
+          }
+        }
+
+        // ============= 🆕 予約意図検出（連携済み顧客のみ）=============
+        if (linkedCustomer && owner.line_reservation_enabled !== false) {
+          const quick = quickReservationIntent(text);
+          if (quick.matched) {
+            console.log(`[reservation-intent] quick match score=${quick.score} for "${text.slice(0,50)}"`);
+            const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+            const { data: recentReq } = await supabase
+              .from("reservation_requests")
+              .select("id")
+              .eq("owner_id", owner.id)
+              .eq("customer_id", linkedCustomer.id)
+              .in("status", ["awaiting_approval", "pending_clarification"])
+              .gte("created_at", tenMinAgo)
+              .limit(1);
+
+            if (!recentReq || recentReq.length === 0) {
+              const { data: pastBookings } = await supabase
+                .from("bookings")
+                .select("menu, staff_id")
+                .eq("customer_id", linkedCustomer.id)
+                .order("booking_date", { ascending: false })
+                .limit(5);
+              const { data: menus } = await supabase
+                .from("menu_items")
+                .select("name")
+                .eq("owner_id", owner.id)
+                .eq("active", true)
+                .limit(20);
+              const { data: staffs } = await supabase
+                .from("staff")
+                .select("id, name")
+                .eq("owner_id", owner.id)
+                .eq("active", true);
+
+              const staffMap = new Map((staffs || []).map((s: any) => [s.id, s.name]));
+              const pastStaffNames = Array.from(new Set(
+                (pastBookings || [])
+                  .map((b: any) => b.staff_id ? staffMap.get(b.staff_id) : null)
+                  .filter(Boolean)
+              )) as string[];
+
+              const parsed = await parseReservationWithAI({
+                text,
+                customerName: linkedCustomer.full_name,
+                todayJst: todayJstIso(),
+                pastMenus: (pastBookings || []).map((b: any) => b.menu).filter(Boolean) as string[],
+                pastStaffNames,
+                availableMenus: (menus || []).map((m: any) => m.name),
+                availableStaffs: (staffs || []).map((s: any) => s.name),
+              });
+
+              if (parsed && parsed.isReservation && parsed.confidence >= 30) {
+                const isOutsideHours = isOutsideBusinessHoursJst(owner.open_time, owner.close_time);
+                const desiredStaffId = parsed.desiredStaffName
+                  ? (staffs || []).find((s: any) => s.name === parsed.desiredStaffName)?.id
+                  : null;
+
+                const { data: rrInserted, error: rrErr } = await supabase
+                  .from("reservation_requests")
+                  .insert({
+                    owner_id: owner.id,
+                    customer_id: linkedCustomer.id,
+                    line_user_id: userId,
+                    display_name: linkedCustomer.full_name,
+                    raw_message: text.slice(0, 2000),
+                    ai_model: "google/gemini-2.5-flash",
+                    ai_confidence: parsed.confidence,
+                    ai_parsed: parsed as any,
+                    desired_date_candidates: parsed.desiredDateCandidates,
+                    desired_menu: parsed.desiredMenu || null,
+                    desired_menu_items: parsed.desiredMenuItems || null,
+                    desired_staff_id: desiredStaffId || null,
+                    desired_staff_name: parsed.desiredStaffName || null,
+                    needs_clarification_fields: parsed.needsClarificationFields,
+                    status: parsed.confidence >= 50 ? "awaiting_approval" : "pending_clarification",
+                    outside_hours_notified: isOutsideHours,
+                    auto_reply_sent_at: new Date().toISOString(),
+                  })
+                  .select("id")
+                  .maybeSingle();
+
+                if (rrErr) console.error("[reservation-intent] insert error:", rrErr);
+                else console.log(`[reservation-intent] request id=${rrInserted?.id} conf=${parsed.confidence}`);
+
+                const replyMsg = buildReservationAutoReply({
+                  customerName: linkedCustomer.full_name || "お客様",
+                  salonName: owner.salon_name || "サロン",
+                  parsed,
+                  isOutsideHours,
+                  openTime: owner.open_time,
+                  closeTime: owner.close_time,
+                });
+                await replyLine(accessToken, replyToken, replyMsg);
+                await logLineReply(
+                  supabase, owner.id, linkedCustomer.id, userId,
+                  "reservation_pending", replyMsg, "sent",
+                );
+                continue;
+              }
+            } else {
+              console.log(`[reservation-intent] duplicate within 10min, skip`);
+            }
           }
         }
 
