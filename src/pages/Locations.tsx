@@ -47,14 +47,33 @@ const Locations = () => {
   const additionalCount = Math.max(0, locations.length - 1);
   const monthlyTotal = 9800 + additionalCount * 7800;
 
+  const ERROR_MESSAGES: Record<string, string> = {
+    duplicate_name: "同じ名前の店舗が既に存在します",
+    forbidden: "権限がありません（オーナーのみ追加可能です）",
+    unauthorized: "ログインし直してください",
+    missing_fields: "店舗名を入力してください",
+    additional_price_not_found: "課金プランの設定に問題があります。サポートまでご連絡ください",
+  };
+
   const addLocation = useMutation({
     mutationFn: async () => {
       if (!tenantId || !newName.trim()) throw new Error("店舗名を入力してください");
       const { data, error } = await supabase.functions.invoke("add-location", {
         body: { tenant_id: tenantId, name: newName.trim(), environment: getEnvironment() },
       });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+      // edge function が non-2xx を返した場合 error.context.json() で本文を取得
+      if (error) {
+        let serverError: string | undefined;
+        try {
+          const ctx: any = (error as any).context;
+          if (ctx && typeof ctx.json === "function") {
+            const body = await ctx.json();
+            serverError = body?.error;
+          }
+        } catch {}
+        throw new Error(ERROR_MESSAGES[serverError ?? ""] ?? serverError ?? error.message);
+      }
+      if (data?.error) throw new Error(ERROR_MESSAGES[data.error] ?? data.error);
       return data;
     },
     onSuccess: () => {
