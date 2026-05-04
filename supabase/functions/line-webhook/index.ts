@@ -9,6 +9,7 @@ import {
   isOutsideBusinessHoursJst,
   todayJstIso,
 } from "../_shared/reservation-intent.ts";
+import { signActionToken, hashToken, publicAppOrigin } from "../_shared/reservation-token.ts";
 
 // LINE署名検証 (HMAC-SHA256)
 async function verifySignature(secret: string, body: string, signature: string): Promise<boolean> {
