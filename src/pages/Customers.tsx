@@ -416,8 +416,8 @@ const Customers = () => {
         onClear={clearSel}
         onSelectAll={selectAllVisible}
         onLineBroadcast={() => {
-          if (selectedCustomers.length === 0) {
-            toast.error("選択中にLINE連携済みのお客様がいません");
+          if (selectedAll.length === 0) {
+            toast.error("送信対象を選択してください");
             return;
           }
           setBulkLineOpen(true);
@@ -428,8 +428,13 @@ const Customers = () => {
       <BulkLineDialog
         open={bulkLineOpen}
         onClose={() => setBulkLineOpen(false)}
-        customerIds={selectedCustomers.map((c) => c.id)}
-        customerNames={selectedCustomers.map((c) => c.full_name)}
+        customers={selectedAll.map((c) => ({
+          id: c.id,
+          full_name: c.full_name,
+          email: (c as any).email,
+          phone: (c as any).phone,
+          line_user_id: (c as any).line_user_id,
+        }))}
       />
 
       {qrTarget && (
