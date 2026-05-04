@@ -129,7 +129,7 @@ const ImportCustomers = () => {
       const CHUNK = 300;
       for (let i = 0; i < values.length; i += CHUNK) {
         const slice = values.slice(i, i + CHUNK);
-        const { data } = await supabase.from("customers").select(SELECT_COLS).eq("owner_id", user.id).in(col, slice);
+        const { data } = await (supabase.from("customers") as any).select(SELECT_COLS).eq("owner_id", user.id).in(col, slice);
         for (const row of (data || [])) {
           const key = (row as any)[col];
           if (key && !map.has(key)) map.set(key, row);
