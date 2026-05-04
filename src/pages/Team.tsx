@@ -33,9 +33,19 @@ const Team = () => {
     if (!tenantId) return;
     const { data: m } = await supabase
       .from("tenant_members")
-      .select("user_id, role, accepted_at, profiles!inner(full_name)")
+      .select("user_id, role, accepted_at")
       .eq("tenant_id", tenantId);
-    setMembers((m as any) ?? []);
+    const rows = (m as any[]) ?? [];
+    const ids = rows.map((r) => r.user_id);
+    let profilesMap: Record<string, { full_name: string | null }> = {};
+    if (ids.length > 0) {
+      const { data: profs } = await supabase
+        .from("profiles")
+        .select("id, full_name")
+        .in("id", ids);
+      profilesMap = Object.fromEntries((profs ?? []).map((p: any) => [p.id, { full_name: p.full_name }]));
+    }
+    setMembers(rows.map((r) => ({ ...r, profiles: profilesMap[r.user_id] ?? { full_name: null } })) as any);
     const { data: i } = await supabase
       .from("tenant_invitations")
       .select("id, email, role, expires_at, accepted_at, location_ids")
