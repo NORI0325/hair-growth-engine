@@ -326,6 +326,13 @@ const StaffPage = () => {
           </div>
         </DialogContent>
       </Dialog>
+      <ChannelMappingDialog
+        open={!!mappingStaff}
+        onOpenChange={(v) => !v && setMappingStaff(null)}
+        kind="staff"
+        targetId={mappingStaff?.id ?? null}
+        targetName={mappingStaff?.name}
+      />
     </AppLayout>
   );
 };
