@@ -757,6 +757,8 @@ export type Database = {
           gender: Database["public"]["Enums"]["customer_gender"]
           id: string
           imported_from: string | null
+          info_request_last_sent_at: string | null
+          info_request_pending: Json | null
           is_test: boolean
           last_imported_at: string | null
           last_visit_date: string | null
@@ -787,6 +789,8 @@ export type Database = {
           gender?: Database["public"]["Enums"]["customer_gender"]
           id?: string
           imported_from?: string | null
+          info_request_last_sent_at?: string | null
+          info_request_pending?: Json | null
           is_test?: boolean
           last_imported_at?: string | null
           last_visit_date?: string | null
@@ -817,6 +821,8 @@ export type Database = {
           gender?: Database["public"]["Enums"]["customer_gender"]
           id?: string
           imported_from?: string | null
+          info_request_last_sent_at?: string | null
+          info_request_pending?: Json | null
           is_test?: boolean
           last_imported_at?: string | null
           last_visit_date?: string | null
@@ -1204,6 +1210,42 @@ export type Database = {
           used_count?: number
           valid_until?: string | null
           value_label?: string | null
+        }
+        Relationships: []
+      }
+      line_field_detections: {
+        Row: {
+          applied: Json
+          created_at: string
+          customer_id: string | null
+          detected: Json
+          id: string
+          line_user_id: string
+          needs_confirmation: boolean
+          owner_id: string
+          raw_text: string
+        }
+        Insert: {
+          applied: Json
+          created_at?: string
+          customer_id?: string | null
+          detected: Json
+          id?: string
+          line_user_id: string
+          needs_confirmation?: boolean
+          owner_id: string
+          raw_text: string
+        }
+        Update: {
+          applied?: Json
+          created_at?: string
+          customer_id?: string | null
+          detected?: Json
+          id?: string
+          line_user_id?: string
+          needs_confirmation?: boolean
+          owner_id?: string
+          raw_text?: string
         }
         Relationships: []
       }
@@ -1687,6 +1729,8 @@ export type Database = {
           id: string
           import_quiet_days: number
           inbound_key: string | null
+          info_collection_append_to_thanks: boolean
+          info_collection_enabled: boolean
           line_add_friend_url: string | null
           line_channel_access_token: string | null
           line_channel_secret: string | null
@@ -1732,6 +1776,8 @@ export type Database = {
           id: string
           import_quiet_days?: number
           inbound_key?: string | null
+          info_collection_append_to_thanks?: boolean
+          info_collection_enabled?: boolean
           line_add_friend_url?: string | null
           line_channel_access_token?: string | null
           line_channel_secret?: string | null
@@ -1777,6 +1823,8 @@ export type Database = {
           id?: string
           import_quiet_days?: number
           inbound_key?: string | null
+          info_collection_append_to_thanks?: boolean
+          info_collection_enabled?: boolean
           line_add_friend_url?: string | null
           line_channel_access_token?: string | null
           line_channel_secret?: string | null

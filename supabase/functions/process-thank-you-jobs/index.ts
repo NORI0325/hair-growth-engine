@@ -117,7 +117,7 @@ Deno.serve(async (req) => {
       try {
         const { data: customer } = await supabase
           .from("customers")
-          .select("id, full_name, email, phone, line_user_id, opt_out_automation, quiet_until, imported_from, activated_at")
+          .select("id, full_name, email, phone, birthday, line_user_id, opt_out_automation, quiet_until, imported_from, activated_at, info_request_last_sent_at")
           .eq("id", job.customer_id)
           .maybeSingle();
 
@@ -139,7 +139,7 @@ Deno.serve(async (req) => {
         }
         const { data: profile } = await supabase
           .from("profiles")
-          .select("salon_name, google_review_url, line_channel_access_token, frequency_cap_days, frequency_cap_per_month")
+          .select("salon_name, google_review_url, line_channel_access_token, frequency_cap_days, frequency_cap_per_month, info_collection_enabled, info_collection_append_to_thanks")
           .eq("id", job.owner_id)
           .maybeSingle();
 
@@ -398,6 +398,29 @@ Deno.serve(async (req) => {
         let channelUsed: "line" | "email" | "sms" | "none" = "none";
         let lastErr: string | undefined;
 
+        // ====== サンキュー系LINE末尾に「未収集情報のお願い」を自動同梱 ======
+        // 対象: thank_you / aftercare / next_suggestion （来店後フォロー系）かつ LINE連携済み
+        let infoRequestApplied = false;
+        const APPEND_TARGET_JOBS = new Set(["thank_you", "aftercare", "next_suggestion"]);
+        if (
+          hasLine
+          && APPEND_TARGET_JOBS.has(job.job_type)
+          && (profile as any)?.info_collection_enabled !== false
+          && (profile as any)?.info_collection_append_to_thanks !== false
+        ) {
+          const missing: string[] = [];
+          if (!customer.birthday) missing.push("🎂 誕生日（例：1990/5/12）— 誕生月クーポンをお届け");
+          if (!customer.email) missing.push("📧 メールアドレス — 限定クーポンの案内に");
+          // 30日以内に依頼済みなら今回はスキップ（しつこくしない）
+          const lastReq = customer.info_request_last_sent_at
+            ? new Date(customer.info_request_last_sent_at as any).getTime() : 0;
+          const within30days = lastReq > 0 && (Date.now() - lastReq) < 30 * 24 * 60 * 60 * 1000;
+          if (missing.length > 0 && !within30days) {
+            body = body + `\n\n────────\nP.S. よろしければ、以下をこのトークに送ってください✨\n${missing.join("\n")}`;
+            infoRequestApplied = true;
+          }
+        }
+
         // 1) LINE
         if (channelUsed === "none" && hasLine) {
           const r = await sendLinePush(lineToken!, customer.line_user_id!, body);
@@ -414,6 +437,16 @@ Deno.serve(async (req) => {
           if (r.ok) {
             channelUsed = "line";
             console.log(`[LINE] ${job.job_type} → ${customer.line_user_id}`);
+            // 未収集情報の依頼を同梱した場合、依頼日時を記録（30日連投防止＋誕生日30分窓判定）
+            if (infoRequestApplied) {
+              const pending: Record<string, boolean> = {};
+              if (!customer.birthday) pending.birthday = true;
+              if (!customer.email) pending.email = true;
+              await supabase.from("customers").update({
+                info_request_last_sent_at: new Date().toISOString(),
+                info_request_pending: pending,
+              }).eq("id", customer.id);
+            }
           } else {
             lastErr = `line: ${r.err}`;
           }
