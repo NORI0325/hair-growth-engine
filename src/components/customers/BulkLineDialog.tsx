@@ -47,7 +47,7 @@ const BulkLineDialog = ({ open, onClose, customers }: Props) => {
     if (useSms) channels.push("sms");
     if (useEmail) channels.push("email");
     const { data, error } = await supabase.functions.invoke("bulk-broadcast", {
-      body: { message, subject, channels, customer_ids: customers.map((c) => c.id) },
+      body: { message, subject, channels, customer_ids: customers.map((c) => c.id), skip_recent_days: skipRecent ? skipDays : 0 },
     });
     setSending(false);
     if (error || !(data as any)?.success) {
