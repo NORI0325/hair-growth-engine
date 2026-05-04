@@ -39,6 +39,7 @@ const dailyItems: NavItem[] = [
   { to: "/dashboard", label: "ダッシュボード", en: "Overview", icon: LayoutDashboard },
   { to: "/inbox", label: "受信トレイ", en: "Inbox", icon: Inbox, badgeKey: "inbox" },
   { to: "/calendar", label: "予約カレンダー", en: "Calendar", icon: CalendarClock },
+      { to: "/reservations", label: "LINE予約仮受付", en: "LINE Reservations", icon: MessageCircle },
   { to: "/bookings", label: "予約一覧", en: "Bookings", icon: Calendar },
   { to: "/customers", label: "顧客", en: "Guests", icon: Users },
 ];
