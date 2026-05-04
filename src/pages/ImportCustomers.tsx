@@ -274,6 +274,7 @@ const ImportCustomers = () => {
               { jp: "最終来店 / last_visit" },
               { jp: "来店回数 / visit_count" },
               { jp: "累計 / total_spent" },
+              { jp: "性別 / gender" },
             ].map((col, i) => (
               <div key={i} className="py-3 border-b border-border/60 flex justify-between items-center">
                 <span className="text-xs font-serif">{col.jp}</span>
