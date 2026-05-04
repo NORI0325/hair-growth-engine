@@ -113,6 +113,7 @@ const App = () => (
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/tokushoho" element={<Tokushoho />} />
             <Route path="/unsubscribe" element={<Unsubscribe />} />
+            <Route path="/r/:actionPath/:token" element={<ReservationAction />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
           </LocationProvider>
