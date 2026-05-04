@@ -95,12 +95,27 @@ Deno.serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
+    const ip = req.headers.get("x-forwarded-for") ?? null;
+    const ua = req.headers.get("user-agent") ?? null;
+
+    // 同意ログ記録（法的立証用）
+    await admin.from("extension_download_consents").insert({
+      user_id: user.id,
+      tenant_id: membership?.tenant_id ?? null,
+      terms_version: TERMS_VERSION,
+      consent_unofficial: consentUnofficial,
+      consent_risk_self_responsibility: consentRiskSelf,
+      consent_proper_use: consentProperUse,
+      ip,
+      user_agent: ua,
+    });
+
     // 監査ログ記録
     await admin.from("extension_download_logs").insert({
       user_id: user.id,
       tenant_id: membership?.tenant_id ?? null,
-      ip: req.headers.get("x-forwarded-for") ?? null,
-      user_agent: req.headers.get("user-agent") ?? null,
+      ip,
+      user_agent: ua,
       version: "2.1.3",
     });
 
