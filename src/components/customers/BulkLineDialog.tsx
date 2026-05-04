@@ -59,7 +59,8 @@ const BulkLineDialog = ({ open, onClose, customers }: Props) => {
     if (useLine) parts.push(`LINE ${d.line.sent}/${d.line.sent + d.line.failed + d.line.skipped}`);
     if (useSms) parts.push(`SMS ${d.sms.sent}/${d.sms.sent + d.sms.failed + d.sms.skipped}`);
     if (useEmail) parts.push(`メール ${d.email.sent}/${d.email.sent + d.email.failed + d.email.skipped}`);
-    toast.success(`送信完了: ${parts.join(" · ")}`);
+    const cs = (d as any)?.cooldown_skipped || 0;
+    toast.success(`送信完了: ${parts.join(" · ")}${cs > 0 ? ` ／ クールダウンで${cs}名スキップ` : ""}`);
     setMessage("");
     onClose();
   };
