@@ -180,7 +180,7 @@ Deno.serve(async (req) => {
         birthday: parseDate(pick(c, ["詳細_誕生日"])),
         lastVisit: parseDate(pick(c, ["一覧_前回来店日", "詳細_来店情報_前回来店日"])),
         visitCount: parseInt((pick(c, ["一覧_来店回数", "詳細_来店情報_来店回数"]) || "").replace(/[^\d]/g, ""), 10) || 0,
-        gender: normalizeGender(pick(c, ["詳細_性別", "一覧_性別", "性別"])),
+        gender: normalizeGender(pick(c, ["gender", "sex", "性別", "詳細_性別", "一覧_性別", "詳細_基本情報_性別"])),
       });
     }
 
