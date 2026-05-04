@@ -7,10 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, Plus, Trash2, Clock, Calendar as CalIcon } from "lucide-react";
+import { Loader2, Plus, Trash2, Clock, Calendar as CalIcon, Plug } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useCurrentLocationId } from "@/hooks/useLocations";
+import ChannelMappingDialog from "@/components/ChannelMappingDialog";
 
 interface Staff {
   id: string;
