@@ -10,6 +10,8 @@ import { Upload, FileText, Loader2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { useCurrentLocationId } from "@/hooks/useLocations";
 
+type Gender = "female" | "male" | "other" | "unknown";
+
 interface ParsedRow {
   full_name: string;
   email: string | null;
@@ -17,6 +19,20 @@ interface ParsedRow {
   last_visit_date: string | null;
   visit_count: number;
   total_spent: number;
+  gender: Gender;
+}
+
+function normalizeGender(s: string | undefined): Gender {
+  const v = (s || "").trim();
+  if (!v) return "unknown";
+  if (/女/.test(v) || /female/i.test(v) || v === "F") return "female";
+  if (/男/.test(v) || /male/i.test(v) || v === "M") return "male";
+  if (/その他|other/i.test(v)) return "other";
+  return "unknown";
+}
+
+function normalizePhone(s: string | null | undefined): string {
+  return (s || "").replace(/[^\d]/g, "");
 }
 
 const ImportCustomers = () => {
