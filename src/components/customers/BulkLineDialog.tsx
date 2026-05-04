@@ -29,6 +29,8 @@ const BulkLineDialog = ({ open, onClose, customers }: Props) => {
   const [useLine, setUseLine] = useState(true);
   const [useSms, setUseSms] = useState(false);
   const [useEmail, setUseEmail] = useState(false);
+  const [skipRecent, setSkipRecent] = useState(true);
+  const [skipDays, setSkipDays] = useState(7);
 
   const reach = useMemo(() => ({
     line: customers.filter((c) => /^U[0-9a-f]{32}$/i.test(c.line_user_id || "")).length,
