@@ -8,7 +8,7 @@ import {
   Settings as SettingsIcon, Mail, MessageCircle, FileText, CalendarClock,
   TrendingUp, Scissors, UserCog, Gift, Inbox, Download, CreditCard, Users2,
   Store, ChevronDown, Sparkles, Building2, BarChart3, ShieldCheck, Radio, FlaskConical, Users as UsersIcon,
-  HelpCircle,
+  HelpCircle, Plug, AlertTriangle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LocationSwitcher } from "@/components/LocationSwitcher";
@@ -100,6 +100,8 @@ const navGroups: NavGroup[] = [
       { to: "/import", label: "インポート", en: "Import", icon: Upload },
       { to: "/inbound-logs", label: "予約取込ログ", en: "Inbound Logs", icon: Radio },
       { to: "/salonboard-export", label: "サロンボード抽出", en: "SB Export", icon: Download },
+      { to: "/channel-integrations", label: "外部媒体連携", en: "Integrations", icon: Plug },
+      { to: "/sync-review", label: "要確認キュー", en: "Sync Review", icon: AlertTriangle },
     ],
   },
 ];

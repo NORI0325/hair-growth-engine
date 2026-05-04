@@ -236,6 +236,85 @@ Deno.serve(async (req) => {
 
     const menu = menuSummary;
 
+    // === 外部媒体への同期ジョブ作成（自社Web経由→他媒体へ反映） ===
+    try {
+      const { data: integrations } = await supabase
+        .from("channel_integrations")
+        .select("channel")
+        .eq("owner_id", customer.owner_id)
+        .eq("enabled", true)
+        .eq("sync_enabled", true);
+
+      if (integrations && integrations.length > 0) {
+        // 顧客情報・スタッフ・メニューマッピング取得
+        const { data: cust2 } = await supabase
+          .from("customers").select("full_name, phone, email").eq("id", customer.id).maybeSingle();
+        const { data: staffRow } = assignedStaffId
+          ? await supabase.from("staff").select("name").eq("id", assignedStaffId).maybeSingle()
+          : { data: null };
+        const startISO = new Date(`${date}T${time}:00+09:00`).toISOString();
+        const endISO = new Date(new Date(`${date}T${time}:00+09:00`).getTime() + (totalDuration || 60) * 60_000).toISOString();
+
+        const jobsToInsert: any[] = [];
+        for (const ci of integrations) {
+          // 自媒体への自己同期はスキップ
+          if (ci.channel === "own_web") continue;
+
+          let extStaffName: string | null = null;
+          let extStaffId: string | null = null;
+          if (assignedStaffId) {
+            const { data: scm } = await supabase.from("staff_channel_mappings")
+              .select("external_name, external_id")
+              .eq("staff_id", assignedStaffId).eq("channel", ci.channel).maybeSingle();
+            extStaffName = scm?.external_name ?? null;
+            extStaffId = scm?.external_id ?? null;
+          }
+          let extMenuName: string | null = null;
+          if (menus.length > 0) {
+            const { data: menuRow } = await supabase.from("menu_items")
+              .select("id").eq("owner_id", customer.owner_id).eq("name", menus[0]).maybeSingle();
+            if (menuRow?.id) {
+              const { data: mcm } = await supabase.from("menu_channel_mappings")
+                .select("external_name").eq("menu_id", menuRow.id).eq("channel", ci.channel).maybeSingle();
+              extMenuName = mcm?.external_name ?? null;
+            }
+          }
+
+          jobsToInsert.push({
+            owner_id: customer.owner_id,
+            reservation_id: booking.id,
+            target_channel: ci.channel,
+            job_type: "create_reservation",
+            status: "pending",
+            request_payload: {
+              customer_name: cust2?.full_name,
+              customer_phone: cust2?.phone,
+              customer_email: cust2?.email,
+              start_time: startISO,
+              end_time: endISO,
+              staff_name: staffRow?.name ?? null,
+              external_staff_name: extStaffName,
+              external_staff_id: extStaffId,
+              menu_name: menuSummary,
+              external_menu_name: extMenuName,
+              notes: notes ? String(notes).slice(0, 500) : null,
+              source_channel: "own_web",
+            },
+          });
+        }
+
+        if (jobsToInsert.length > 0) {
+          await supabase.from("sync_jobs").insert(jobsToInsert);
+          await supabase.from("bookings").update({ sync_status: "pending", source_channel: "own_web" }).eq("id", booking.id);
+          // fire-and-forget dispatch
+          supabase.functions.invoke("sync-job-dispatch", { body: { reservation_id: booking.id } })
+            .catch((e) => console.error("dispatch error (non-fatal):", e));
+        }
+      }
+    } catch (e) {
+      console.error("sync-job creation error (non-fatal):", e);
+    }
+
     // 予約完了時のLINE即時通知（顧客がLINE連携済みなら）
     try {
       const { data: cust } = await supabase

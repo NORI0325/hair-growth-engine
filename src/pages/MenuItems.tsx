@@ -7,9 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, Plus, Trash2, GripVertical, ImagePlus, X } from "lucide-react";
+import { Loader2, Plus, Trash2, GripVertical, ImagePlus, X, Plug } from "lucide-react";
 import { toast } from "sonner";
 import { useCurrentLocationId } from "@/hooks/useLocations";
+import ChannelMappingDialog from "@/components/ChannelMappingDialog";
 
 interface MenuItem {
   id: string;
@@ -30,6 +31,7 @@ const MenuItems = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState({ name: "", duration_minutes: 60, buffer_minutes: 15, price: 0 });
+  const [mappingMenu, setMappingMenu] = useState<MenuItem | null>(null);
 
   const load = async () => {
     if (!user || !locationId) { setItems([]); setLoading(false); return; }
@@ -215,7 +217,10 @@ const MenuItems = () => {
               <div className="md:col-span-1 flex items-center gap-2">
                 <Switch checked={item.active} onCheckedChange={(v) => update(item.id, { active: v })} />
               </div>
-              <div className="md:col-span-1 flex justify-end">
+              <div className="md:col-span-1 flex justify-end gap-1">
+                <Button size="icon" variant="ghost" onClick={() => setMappingMenu(item)} title="媒体マッピング">
+                  <Plug className="w-4 h-4 text-muted-foreground hover:text-gold" />
+                </Button>
                 <Button size="icon" variant="ghost" onClick={() => remove(item.id)}>
                   <Trash2 className="w-4 h-4 text-muted-foreground hover:text-destructive" />
                 </Button>
@@ -234,6 +239,13 @@ const MenuItems = () => {
           <li>• <strong>並び順</strong>：上から順に予約画面に表示されます。</li>
         </ul>
       </div>
+      <ChannelMappingDialog
+        open={!!mappingMenu}
+        onOpenChange={(v) => !v && setMappingMenu(null)}
+        kind="menu"
+        targetId={mappingMenu?.id ?? null}
+        targetName={mappingMenu?.name}
+      />
     </AppLayout>
   );
 };

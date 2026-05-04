@@ -67,3 +67,9 @@ project_id = "miyedioemkzhetphjzzg"
     verify_jwt = false
   [functions.reservation-action-execute]
     verify_jwt = false
+  [functions.sync-job-dispatch]
+    verify_jwt = false
+  [functions.sync-worker-callback]
+    verify_jwt = false
+  [functions.sync-job-retry]
+    verify_jwt = false
