@@ -48,7 +48,15 @@ const SalonBoardExport = () => {
 
   useEffect(() => { loadLogs(); }, [user]);
 
-  const downloadExtension = async () => {
+  const openDownloadConsent = () => {
+    setConsentOpen(true);
+  };
+
+  const performDownload = async (consents: {
+    consent_unofficial: boolean;
+    consent_risk_self_responsibility: boolean;
+    consent_proper_use: boolean;
+  }) => {
     setDownloading(true);
     try {
       const { data: session } = await supabase.auth.getSession();
@@ -58,7 +66,12 @@ const SalonBoardExport = () => {
       }
       const url = `https://miyedioemkzhetphjzzg.supabase.co/functions/v1/download-extension`;
       const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${session.session.access_token}` },
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.session.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(consents),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -70,7 +83,10 @@ const SalonBoardExport = () => {
       a.download = "salon-boost-importer.zip";
       a.click();
       URL.revokeObjectURL(a.href);
-      toast.success("ダウンロードを開始しました");
+      toast.success("ダウンロードを開始しました", {
+        description: "⚠️ ZIPは必ず解凍してから読み込んでください",
+      });
+      setConsentOpen(false);
     } catch (e: any) {
       toast.error(e?.message || "ダウンロードに失敗しました");
     } finally {
