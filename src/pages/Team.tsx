@@ -13,7 +13,15 @@ import { toast } from "sonner";
 import { Loader2, Trash2, Mail } from "lucide-react";
 import AppLayout from "@/components/AppLayout";
 
-interface Member { user_id: string; role: string; accepted_at: string | null; email?: string | null; full_name?: string | null }
+interface Member {
+  user_id: string;
+  role: string;
+  accepted_at: string | null;
+  email?: string | null;
+  full_name?: string | null;
+  location_names?: string[];
+  location_ids?: string[];
+}
 interface Invitation { id: string; email: string; role: string; expires_at: string; accepted_at: string | null; location_ids: string[] | null }
 
 const Team = () => {
@@ -31,21 +39,37 @@ const Team = () => {
 
   const load = async () => {
     if (!tenantId) return;
-    const { data: m } = await supabase
-      .from("tenant_members")
-      .select("user_id, role, accepted_at")
-      .eq("tenant_id", tenantId);
-    const rows = (m as any[]) ?? [];
-    const ids = rows.map((r) => r.user_id);
-    let profilesMap: Record<string, { full_name: string | null }> = {};
-    if (ids.length > 0) {
-      const { data: profs } = await supabase
-        .from("profiles")
-        .select("id, full_name")
-        .in("id", ids);
-      profilesMap = Object.fromEntries((profs ?? []).map((p: any) => [p.id, { full_name: p.full_name }]));
+    // 詳細RPC（マネージャー以上が呼び出し可能）
+    const { data: detail, error: detailErr } = await supabase.rpc("get_tenant_members_detail", { _tenant_id: tenantId });
+    if (!detailErr && detail) {
+      setMembers((detail as any[]).map((r) => ({
+        user_id: r.user_id,
+        role: r.role,
+        accepted_at: r.accepted_at,
+        full_name: r.full_name,
+        email: r.email,
+        location_ids: r.location_ids ?? [],
+        location_names: r.location_names ?? [],
+      })));
+    } else {
+      // フォールバック（権限不足時など）
+      const { data: m } = await supabase
+        .from("tenant_members")
+        .select("user_id, role, accepted_at")
+        .eq("tenant_id", tenantId);
+      const rows = (m as any[]) ?? [];
+      const ids = rows.map((r) => r.user_id);
+      let profilesMap: Record<string, { full_name: string | null }> = {};
+      if (ids.length > 0) {
+        const { data: profs } = await supabase
+          .from("profiles")
+          .select("id, full_name")
+          .in("id", ids);
+        profilesMap = Object.fromEntries((profs ?? []).map((p: any) => [p.id, { full_name: p.full_name }]));
+      }
+      setMembers(rows.map((r) => ({ ...r, full_name: profilesMap[r.user_id]?.full_name ?? null })));
     }
-    setMembers(rows.map((r) => ({ ...r, profiles: profilesMap[r.user_id] ?? { full_name: null } })) as any);
+
     const { data: i } = await supabase
       .from("tenant_invitations")
       .select("id, email, role, expires_at, accepted_at, location_ids")
@@ -147,22 +171,35 @@ const Team = () => {
         <Card className="p-6">
           <h2 className="font-semibold mb-4">現在のメンバー</h2>
           <div className="space-y-3">
-            {members.map((m) => (
-              <div key={m.user_id} className="flex items-center justify-between border-b pb-3 last:border-0">
-                <div>
-                  <p className="font-medium">{(m as any).profiles?.full_name ?? m.user_id.slice(0, 8)}</p>
-                  <p className="text-xs text-muted-foreground">{m.user_id}</p>
+            {members.map((m) => {
+              const allLoc = !m.location_ids || m.location_ids.length === 0;
+              return (
+                <div key={m.user_id} className="flex items-start justify-between border-b pb-3 last:border-0 gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium truncate">{m.full_name || (m.email ? m.email.split("@")[0] : m.user_id.slice(0, 8))}</p>
+                    {m.email && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                        <Mail className="w-3 h-3" />{m.email}
+                      </p>
+                    )}
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      🏢 {allLoc ? "全店舗アクセス可" : (m.location_names || []).join(" / ")}
+                    </p>
+                    {!m.accepted_at && (
+                      <Badge variant="outline" className="mt-1 text-[10px]">未承諾</Badge>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Badge>{m.role}</Badge>
+                    {canManage && m.role !== "owner" && (
+                      <Button size="sm" variant="ghost" onClick={() => removeMember(m.user_id)}>
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Badge>{m.role}</Badge>
-                  {canManage && m.role !== "owner" && (
-                    <Button size="sm" variant="ghost" onClick={() => removeMember(m.user_id)}>
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  )}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </Card>
 

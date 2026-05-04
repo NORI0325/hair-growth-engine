@@ -2915,6 +2915,18 @@ export type Database = {
           tenant_id: string
         }[]
       }
+      get_tenant_members_detail: {
+        Args: { _tenant_id: string }
+        Returns: {
+          accepted_at: string
+          email: string
+          full_name: string
+          location_ids: string[]
+          location_names: string[]
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }[]
+      }
       has_location_role: {
         Args: {
           _location_id: string
