@@ -260,13 +260,13 @@ ${body.proposal_message}
       })
       .eq("id", rr.id);
 
-    return new Response(JSON.stringify({ success: true }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-
-  // ============================================================
-  // ACTION: reject（却下）
+    // 🆕 AIログを「proposed」で更新
+    try {
+      await supabase
+        .from("reservation_ai_logs")
+        .update({ final_action: "proposed", decided_at: new Date().toISOString() })
+        .eq("request_id", rr.id);
+    } catch {}
   // ============================================================
   if (body.action === "reject") {
     const customerName = rr.display_name || "お客様";
