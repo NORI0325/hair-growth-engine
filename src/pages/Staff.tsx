@@ -229,6 +229,9 @@ const StaffPage = () => {
                     <Button variant="ghost" size="sm" className="rounded-none" onClick={() => setEditingStaff(s)}>
                       <CalIcon className="w-3.5 h-3.5 mr-1" />休暇
                     </Button>
+                    <Button variant="ghost" size="sm" className="rounded-none" onClick={() => setMappingStaff(s)}>
+                      <Plug className="w-3.5 h-3.5 mr-1" />媒体マッピング
+                    </Button>
                     <Button variant="ghost" size="sm" className="rounded-none text-destructive" onClick={() => removeStaff(s.id)}>
                       <Trash2 className="w-3.5 h-3.5" />
                     </Button>
