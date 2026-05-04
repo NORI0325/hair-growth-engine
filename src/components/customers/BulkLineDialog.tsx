@@ -133,6 +133,26 @@ const BulkLineDialog = ({ open, onClose, customers }: Props) => {
           <p className="text-[10px] text-muted-foreground">
             <code className="bg-secondary px-1">{`{{name}}`}</code> でお名前に自動置換されます ／ 連絡先未登録の方は自動的にスキップされます
           </p>
+
+          <div className="border border-border bg-secondary/20 p-3 space-y-2">
+            <label className="flex items-center gap-2.5 cursor-pointer">
+              <Checkbox checked={skipRecent} onCheckedChange={(v) => setSkipRecent(!!v)} />
+              <span className="text-xs">直近に配信済みのお客様には再送しない（クールダウン）</span>
+            </label>
+            {skipRecent && (
+              <div className="flex items-center gap-2 pl-6">
+                <span className="text-[11px] text-muted-foreground">過去</span>
+                <Input
+                  type="number" min={1} max={90}
+                  value={skipDays}
+                  onChange={(e) => setSkipDays(Math.max(1, Math.min(90, Number(e.target.value) || 1)))}
+                  className="rounded-none w-20 h-8 text-sm"
+                />
+                <span className="text-[11px] text-muted-foreground">日以内に配信した方をスキップ</span>
+              </div>
+            )}
+          </div>
+
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={onClose} className="rounded-none">キャンセル</Button>
