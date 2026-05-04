@@ -27,10 +27,10 @@ const BulkActionBar = ({ count, total, onClear, onSelectAll, onLineBroadcast, on
       <Button
         size="sm"
         onClick={onLineBroadcast}
-        className="rounded-none bg-[#06C755] hover:bg-[#06C755]/90 text-white text-[11px] tracking-wider"
+        className="rounded-none bg-gold hover:bg-gold/90 text-foreground text-[11px] tracking-wider"
       >
         <MessageCircle className="w-3.5 h-3.5 mr-1.5" />
-        LINE一斉
+        一斉送信
       </Button>
       <Button
         size="sm"
