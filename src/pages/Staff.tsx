@@ -53,6 +53,7 @@ const StaffPage = () => {
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState({ name: "", color: PALETTE[0] });
   const [editingStaff, setEditingStaff] = useState<Staff | null>(null);
+  const [mappingStaff, setMappingStaff] = useState<Staff | null>(null);
   const [timeOffDraft, setTimeOffDraft] = useState({ start: "", end: "", reason: "" });
 
   const load = async () => {
