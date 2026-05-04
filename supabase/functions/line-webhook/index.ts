@@ -2,6 +2,13 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
 import { replyLine, sendLinePush, normalizePhone } from "../_shared/line-push.ts";
 import { detectFields } from "../_shared/line-field-detector.ts";
+import {
+  quickReservationIntent,
+  parseReservationWithAI,
+  buildReservationAutoReply,
+  isOutsideBusinessHoursJst,
+  todayJstIso,
+} from "../_shared/reservation-intent.ts";
 
 // LINE署名検証 (HMAC-SHA256)
 async function verifySignature(secret: string, body: string, signature: string): Promise<boolean> {
@@ -267,7 +274,7 @@ Deno.serve(async (req) => {
   // 全プロフィールから access_token を持つものを取得（secretは未設定も許容しフォールバック）
   const { data: profiles } = await supabase
     .from("profiles")
-    .select("id, salon_name, line_channel_access_token, line_channel_secret, open_time, close_time, auto_reply_enabled, auto_reply_message, auto_reply_use_ai")
+    .select("id, salon_name, line_channel_access_token, line_channel_secret, open_time, close_time, auto_reply_enabled, auto_reply_message, auto_reply_use_ai, line_reservation_enabled")
     .not("line_channel_access_token", "is", null);
 
   if (!profiles || profiles.length === 0) {
