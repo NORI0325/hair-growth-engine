@@ -143,9 +143,19 @@ Deno.serve(async (req) => {
     const errors: string[] = [];
 
     // === Step 1: 受信データを正規化 ===
+    type Gender = "female" | "male" | "other" | "unknown";
+    function normalizeGender(s: string): Gender {
+      const v = (s || "").trim();
+      if (!v) return "unknown";
+      if (/女/.test(v) || /female/i.test(v) || v === "F") return "female";
+      if (/男/.test(v) || /male/i.test(v) || v === "M") return "male";
+      if (/その他|other/i.test(v)) return "other";
+      return "unknown";
+    }
     type Norm = {
       sbId: string; sbNo: string; fullName: string; phone: string;
-      email: string; birthday: string | null; lastVisit: string | null; visitCount: number;
+      email: string; birthday: string | null; lastVisit: string | null;
+      visitCount: number; gender: Gender;
     };
     const normalized: Norm[] = [];
     for (const c of body.customers as SbCustomer[]) {
@@ -170,6 +180,7 @@ Deno.serve(async (req) => {
         birthday: parseDate(pick(c, ["詳細_誕生日"])),
         lastVisit: parseDate(pick(c, ["一覧_前回来店日", "詳細_来店情報_前回来店日"])),
         visitCount: parseInt((pick(c, ["一覧_来店回数", "詳細_来店情報_来店回数"]) || "").replace(/[^\d]/g, ""), 10) || 0,
+        gender: normalizeGender(pick(c, ["詳細_性別", "一覧_性別", "性別"])),
       });
     }
 
