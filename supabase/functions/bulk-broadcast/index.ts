@@ -38,6 +38,8 @@ Deno.serve(async (req) => {
     const useLine = channels.includes("line");
     const useSms = channels.includes("sms");
     const useEmail = channels.includes("email");
+    const skipRecentDays: number = Number.isFinite(Number(body?.skip_recent_days)) && Number(body?.skip_recent_days) > 0
+      ? Math.min(90, Math.floor(Number(body.skip_recent_days))) : 0;
 
     if (!message || message.length < 2) {
       return new Response(JSON.stringify({ success: false, message: "メッセージを入力してください" }),
