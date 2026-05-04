@@ -325,3 +325,95 @@ export default function Reservations() {
     </AppLayout>
   );
 }
+
+function AILogsPanel({ logs }: { logs: AILog[] }) {
+  if (logs.length === 0) {
+    return (
+      <div className="text-center py-16 text-muted-foreground">
+        <BarChart3 className="h-12 w-12 mx-auto mb-3 opacity-40" />
+        <p>まだAI解析ログはありません。</p>
+      </div>
+    );
+  }
+
+  // サマリ統計
+  const total = logs.length;
+  const decided = logs.filter(l => l.final_action);
+  const approvedCount = logs.filter(l => l.final_action === "approved").length;
+  const correctedCount = logs.filter(l => l.final_corrected).length;
+  const fpCount = logs.filter(l => l.false_positive).length;
+  const avgConf = logs.reduce((s, l) => s + (l.ai_confidence || 0), 0) / total;
+  const approvalRate = decided.length > 0 ? Math.round((approvedCount / decided.length) * 100) : 0;
+  const accuracy = decided.length > 0
+    ? Math.round(((decided.length - correctedCount - fpCount) / decided.length) * 100)
+    : 0;
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <StatCard label="解析数" value={`${total}件`} sub="直近100件" />
+        <StatCard label="平均信頼度" value={`${avgConf.toFixed(0)}/100`} sub="AI抽出スコア" />
+        <StatCard label="承認率" value={`${approvalRate}%`} sub={`承認/判断済 ${approvedCount}/${decided.length}`} />
+        <StatCard label="精度" value={`${accuracy}%`} sub={`修正${correctedCount} 誤検出${fpCount}`} />
+      </div>
+
+      <div className="border border-border bg-card">
+        <div className="px-4 py-2 border-b border-border bg-muted/30 text-xs font-semibold tracking-wider uppercase">
+          解析ログ（直近100件）
+        </div>
+        <div className="divide-y divide-border max-h-[600px] overflow-y-auto">
+          {logs.map(log => (
+            <div key={log.id} className="px-4 py-3 text-xs space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="rounded-none text-[10px]">
+                    キーワード {log.keyword_score ?? "-"}
+                  </Badge>
+                  <Badge variant="outline" className="rounded-none text-[10px] flex items-center gap-1">
+                    <Sparkles className="h-3 w-3" />信頼度 {log.ai_confidence ?? "-"}
+                  </Badge>
+                  {log.final_action && (
+                    <Badge variant="outline" className={`rounded-none text-[10px] ${
+                      log.final_action === "approved" ? "bg-emerald-50 text-emerald-800 border-emerald-300"
+                      : log.final_action === "rejected" ? "bg-rose-50 text-rose-800 border-rose-300"
+                      : "bg-blue-50 text-blue-800 border-blue-300"
+                    }`}>
+                      {log.final_action === "approved" ? "確定" : log.final_action === "rejected" ? "却下" : "提案"}
+                    </Badge>
+                  )}
+                  {log.final_corrected && (
+                    <Badge variant="outline" className="rounded-none text-[10px] bg-amber-50 text-amber-800 border-amber-300">
+                      手修正あり
+                    </Badge>
+                  )}
+                  {log.false_positive && (
+                    <Badge variant="outline" className="rounded-none text-[10px] bg-rose-50 text-rose-800 border-rose-300">
+                      誤検出
+                    </Badge>
+                  )}
+                </div>
+                <span className="text-muted-foreground text-[10px]">
+                  {new Date(log.created_at).toLocaleString("ja-JP")}
+                </span>
+              </div>
+              {log.ai_summary && <div className="text-muted-foreground">📝 {log.ai_summary}</div>}
+              <div className="text-muted-foreground bg-muted/30 p-2 border border-border whitespace-pre-wrap line-clamp-3">
+                {log.raw_message.slice(0, 250)}{log.raw_message.length > 250 ? "…" : ""}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="border border-border bg-card p-3">
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="text-2xl font-semibold mt-1">{value}</div>
+      {sub && <div className="text-[10px] text-muted-foreground mt-1">{sub}</div>}
+    </div>
+  );
+}
