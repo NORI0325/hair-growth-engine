@@ -116,6 +116,8 @@ const App = () => (
             <Route path="/tokushoho" element={<Tokushoho />} />
             <Route path="/unsubscribe" element={<Unsubscribe />} />
             <Route path="/r/:actionPath/:token" element={<ReservationAction />} />
+            <Route path="/channel-integrations" element={<ProtectedRoute><ChannelIntegrations /></ProtectedRoute>} />
+            <Route path="/sync-review" element={<ProtectedRoute><SyncReview /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
           </LocationProvider>
