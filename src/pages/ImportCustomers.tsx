@@ -10,6 +10,8 @@ import { Upload, FileText, Loader2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { useCurrentLocationId } from "@/hooks/useLocations";
 
+type Gender = "female" | "male" | "other" | "unknown";
+
 interface ParsedRow {
   full_name: string;
   email: string | null;
@@ -17,6 +19,20 @@ interface ParsedRow {
   last_visit_date: string | null;
   visit_count: number;
   total_spent: number;
+  gender: Gender;
+}
+
+function normalizeGender(s: string | undefined): Gender {
+  const v = (s || "").trim();
+  if (!v) return "unknown";
+  if (/女/.test(v) || /female/i.test(v) || v === "F") return "female";
+  if (/男/.test(v) || /male/i.test(v) || v === "M") return "male";
+  if (/その他|other/i.test(v)) return "other";
+  return "unknown";
+}
+
+function normalizePhone(s: string | null | undefined): string {
+  return (s || "").replace(/[^\d]/g, "");
 }
 
 const ImportCustomers = () => {
@@ -47,6 +63,7 @@ const ImportCustomers = () => {
     const lastVisitIdx = findIdx("最終来店", "last_visit", "lastvisit", "来店日");
     const countIdx = findIdx("来店回数", "visit_count", "回数");
     const spentIdx = findIdx("累計", "total_spent", "金額", "売上");
+    const genderIdx = findIdx("性別", "gender", "sex");
 
     const rows: ParsedRow[] = [];
     for (let i = 1; i < lines.length; i++) {
@@ -67,6 +84,7 @@ const ImportCustomers = () => {
         last_visit_date: lastVisit,
         visit_count: countIdx >= 0 ? parseInt(cols[countIdx]) || 0 : 0,
         total_spent: spentIdx >= 0 ? parseInt(cols[spentIdx].replace(/[^0-9]/g, "")) || 0 : 0,
+        gender: normalizeGender(genderIdx >= 0 ? cols[genderIdx] : ""),
       });
     }
     return rows;
@@ -94,25 +112,90 @@ const ImportCustomers = () => {
     if (!locationId) { toast.error("店舗が選択されていません"); return; }
     setImporting(true);
     const errs: string[] = [];
-    let success = 0;
+    let inserted = 0;
+    let updated = 0;
+    const nowIso = new Date().toISOString();
 
-    const batchSize = 100;
-    for (let i = 0; i < parsed.length; i += batchSize) {
-      const batch = parsed.slice(i, i + batchSize).map(r => ({
-        ...r,
-        owner_id: user.id,
-        location_id: locationId,
-        imported_from: "csv",
-        last_imported_at: new Date().toISOString(),
-      }));
-      const { error } = await supabase.from("customers").insert(batch);
-      if (error) errs.push(`${i + 1}〜${i + batch.length}行目: ${error.message}`);
-      else { success += batch.length; setImported(success); }
+    const blank = (v: any) => v === null || v === undefined || v === "" || v === "unknown";
+
+    // 既存顧客を一括取得（電話 / メール / 氏名 で検索）
+    const phones = [...new Set(parsed.map(r => normalizePhone(r.phone)).filter(Boolean))];
+    const emails = [...new Set(parsed.map(r => (r.email || "").trim().toLowerCase()).filter(Boolean))];
+    const names = [...new Set(parsed.map(r => r.full_name))];
+
+    const SELECT_COLS = "id, full_name, phone, email, birthday, gender, last_visit_date, visit_count, total_spent";
+    const fetchBy = async (col: string, values: string[]) => {
+      const map = new Map<string, any>();
+      const CHUNK = 300;
+      for (let i = 0; i < values.length; i += CHUNK) {
+        const slice = values.slice(i, i + CHUNK);
+        const { data } = await (supabase.from("customers") as any).select(SELECT_COLS).eq("owner_id", user.id).in(col, slice);
+        for (const row of (data || [])) {
+          const key = (row as any)[col];
+          if (key && !map.has(key)) map.set(key, row);
+        }
+      }
+      return map;
+    };
+
+    const byPhone = phones.length ? await fetchBy("phone", phones) : new Map();
+    const byEmail = emails.length ? await fetchBy("email", emails) : new Map();
+    const byName = names.length ? await fetchBy("full_name", names) : new Map();
+
+    // 1件ずつ判定（バッチではなく確実に穴埋め）
+    for (let i = 0; i < parsed.length; i++) {
+      const r = parsed[i];
+      const phone = normalizePhone(r.phone);
+      const email = (r.email || "").trim().toLowerCase();
+
+      const existing =
+        (phone && byPhone.get(phone)) ||
+        (email && byEmail.get(email)) ||
+        byName.get(r.full_name) || null;
+
+      if (existing) {
+        // 穴埋め型 UPDATE
+        const payload: any = {
+          phone: blank(phone) ? existing.phone : phone,
+          email: blank(email) ? existing.email : email,
+          gender: blank(r.gender) ? (existing.gender || "unknown") : r.gender,
+          last_visit_date: (() => {
+            if (blank(r.last_visit_date)) return existing.last_visit_date;
+            if (!existing.last_visit_date) return r.last_visit_date;
+            return r.last_visit_date! > existing.last_visit_date ? r.last_visit_date : existing.last_visit_date;
+          })(),
+          visit_count: Math.max(existing.visit_count || 0, r.visit_count),
+          total_spent: Math.max(existing.total_spent || 0, r.total_spent),
+          imported_from: "csv",
+          last_imported_at: nowIso,
+        };
+        const { error } = await supabase.from("customers").update(payload).eq("id", existing.id);
+        if (error) errs.push(`${i + 2}行目(${r.full_name}): ${error.message}`);
+        else { updated++; setImported(inserted + updated); }
+      } else {
+        const { error } = await supabase.from("customers").insert({
+          full_name: r.full_name,
+          phone: phone || null,
+          email: email || null,
+          last_visit_date: r.last_visit_date,
+          visit_count: r.visit_count,
+          total_spent: r.total_spent,
+          gender: r.gender,
+          owner_id: user.id,
+          location_id: locationId,
+          imported_from: "csv",
+          last_imported_at: nowIso,
+          first_imported_at: nowIso,
+        });
+        if (error) errs.push(`${i + 2}行目(${r.full_name}): ${error.message}`);
+        else { inserted++; setImported(inserted + updated); }
+      }
     }
 
     setImporting(false);
     setErrors(errs);
-    if (success > 0) toast.success(`${success}件の顧客を登録しました`);
+    const total = inserted + updated;
+    if (total > 0) toast.success(`新規 ${inserted}件 / 更新 ${updated}件 を取り込みました`);
     if (errs.length > 0) toast.error(`${errs.length}件のエラーが発生しました`);
   };
 
@@ -191,6 +274,7 @@ const ImportCustomers = () => {
               { jp: "最終来店 / last_visit" },
               { jp: "来店回数 / visit_count" },
               { jp: "累計 / total_spent" },
+              { jp: "性別 / gender" },
             ].map((col, i) => (
               <div key={i} className="py-3 border-b border-border/60 flex justify-between items-center">
                 <span className="text-xs font-serif">{col.jp}</span>
