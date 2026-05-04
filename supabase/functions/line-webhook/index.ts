@@ -616,6 +616,30 @@ Deno.serve(async (req) => {
                 if (rrErr) console.error("[reservation-intent] insert error:", rrErr);
                 else console.log(`[reservation-intent] request id=${rrInserted?.id} conf=${parsed.confidence}`);
 
+                // 🆕 AI解析ログを記録（信頼度学習用）
+                try {
+                  await supabase.from("reservation_ai_logs").insert({
+                    owner_id: owner.id,
+                    request_id: rrInserted?.id || null,
+                    customer_id: linkedCustomer.id,
+                    raw_message: text.slice(0, 2000),
+                    keyword_score: quick.score,
+                    ai_is_reservation: parsed.isReservation,
+                    ai_confidence: parsed.confidence,
+                    ai_summary: parsed.summary,
+                    ai_extracted: {
+                      desired_date_candidates: parsed.desiredDateCandidates,
+                      desired_menu: parsed.desiredMenu,
+                      desired_menu_items: parsed.desiredMenuItems,
+                      desired_staff_name: parsed.desiredStaffName,
+                      reasoning: parsed.reasoning,
+                    },
+                    needs_clarification_fields: parsed.needsClarificationFields,
+                  });
+                } catch (e) {
+                  console.error("[reservation-intent] ai log insert failed:", e);
+                }
+
                 const replyMsg = buildReservationAutoReply({
                   customerName: linkedCustomer.full_name || "お客様",
                   salonName: owner.salon_name || "サロン",
@@ -629,6 +653,55 @@ Deno.serve(async (req) => {
                   supabase, owner.id, linkedCustomer.id, userId,
                   "reservation_pending", replyMsg, "sent",
                 );
+
+                // 🆕 スタッフへLINE通知（notification_recipientsに登録された全員へPush）
+                if (rrInserted?.id) {
+                  try {
+                    const recipients = Array.isArray(owner.notification_recipients)
+                      ? owner.notification_recipients
+                      : [];
+                    const lineRecipients = recipients.filter(
+                      (r: any) => r?.line_user_id && (r?.channels || ["line"]).includes("line"),
+                    );
+                    if (lineRecipients.length > 0 && accessToken) {
+                      const dashboardUrl = `${Deno.env.get("SUPABASE_URL")?.replace("https://miyedioemkzhetphjzzg.supabase.co", "https://saronboost.com") || "https://saronboost.com"}/reservations`;
+                      const dateLine = parsed.desiredDateCandidates?.[0]
+                        ? `📅 ${parsed.desiredDateCandidates[0].date || "?"} ${parsed.desiredDateCandidates[0].timeRange || ""}`
+                        : "📅 (日時未確定)";
+                      const menuLine = parsed.desiredMenu ? `💇 ${parsed.desiredMenu}` : "";
+                      const staffLine = parsed.desiredStaffName ? `👤 ${parsed.desiredStaffName}様ご指名` : "";
+                      const outsideTag = isOutsideHours ? "【営業時間外受付】\n" : "";
+                      const notifMsg = `${outsideTag}🌸 LINE予約希望が届きました
+お客様: ${linkedCustomer.full_name}様
+${dateLine}
+${menuLine}
+${staffLine}
+
+メッセージ:
+${text.slice(0, 200)}${text.length > 200 ? "…" : ""}
+
+AI信頼度: ${parsed.confidence}/100
+👉 ${dashboardUrl}
+（承認・調整はダッシュボードで）`;
+                      let okCount = 0;
+                      for (const r of lineRecipients) {
+                        const pr = await sendLinePush(accessToken, r.line_user_id, notifMsg);
+                        if (pr.ok) okCount++;
+                      }
+                      await supabase
+                        .from("reservation_requests")
+                        .update({
+                          staff_notified_at: new Date().toISOString(),
+                          staff_notification_status: okCount > 0 ? "sent" : "failed",
+                        })
+                        .eq("id", rrInserted.id);
+                      console.log(`[reservation-intent] staff notified: ${okCount}/${lineRecipients.length}`);
+                    }
+                  } catch (e) {
+                    console.error("[reservation-intent] staff notify failed:", e);
+                  }
+                }
+
                 continue;
               }
             } else {
