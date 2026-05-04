@@ -184,28 +184,35 @@ Deno.serve(async (req) => {
       });
     }
 
-    // === Step 2: 既存顧客を一括取得 (3クエリのみ) ===
+    // === Step 2: 既存顧客を一括取得（既存値も全取得して穴埋めに使う） ===
     const sbIds = [...new Set(normalized.map(n => n.sbId).filter(Boolean))];
     const phones = [...new Set(normalized.map(n => n.phone).filter(Boolean))];
     const names = [...new Set(normalized.map(n => n.fullName))];
 
-    const bySbId = new Map<string, { id: string; visit_count: number }>();
-    const byPhone = new Map<string, { id: string; visit_count: number }>();
-    const byName = new Map<string, { id: string; visit_count: number }>();
+    type Existing = {
+      id: string; visit_count: number;
+      phone: string | null; email: string | null; birthday: string | null;
+      gender: string | null; last_visit_date: string | null;
+      salonboard_customer_id: string | null; salonboard_customer_no: string | null;
+    };
+    const bySbId = new Map<string, Existing>();
+    const byPhone = new Map<string, Existing>();
+    const byName = new Map<string, Existing>();
 
     const CHUNK = 500;
-    async function fetchExisting(col: string, values: string[], target: Map<string, any>) {
+    const SELECT_COLS = "id, visit_count, phone, email, birthday, gender, last_visit_date, salonboard_customer_id, salonboard_customer_no";
+    async function fetchExisting(col: string, values: string[], target: Map<string, Existing>) {
       for (let i = 0; i < values.length; i += CHUNK) {
         const slice = values.slice(i, i + CHUNK);
         const { data, error } = await admin
           .from("customers")
-          .select(`id, visit_count, ${col}`)
+          .select(SELECT_COLS)
           .eq("owner_id", ownerId)
           .in(col, slice);
         if (error) throw error;
         for (const row of (data || []) as any[]) {
           const key = row[col];
-          if (key && !target.has(key)) target.set(key, { id: row.id, visit_count: row.visit_count });
+          if (key && !target.has(key)) target.set(key, row as Existing);
         }
       }
     }
@@ -213,11 +220,14 @@ Deno.serve(async (req) => {
     if (phones.length) await fetchExisting("phone", phones, byPhone);
     if (names.length) await fetchExisting("full_name", names, byName);
 
-    // === Step 3: 更新と新規挿入を分類 ===
+    // === Step 3: 更新と新規挿入を分類（穴埋め型マージ） ===
     const nowIso = new Date().toISOString();
     const toUpdate: { id: string; payload: any }[] = [];
     const toInsert: any[] = [];
     const seenUpdateIds = new Set<string>();
+
+    // 受信値が「実質空」かを判定
+    const blank = (v: any) => v === null || v === undefined || v === "" || v === "unknown";
 
     for (const n of normalized) {
       const existing =
@@ -225,28 +235,47 @@ Deno.serve(async (req) => {
         (n.phone && byPhone.get(n.phone)) ||
         byName.get(n.fullName) || null;
 
-      const base: any = {
-        owner_id: ownerId,
-        location_id: locationId,
-        full_name: n.fullName,
-        phone: n.phone || null,
-        email: n.email || null,
-        birthday: n.birthday,
-        last_visit_date: n.lastVisit,
-        visit_count: n.visitCount,
-        salonboard_customer_id: n.sbId || null,
-        salonboard_customer_no: n.sbNo || null,
-        imported_from: "salonboard",
-        last_imported_at: nowIso,
-      };
-
       if (existing) {
         if (seenUpdateIds.has(existing.id)) { skipped++; continue; }
         seenUpdateIds.add(existing.id);
-        base.visit_count = Math.max(existing.visit_count || 0, n.visitCount);
-        toUpdate.push({ id: existing.id, payload: base });
+
+        // coalesce: 受信が空なら既存値を保持
+        const payload: any = {
+          full_name: n.fullName, // マッチキー、常に維持
+          phone: blank(n.phone) ? existing.phone : n.phone,
+          email: blank(n.email) ? existing.email : n.email,
+          birthday: blank(n.birthday) ? existing.birthday : n.birthday,
+          gender: blank(n.gender) ? (existing.gender || "unknown") : n.gender,
+          salonboard_customer_id: blank(n.sbId) ? existing.salonboard_customer_id : n.sbId,
+          salonboard_customer_no: blank(n.sbNo) ? existing.salonboard_customer_no : n.sbNo,
+          // 来店日は新しい方
+          last_visit_date: (() => {
+            if (blank(n.lastVisit)) return existing.last_visit_date;
+            if (!existing.last_visit_date) return n.lastVisit;
+            return n.lastVisit! > existing.last_visit_date ? n.lastVisit : existing.last_visit_date;
+          })(),
+          visit_count: Math.max(existing.visit_count || 0, n.visitCount),
+          imported_from: "salonboard",
+          last_imported_at: nowIso,
+        };
+        toUpdate.push({ id: existing.id, payload });
       } else {
-        toInsert.push(base);
+        toInsert.push({
+          owner_id: ownerId,
+          location_id: locationId,
+          full_name: n.fullName,
+          phone: n.phone || null,
+          email: n.email || null,
+          birthday: n.birthday,
+          gender: n.gender,
+          last_visit_date: n.lastVisit,
+          visit_count: n.visitCount,
+          salonboard_customer_id: n.sbId || null,
+          salonboard_customer_no: n.sbNo || null,
+          imported_from: "salonboard",
+          last_imported_at: nowIso,
+          first_imported_at: nowIso,
+        });
       }
     }
 
