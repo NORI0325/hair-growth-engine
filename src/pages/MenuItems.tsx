@@ -239,6 +239,13 @@ const MenuItems = () => {
           <li>• <strong>並び順</strong>：上から順に予約画面に表示されます。</li>
         </ul>
       </div>
+      <ChannelMappingDialog
+        open={!!mappingMenu}
+        onOpenChange={(v) => !v && setMappingMenu(null)}
+        kind="menu"
+        targetId={mappingMenu?.id ?? null}
+        targetName={mappingMenu?.name}
+      />
     </AppLayout>
   );
 };
