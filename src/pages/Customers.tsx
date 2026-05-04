@@ -33,6 +33,7 @@ interface Customer {
   total_spent: number;
   line_user_id?: string | null;
   notes?: string | null;
+  gender?: string | null;
 }
 
 type SegKey = "active" | "at_risk" | "dormant" | "new";
@@ -184,7 +185,7 @@ const Customers = () => {
     setLoading(true);
     const { data } = await supabase
       .from("customers")
-      .select("id, full_name, email, phone, birthday, last_visit_date, visit_count, total_spent, line_user_id, notes")
+      .select("id, full_name, email, phone, birthday, last_visit_date, visit_count, total_spent, line_user_id, notes, gender")
       .eq("location_id", locationId)
       .order("last_visit_date", { ascending: false, nullsFirst: false })
       .limit(5000);
@@ -431,9 +432,14 @@ const Customers = () => {
         customers={selectedAll.map((c) => ({
           id: c.id,
           full_name: c.full_name,
-          email: (c as any).email,
-          phone: (c as any).phone,
-          line_user_id: (c as any).line_user_id,
+          email: c.email,
+          phone: c.phone,
+          line_user_id: c.line_user_id,
+          birthday: c.birthday,
+          gender: (c as any).gender,
+          last_visit_date: c.last_visit_date,
+          visit_count: c.visit_count,
+          total_spent: c.total_spent,
         }))}
       />
 

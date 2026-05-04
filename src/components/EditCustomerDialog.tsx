@@ -21,6 +21,7 @@ const schema = z.object({
   total_spent: z.coerce.number().int().min(0).max(100000000).optional(),
   line_user_id: z.string().trim().max(100).optional(),
   notes: z.string().max(2000).optional(),
+  gender: z.enum(["female","male","other","unknown"]).optional(),
 });
 
 export interface EditableCustomer {
@@ -38,6 +39,7 @@ export interface EditableCustomer {
   opt_out_reason?: string | null;
   imported_from?: string | null;
   activated_at?: string | null;
+  gender?: "female"|"male"|"other"|"unknown" | null;
 }
 
 interface Props {
@@ -55,6 +57,7 @@ const EditCustomerDialog = ({ customer, open, onOpenChange, onSaved }: Props) =>
     last_visit_date: "", visit_count: "0", total_spent: "0",
     line_user_id: "", notes: "",
     opt_out_automation: false, opt_out_reason: "",
+    gender: "unknown" as "female"|"male"|"other"|"unknown",
   });
 
   useEffect(() => {
@@ -71,6 +74,7 @@ const EditCustomerDialog = ({ customer, open, onOpenChange, onSaved }: Props) =>
         notes: customer.notes || "",
         opt_out_automation: !!customer.opt_out_automation,
         opt_out_reason: customer.opt_out_reason || "",
+        gender: (customer.gender as any) || "unknown",
       });
     }
   }, [customer]);
@@ -92,6 +96,7 @@ const EditCustomerDialog = ({ customer, open, onOpenChange, onSaved }: Props) =>
       total_spent: parsed.data.total_spent ?? 0,
       line_user_id: parsed.data.line_user_id || null,
       notes: parsed.data.notes || null,
+      gender: form.gender,
       opt_out_automation: form.opt_out_automation,
       opt_out_reason: form.opt_out_automation ? (form.opt_out_reason || null) : null,
       opt_out_at: form.opt_out_automation && !customer.opt_out_automation ? new Date().toISOString() : (form.opt_out_automation ? undefined : null),
@@ -143,6 +148,15 @@ const EditCustomerDialog = ({ customer, open, onOpenChange, onSaved }: Props) =>
               <Label className="mb-2 block font-serif text-sm">メール</Label>
               <Input type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})}
                 className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
+            </div>
+          </div>
+          <div>
+            <Label className="mb-2 block font-serif text-sm">性別</Label>
+            <div className="flex gap-2">
+              {([["female","女性"],["male","男性"],["other","その他"],["unknown","未設定"]] as const).map(([v, l]) => (
+                <button key={v} type="button" onClick={() => setForm({...form, gender: v})}
+                  className={`flex-1 px-3 py-2 text-xs border rounded-none ${form.gender === v ? "bg-gold/10 border-gold text-gold" : "border-border hover:bg-secondary"}`}>{l}</button>
+              ))}
             </div>
           </div>
           <div>

@@ -19,6 +19,7 @@ const schema = z.object({
   visit_count: z.coerce.number().int().min(0).max(10000).optional(),
   total_spent: z.coerce.number().int().min(0).max(100000000).optional(),
   line_user_id: z.string().trim().max(100).optional(),
+  gender: z.enum(["female","male","other","unknown"]).optional(),
 });
 
 interface Props {
@@ -31,7 +32,7 @@ const AddCustomerDialog = ({ open, onOpenChange, onAdded }: Props) => {
   const { user } = useAuth();
   const locationId = useCurrentLocationId();
   const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState({ full_name: "", phone: "", email: "", birthday: "", last_visit_date: "", visit_count: "0", total_spent: "0", line_user_id: "" });
+  const [form, setForm] = useState({ full_name: "", phone: "", email: "", birthday: "", last_visit_date: "", visit_count: "0", total_spent: "0", line_user_id: "", gender: "unknown" as "female"|"male"|"other"|"unknown" });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,11 +52,12 @@ const AddCustomerDialog = ({ open, onOpenChange, onAdded }: Props) => {
       visit_count: parsed.data.visit_count ?? 0,
       total_spent: parsed.data.total_spent ?? 0,
       line_user_id: parsed.data.line_user_id || null,
-    });
+      gender: form.gender,
+    } as any);
     setLoading(false);
     if (error) { toast.error("登録に失敗しました"); return; }
     toast.success("顧客を追加しました");
-    setForm({ full_name: "", phone: "", email: "", birthday: "", last_visit_date: "", visit_count: "0", total_spent: "0", line_user_id: "" });
+    setForm({ full_name: "", phone: "", email: "", birthday: "", last_visit_date: "", visit_count: "0", total_spent: "0", line_user_id: "", gender: "unknown" });
     onOpenChange(false);
     onAdded();
   };
@@ -83,6 +85,15 @@ const AddCustomerDialog = ({ open, onOpenChange, onAdded }: Props) => {
               <Label className="mb-2 block font-serif text-sm">メール <span className="eyebrow text-[9px] text-muted-foreground ml-1">Email（任意）</span></Label>
               <Input type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})}
                 className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
+            </div>
+          </div>
+          <div>
+            <Label className="mb-2 block font-serif text-sm">性別 <span className="eyebrow text-[9px] text-muted-foreground ml-1">Gender — セグメント配信用</span></Label>
+            <div className="flex gap-2">
+              {([["female","女性"],["male","男性"],["other","その他"],["unknown","未設定"]] as const).map(([v, l]) => (
+                <button key={v} type="button" onClick={() => setForm({...form, gender: v})}
+                  className={`flex-1 px-3 py-2 text-xs border rounded-none ${form.gender === v ? "bg-gold/10 border-gold text-gold" : "border-border hover:bg-secondary"}`}>{l}</button>
+              ))}
             </div>
           </div>
           <div>
