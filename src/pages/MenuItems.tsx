@@ -31,6 +31,7 @@ const MenuItems = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState({ name: "", duration_minutes: 60, buffer_minutes: 15, price: 0 });
+  const [mappingMenu, setMappingMenu] = useState<MenuItem | null>(null);
 
   const load = async () => {
     if (!user || !locationId) { setItems([]); setLoading(false); return; }
