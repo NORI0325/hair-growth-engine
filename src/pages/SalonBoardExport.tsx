@@ -245,6 +245,13 @@ const SalonBoardExport = () => {
           </ul>
         </section>
       </div>
+
+      <ExtensionDownloadConsentDialog
+        open={consentOpen}
+        onOpenChange={setConsentOpen}
+        onConfirm={performDownload}
+        downloading={downloading}
+      />
     </AppLayout>
   );
 };
