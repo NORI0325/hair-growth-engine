@@ -52,6 +52,8 @@ import Commission from "./pages/Commission";
 import Retention from "./pages/Retention";
 import Reservations from "./pages/Reservations";
 import ReservationAction from "./pages/ReservationAction";
+import ChannelIntegrations from "./pages/ChannelIntegrations";
+import SyncReview from "./pages/SyncReview";
 import NotFound from "./pages/NotFound";
 import { LocationProvider } from "@/hooks/useLocations";
 
