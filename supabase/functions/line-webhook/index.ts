@@ -977,16 +977,66 @@ AI信頼度: ${parsed.confidence}/100
         const matched = matches[0];
 
         if (!matched) {
-          await supabase.from("line_pending_friends").upsert({
-            owner_id: owner.id,
-            line_user_id: userId,
-            last_message: "[phone attempted]",
-          }, { onConflict: "owner_id,line_user_id" });
+          // 🆕 ゲスト顧客を自動作成（A案：機会損失ゼロ）
+          // displayName を取得して仮氏名に使う
+          let displayName: string | null = null;
+          try {
+            const pf = await fetch(`https://api.line.me/v2/bot/profile/${userId}`, {
+              headers: { Authorization: `Bearer ${accessToken}` },
+            });
+            if (pf.ok) {
+              const j = await pf.json();
+              displayName = j?.displayName || null;
+            }
+          } catch { /* noop */ }
+
+          // 既に同一 line_user_id でゲスト作成済みなら再作成しない（再送対策）
+          const { data: existingGuest } = await supabase
+            .from("customers")
+            .select("id, full_name")
+            .eq("owner_id", owner.id)
+            .eq("line_user_id", userId)
+            .maybeSingle();
+
+          let guestId = existingGuest?.id as string | undefined;
+          let guestName = existingGuest?.full_name || displayName || "LINEお客様";
+
+          if (!guestId) {
+            const placeholderName = displayName ? `${displayName}様（LINE）` : "LINEお客様";
+            const { data: created, error: insErr } = await supabase
+              .from("customers")
+              .insert({
+                owner_id: owner.id,
+                location_id: owner.location_id || null,
+                full_name: placeholderName,
+                phone: phone,
+                line_user_id: userId,
+                imported_from: "line_self",
+                is_test: false,
+              })
+              .select("id, full_name")
+              .maybeSingle();
+            if (insErr) {
+              console.error("[line-webhook] guest customer create failed:", insErr);
+              await replyLine(
+                accessToken,
+                replyToken,
+                `ご登録処理でエラーが発生しました🙏\nお手数ですがしばらくしてから再度お試しください。`
+              );
+              continue;
+            }
+            guestId = created?.id;
+            guestName = created?.full_name || placeholderName;
+          }
+
+          // pending_friends から削除
+          await supabase.from("line_pending_friends")
+            .delete().eq("owner_id", owner.id).eq("line_user_id", userId);
 
           await replyLine(
             accessToken,
             replyToken,
-            `お電話番号が見つかりませんでした🙏\n\nお手数ですがお名前もメッセージでお送りいただけますと、担当者が確認のうえ連携いたします。`
+            `✅ 仮登録が完了しました🌸\n\n📞 ${phone}\n\nお手数ですが、お名前（フルネーム）をメッセージでお送りください。\n例：山田 花子\n\n次回ご来店時に正式登録させていただきます。\n\n— ${owner.salon_name || "サロン"}`
           );
           continue;
         }
