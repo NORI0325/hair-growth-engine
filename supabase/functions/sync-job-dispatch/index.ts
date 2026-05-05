@@ -183,7 +183,7 @@ Deno.serve(async (req) => {
             reservation_id: job.reservation_id,
             target_channel: job.target_channel,
             job_type: ({ create_reservation: "create", update_reservation: "update", cancel_reservation: "cancel" } as Record<string, string>)[job.job_type] ?? job.job_type,
-            reservation: job.request_payload,
+            reservation: outboundPayload,
           }),
         });
         httpStatus = res.status;
