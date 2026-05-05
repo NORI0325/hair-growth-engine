@@ -537,8 +537,10 @@ Deno.serve(async (req) => {
               labels.push(`🎂 誕生日: ${display}`);
             }
             if (applied.phone) labels.push(`📞 電話: ${applied.phone}`);
+            if (applied.full_name) labels.push(`👤 お名前: ${applied.full_name}様`);
+            const greetName = applied.full_name || linkedCustomer.full_name;
             await replyLine(accessToken, replyToken,
-              `✅ ${linkedCustomer.full_name}様、ご登録ありがとうございます🌸\n\n${labels.join("\n")}\n\nお得情報をピンポイントでお届けします。\n\n— ${owner.salon_name || "サロン"}`);
+              `✅ ${greetName}様、ご登録ありがとうございます🌸\n\n${labels.join("\n")}\n\nお得情報をピンポイントでお届けします。\n\n— ${owner.salon_name || "サロン"}`);
             continue;
           }
         }
