@@ -504,6 +504,16 @@ Deno.serve(async (req) => {
             updates.phone = detected.phone;
             applied.phone = detected.phone;
           }
+          // 氏名: ゲスト自動作成顧客（imported_from='line_self'）かつ未確定っぽい時は更新
+          // 「LINEお客様」で始まる仮氏名 or imported_from='line_self' を判定
+          const isGuestSelf = linkedCustomer.imported_from === "line_self";
+          const looksPlaceholderName = !linkedCustomer.full_name
+            || /^LINE(お客様|ゲスト)/i.test(linkedCustomer.full_name)
+            || linkedCustomer.full_name.length <= 2;
+          if (detected.name && isGuestSelf && looksPlaceholderName && detected.name !== linkedCustomer.full_name) {
+            updates.full_name = detected.name;
+            applied.full_name = detected.name;
+          }
 
           if (Object.keys(updates).length > 0) {
             await supabase.from("customers").update(updates).eq("id", linkedCustomer.id);
