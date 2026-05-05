@@ -33,7 +33,18 @@ app.post("/api/sync-job", bearerAuth, async (req, res) => {
     return res.status(400).json({ success: false, error_type: "unknown_error", message: "invalid_body", details: parsed.error.flatten() });
   }
   const job = parsed.data;
-  logger.info({ job_id: job.job_id, type: job.job_type }, "job received");
+  logger.info({ job_id: job.job_id, type: job.job_type, dry_run: (job.reservation as any)?.dry_run === true }, "job received");
+
+  // dry-run モード：サロンボードに一切触らず疎通だけ確認
+  if ((job.reservation as any)?.dry_run === true) {
+    logger.info({ job_id: job.job_id }, "dry_run: skipping salonboard");
+    return res.json({
+      success: true,
+      dry_run: true,
+      external_reservation_id: null,
+      message: "dry_run ok - no salonboard action performed",
+    });
+  }
 
   // 非同期モード（async_callback=true）なら即200を返してバックグラウンド実行
   if (job.async_callback) {
