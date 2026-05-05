@@ -2363,6 +2363,53 @@ export type Database = {
         }
         Relationships: []
       }
+      salonboard_credentials: {
+        Row: {
+          cookie_session_encrypted: string | null
+          created_at: string
+          id: string
+          last_error: string | null
+          last_login_at: string | null
+          login_id_encrypted: string
+          login_status: string
+          password_encrypted: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          cookie_session_encrypted?: string | null
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          last_login_at?: string | null
+          login_id_encrypted: string
+          login_status?: string
+          password_encrypted: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          cookie_session_encrypted?: string | null
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          last_login_at?: string | null
+          login_id_encrypted?: string
+          login_status?: string
+          password_encrypted?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "salonboard_credentials_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       salonboard_import_logs: {
         Row: {
           created_at: string
@@ -2413,6 +2460,65 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      salonboard_sync_jobs: {
+        Row: {
+          attempts: number
+          created_at: string
+          finished_at: string | null
+          id: string
+          last_error: string | null
+          operation: string
+          payload: Json
+          reservation_id: string | null
+          salonboard_reservation_id: string | null
+          scheduled_at: string
+          started_at: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          finished_at?: string | null
+          id?: string
+          last_error?: string | null
+          operation: string
+          payload?: Json
+          reservation_id?: string | null
+          salonboard_reservation_id?: string | null
+          scheduled_at?: string
+          started_at?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          finished_at?: string | null
+          id?: string
+          last_error?: string | null
+          operation?: string
+          payload?: Json
+          reservation_id?: string | null
+          salonboard_reservation_id?: string | null
+          scheduled_at?: string
+          started_at?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "salonboard_sync_jobs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       scheduled_jobs: {
         Row: {
