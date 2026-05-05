@@ -92,17 +92,28 @@ export async function createReservation(page: Page, input: CreateReservationInpu
   // 完了判定
   const finalUrl = page.url();
   const finalText = await page.locator("body").innerText().catch(() => "");
+  logger.info({ finalUrl, snippet: finalText.slice(0, 400) }, "create finalize");
 
   const detected = detectErrorFromPage({ url: finalUrl, bodyText: finalText });
   if (detected) throw new WorkerError(detected, `create failed: ${detected}`);
 
-  if (!/登録しました|完了/.test(finalText)) {
-    logger.warn({ finalUrl, snippet: finalText.slice(0, 300) }, "create result unclear");
-    throw new WorkerError("external_site_changed", "create completion text not found");
+  // 入力画面に残っているバリデーションエラー（営業時間外など）を検出
+  if (/営業終了時間|終了時間は営業終了時間|入力してください|エラー|必須/.test(finalText) && /extReserveRegist(Input)?\/?$/.test(finalUrl)) {
+    const errLine = (finalText.match(/[^\n]*(エラー|してください|営業終了時間)[^\n]*/) || [""])[0].slice(0, 200);
+    logger.warn({ finalUrl, errLine }, "validation error on input page");
+    throw new WorkerError("external_site_changed", `validation error: ${errLine}`);
   }
 
-  // 予約番号抽出（あれば）
+  // 完了画面URL・予約番号(BE...)・明確な完了文言のいずれかが必須
+  const isCompleteUrl = /extReserveRegistComp|extReserveComp|Complete|complete/.test(finalUrl);
   const m = finalText.match(/(BE\d{6,})/);
+  const hasCompleteText = /予約を登録しました|予約が完了|登録が完了|登録を完了/.test(finalText);
+
+  if (!isCompleteUrl && !m && !hasCompleteText) {
+    logger.warn({ finalUrl, snippet: finalText.slice(0, 300) }, "create result unclear");
+    throw new WorkerError("external_site_changed", "create completion not confirmed");
+  }
+
   return { external_reservation_id: m?.[1] ?? null };
 }
 
