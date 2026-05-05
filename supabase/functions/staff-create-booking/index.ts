@@ -105,7 +105,7 @@ Deno.serve(async (req) => {
         booking_date,
         booking_time: booking_time + ":00",
         menu: menuSummary,
-        menus: menuList,
+        menus: menuNames,
         total_duration_minutes: totalDuration || null,
         total_price: totalPrice || null,
         notes: notes ? String(notes).slice(0, 500) : null,
@@ -153,11 +153,12 @@ Deno.serve(async (req) => {
         extStaffName = scm?.external_name ?? null;
         extStaffId = scm?.external_id ?? null;
       }
-      let extMenuName: string | null = null;
-      if (menuList.length > 0 && menuRows && menuRows[0]) {
+      let extMenuName: string | null = null, extMenuId: string | null = null;
+      if (menuRows.length > 0) {
         const { data: mcm } = await supabase.from("menu_channel_mappings")
-          .select("external_name").eq("menu_id", menuRows[0].id).eq("channel", ci.channel).maybeSingle();
+          .select("external_name, external_id").eq("menu_id", menuRows[0].id).eq("channel", ci.channel).maybeSingle();
         extMenuName = mcm?.external_name ?? null;
+        extMenuId = mcm?.external_id ?? null;
       }
       jobsToInsert.push({
         owner_id: customer.owner_id,
@@ -176,6 +177,7 @@ Deno.serve(async (req) => {
           external_staff_id: extStaffId,
           menu_name: menuSummary,
           external_menu_name: extMenuName,
+          external_menu_id: extMenuId,
           notes: notes ? String(notes).slice(0, 500) : null,
           source_channel: "manual",
         },
