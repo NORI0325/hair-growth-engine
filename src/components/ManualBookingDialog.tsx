@@ -62,8 +62,20 @@ export default function ManualBookingDialog({ onCreated, trigger }: Props) {
   }, [customers, customerSearch]);
 
   const totalDuration = useMemo(() => {
-    return menus.filter((m) => selectedMenus.includes(m.name)).reduce((a, m) => a + (m.duration_minutes || 0), 0);
+    return menus.filter((m) => selectedMenus.includes(m.id)).reduce((a, m) => a + (m.duration_minutes || 0), 0);
   }, [menus, selectedMenus]);
+
+  // 同名メニューに番号を付与して見分けやすくする
+  const menusDisplay = useMemo(() => {
+    const counts: Record<string, number> = {};
+    const seen: Record<string, number> = {};
+    menus.forEach((m) => { counts[m.name] = (counts[m.name] || 0) + 1; });
+    return menus.map((m) => {
+      const idx = (seen[m.name] = (seen[m.name] || 0) + 1);
+      const suffix = counts[m.name] > 1 ? ` #${idx}` : "";
+      return { ...m, label: `${m.name}${suffix}` };
+    });
+  }, [menus]);
 
   const reset = () => {
     setCustomerId(""); setStaffId(""); setSelectedMenus([]); setNotes(""); setCustomerSearch("");
@@ -169,23 +181,26 @@ export default function ManualBookingDialog({ onCreated, trigger }: Props) {
           <div>
             <Label className="text-xs">メニュー（複数選択可）</Label>
             <div className="border border-border max-h-48 overflow-y-auto p-2 space-y-1">
-              {menus.map((m) => {
-                const checked = selectedMenus.includes(m.name);
+              {menusDisplay.map((m) => {
+                const checked = selectedMenus.includes(m.id);
                 return (
                   <label key={m.id} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-muted/50 px-1 py-0.5">
                     <input
                       type="checkbox"
                       checked={checked}
                       onChange={(e) => {
-                        if (e.target.checked) setSelectedMenus([...selectedMenus, m.name]);
-                        else setSelectedMenus(selectedMenus.filter((x) => x !== m.name));
+                        if (e.target.checked) setSelectedMenus([...selectedMenus, m.id]);
+                        else setSelectedMenus(selectedMenus.filter((x) => x !== m.id));
                       }}
                     />
-                    <span className="flex-1">{m.name}</span>
-                    <span className="text-xs text-muted-foreground">{m.duration_minutes}分 / ¥{m.price?.toLocaleString()}</span>
+                    <span className="flex-1">{m.label}</span>
+                    <span className="text-xs text-muted-foreground">{m.duration_minutes}分 / ¥{(m.price ?? 0).toLocaleString()}</span>
                   </label>
                 );
               })}
+              {menusDisplay.length === 0 && (
+                <p className="text-xs text-muted-foreground py-2">メニューが登録されていません。設定 → メニュー管理から追加してください。</p>
+              )}
             </div>
             {selectedMenus.length > 0 && (
               <p className="text-xs text-muted-foreground mt-1">合計 {totalDuration}分</p>

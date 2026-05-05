@@ -69,17 +69,31 @@ Deno.serve(async (req) => {
       });
     }
 
-    // メニュー集計
-    const menuList: string[] = (menus as any[]).filter((m) => typeof m === "string").slice(0, 10);
-    const { data: menuRows } = await supabase
-      .from("menu_items").select("id, name, duration_minutes, buffer_minutes, price")
-      .eq("owner_id", customer.owner_id).in("name", menuList);
+    // メニュー集計（IDベース。後方互換で文字列(name)も受け付ける）
+    const rawMenus: any[] = Array.isArray(menus) ? menus.slice(0, 10) : [];
+    const menuIds: string[] = rawMenus.filter((m) => typeof m === "string" && /^[0-9a-f-]{36}$/i.test(m));
+    const menuNamesFallback: string[] = rawMenus.filter((m) => typeof m === "string" && !/^[0-9a-f-]{36}$/i.test(m));
+    let menuRows: any[] = [];
+    if (menuIds.length > 0) {
+      const { data } = await supabase
+        .from("menu_items").select("id, name, duration_minutes, buffer_minutes, price")
+        .eq("owner_id", customer.owner_id).in("id", menuIds);
+      menuRows = data || [];
+    } else if (menuNamesFallback.length > 0) {
+      const { data } = await supabase
+        .from("menu_items").select("id, name, duration_minutes, buffer_minutes, price")
+        .eq("owner_id", customer.owner_id).in("name", menuNamesFallback);
+      // 同名は最初の1件のみ採用
+      const seen = new Set<string>();
+      menuRows = (data || []).filter((r: any) => { if (seen.has(r.name)) return false; seen.add(r.name); return true; });
+    }
     let totalDuration = 0, totalPrice = 0;
-    for (const r of (menuRows || [])) {
+    for (const r of menuRows) {
       totalDuration += (r.duration_minutes || 0) + (r.buffer_minutes || 0);
       totalPrice += (r.price || 0);
     }
-    const menuSummary = menuList.join(" + ").slice(0, 200);
+    const menuNames = menuRows.map((r) => r.name);
+    const menuSummary = menuNames.join(" + ").slice(0, 200);
 
     // bookings INSERT
     const { data: booking, error: bErr } = await supabase
@@ -91,7 +105,7 @@ Deno.serve(async (req) => {
         booking_date,
         booking_time: booking_time + ":00",
         menu: menuSummary,
-        menus: menuList,
+        menus: menuNames,
         total_duration_minutes: totalDuration || null,
         total_price: totalPrice || null,
         notes: notes ? String(notes).slice(0, 500) : null,
@@ -139,11 +153,12 @@ Deno.serve(async (req) => {
         extStaffName = scm?.external_name ?? null;
         extStaffId = scm?.external_id ?? null;
       }
-      let extMenuName: string | null = null;
-      if (menuList.length > 0 && menuRows && menuRows[0]) {
+      let extMenuName: string | null = null, extMenuId: string | null = null;
+      if (menuRows.length > 0) {
         const { data: mcm } = await supabase.from("menu_channel_mappings")
-          .select("external_name").eq("menu_id", menuRows[0].id).eq("channel", ci.channel).maybeSingle();
+          .select("external_name, external_id").eq("menu_id", menuRows[0].id).eq("channel", ci.channel).maybeSingle();
         extMenuName = mcm?.external_name ?? null;
+        extMenuId = mcm?.external_id ?? null;
       }
       jobsToInsert.push({
         owner_id: customer.owner_id,
@@ -162,6 +177,7 @@ Deno.serve(async (req) => {
           external_staff_id: extStaffId,
           menu_name: menuSummary,
           external_menu_name: extMenuName,
+          external_menu_id: extMenuId,
           notes: notes ? String(notes).slice(0, 500) : null,
           source_channel: "manual",
         },
