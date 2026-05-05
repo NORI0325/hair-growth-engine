@@ -51,10 +51,111 @@ Deno.serve(async (req) => {
 
     const results: any[] = [];
 
+    // ---- payload 変換: アプリ標準 → サロンボード生フォーマット ----
+    // create時のみ変換が必要（update/cancelは既に生フォーマットで投入される運用）
+    const SALONBOARD_DEFAULT_RSV_ROUTE_ID = "K000000001"; // 電話(自社)固定
+    function splitName(full: string | null | undefined): { sei: string; mei: string } {
+      const s = (full || "").trim();
+      if (!s) return { sei: "", mei: "" };
+      const parts = s.split(/[\s　]+/);
+      if (parts.length >= 2) return { sei: parts[0], mei: parts.slice(1).join("") };
+      // スペース無し → 全部姓に
+      return { sei: s, mei: "" };
+    }
+    function toKana(s: string): string {
+      // ひらがな→カタカナ。サロンボード必須なので空でも空文字
+      return (s || "").replace(/[ぁ-ん]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0x60));
+    }
+    function fmtDate(iso: string): string {
+      const d = new Date(iso);
+      // JST
+      const j = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+      const y = j.getUTCFullYear();
+      const m = String(j.getUTCMonth() + 1).padStart(2, "0");
+      const day = String(j.getUTCDate()).padStart(2, "0");
+      return `${y}${m}${day}`;
+    }
+    function fmtTime(iso: string): string {
+      const d = new Date(iso);
+      const j = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+      return `${String(j.getUTCHours()).padStart(2, "0")}${String(j.getUTCMinutes()).padStart(2, "0")}`;
+    }
+    function buildSalonboardCreatePayload(p: any): { ok: true; payload: any } | { ok: false; missing: string[] } {
+      const missing: string[] = [];
+      if (!p.external_staff_id) missing.push("stylistId(staff_channel_mappings)");
+      if (!p.external_menu_id && !p.salonboard_setmenu_id) missing.push("setmenuId(menu_channel_mappings)");
+      if (!p.start_time || !p.end_time) missing.push("start_time/end_time");
+      if (missing.length > 0) return { ok: false, missing };
+      const { sei, mei } = splitName(p.customer_name);
+      const durationMin = Math.max(15, Math.round((new Date(p.end_time).getTime() - new Date(p.start_time).getTime()) / 60_000));
+      return {
+        ok: true,
+        payload: {
+          date: fmtDate(p.start_time),
+          time: fmtTime(p.start_time),
+          stylistId: p.external_staff_id,
+          setmenuId: p.external_menu_id || p.salonboard_setmenu_id,
+          rsvRouteId: p.rsv_route_id || SALONBOARD_DEFAULT_RSV_ROUTE_ID,
+          rsvTerm: durationMin,
+          nmSei: sei,
+          nmMei: mei,
+          nmSeiKana: toKana(sei),
+          nmMeiKana: toKana(mei),
+          tel: (p.customer_phone || "").replace(/[^\d]/g, ""),
+          memo: p.notes || "",
+        },
+      };
+    }
+
     for (const job of jobs || []) {
       // 外部ワーカー未設定の場合はpending据置（エラーにしない）
       if (!workerUrl) {
         results.push({ job_id: job.id, status: "pending", reason: "worker_not_configured" });
+        continue;
+      }
+
+      // payload変換（salonboard create のみ）
+      let outboundPayload: any = job.request_payload;
+      let preflightFail: { error_type: string; message: string } | null = null;
+      const looksAppFormat = !!(job.request_payload && (job.request_payload.start_time || job.request_payload.customer_name));
+      if (job.target_channel === "salonboard" && job.job_type === "create_reservation" && looksAppFormat) {
+        const conv = buildSalonboardCreatePayload(job.request_payload);
+        if (conv.ok) {
+          outboundPayload = conv.payload;
+        } else {
+          preflightFail = {
+            error_type: "mapping_not_found",
+            message: `必須マッピング不足: ${conv.missing.join(", ")}`,
+          };
+        }
+      }
+
+      // mapping不足は送らずに needs_review 確定
+      if (preflightFail) {
+        await supabase.from("sync_jobs").update({
+          status: "needs_review",
+          error_type: preflightFail.error_type,
+          error_message: preflightFail.message,
+          response_payload: { success: false, error_type: preflightFail.error_type, message: preflightFail.message, skipped: true },
+        }).eq("id", job.id);
+        if (job.reservation_id) {
+          await supabase.from("bookings").update({
+            sync_status: "needs_review",
+            sync_error_message: `[${job.target_channel}] ${preflightFail.message}`,
+            needs_manual_review: true,
+            last_synced_at: new Date().toISOString(),
+          }).eq("id", job.reservation_id);
+        }
+        await supabase.from("sync_logs").insert({
+          owner_id: job.owner_id,
+          sync_job_id: job.id,
+          reservation_id: job.reservation_id,
+          channel: job.target_channel,
+          level: "warning",
+          message: `送信スキップ(needs_review): ${preflightFail.message}`,
+          metadata: { skipped: true, original_payload: maskSensitive(job.request_payload) },
+        });
+        results.push({ job_id: job.id, status: "needs_review", error_type: preflightFail.error_type });
         continue;
       }
 
