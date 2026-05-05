@@ -1007,7 +1007,7 @@ AI信頼度: ${parsed.confidence}/100
               .from("customers")
               .insert({
                 owner_id: owner.id,
-                location_id: owner.location_id || null,
+                location_id: null,
                 full_name: placeholderName,
                 phone: phone,
                 line_user_id: userId,
