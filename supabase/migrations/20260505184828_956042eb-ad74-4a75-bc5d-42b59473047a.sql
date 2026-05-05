@@ -1,0 +1,1 @@
+UPDATE public.sync_jobs SET status='pending', error_message=NULL WHERE id='05df097f-a9b8-4c85-bf3c-4fce129a18d5';
