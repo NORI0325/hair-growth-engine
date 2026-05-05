@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CustomerMessageDialog } from "@/components/CustomerMessageDialog";
 import { useCurrentLocationId } from "@/hooks/useLocations";
+import ManualBookingDialog from "@/components/ManualBookingDialog";
 
 interface Booking {
   id: string;
@@ -147,7 +148,8 @@ const Bookings = () => {
         description={`${bookings.length} 件の再会が予定されています`}
       />
 
-      <div className="flex justify-end mb-6">
+      <div className="flex justify-between items-center mb-6 gap-3 flex-wrap">
+        <ManualBookingDialog onCreated={load} />
         <div className="inline-flex border border-border">
           <button
             className={`px-4 py-2 text-xs tracking-luxury ${sortMode === "schedule" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"}`}
