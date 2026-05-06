@@ -42,16 +42,18 @@ export default function ManualBookingDialog({ onCreated, trigger }: Props) {
   useEffect(() => {
     if (!open || !user) return;
     (async () => {
+      let menuQ = supabase.from("menu_items").select("id, name, duration_minutes, price").eq("active", true).order("sort_order");
+      if (locationId) menuQ = menuQ.eq("location_id", locationId);
       const [c, s, m] = await Promise.all([
         supabase.from("customers").select("id, full_name, phone").order("created_at", { ascending: false }).limit(500),
         supabase.from("staff").select("id, name").eq("active", true).order("sort_order"),
-        supabase.from("menu_items").select("id, name, duration_minutes, price").eq("active", true).order("sort_order"),
+        menuQ,
       ]);
       setCustomers((c.data as CustomerOpt[]) || []);
       setStaff((s.data as StaffOpt[]) || []);
       setMenus((m.data as MenuOpt[]) || []);
     })();
-  }, [open, user]);
+  }, [open, user, locationId]);
 
   const filteredCustomers = useMemo(() => {
     const q = customerSearch.trim().toLowerCase();
