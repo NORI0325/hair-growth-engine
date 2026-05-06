@@ -194,12 +194,27 @@ Deno.serve(async (req) => {
         await new Promise(r => setTimeout(r, 100));
       }
 
-      // LINE Push（顧客にLINE ID登録 + サロンにトークン登録があれば）
-      if (lineToken && c.line_user_id) {
-        const lineBody = renderTemplate(campaign.sms_body || campaign.email_body || "", vars);
-        const r = await sendLine(lineToken, c.line_user_id, lineBody);
-        if (!r.ok) send.sms_error = (send.sms_error ? send.sms_error + " | " : "") + r.error;
-        await new Promise(r => setTimeout(r, 50));
+      // LINE Push（顧客にLINE ID登録があり、店舗別または共通トークンがあれば）
+      if (c.line_user_id) {
+        const custLocId = (c as any).location_id || (campaign as any).location_id || null;
+        const creds = await getLineCredentials(supabase, user.id, custLocId);
+        if (creds) {
+          const lineBody = renderTemplate(campaign.sms_body || campaign.email_body || "", vars);
+          const r = await sendLine(creds.accessToken, c.line_user_id, lineBody);
+          await supabase.from("line_message_log").insert({
+            owner_id: user.id,
+            location_id: custLocId,
+            customer_id: c.id,
+            line_user_id: c.line_user_id,
+            job_type: "campaign",
+            template_key: `campaign:${campaign_id}`,
+            message: lineBody,
+            status: r.ok ? "sent" : "failed",
+            error: r.ok ? null : r.error,
+          });
+          if (!r.ok) send.sms_error = (send.sms_error ? send.sms_error + " | " : "") + r.error;
+          await new Promise(r => setTimeout(r, 50));
+        }
       }
 
       sends.push(send);
