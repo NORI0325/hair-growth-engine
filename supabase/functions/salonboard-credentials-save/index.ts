@@ -3,25 +3,7 @@
 // salonboard_sessions は storage_state 用なので、ID/PW再保存時は古いセッションを無効化する。
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
-
-async function getKey(): Promise<CryptoKey | null> {
-  const raw = Deno.env.get("SALONBOARD_ENCRYPTION_KEY");
-  if (!raw) return null;
-  try {
-    const bytes = Uint8Array.from(atob(raw), (c) => c.charCodeAt(0));
-    if (bytes.length !== 32) return null;
-    return await crypto.subtle.importKey("raw", bytes, "AES-GCM", false, ["encrypt", "decrypt"]);
-  } catch { return null; }
-}
-async function encryptText(plain: string): Promise<string> {
-  const key = await getKey();
-  if (!key) return plain;
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const enc = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(plain));
-  const merged = new Uint8Array(iv.length + enc.byteLength);
-  merged.set(iv, 0); merged.set(new Uint8Array(enc), iv.length);
-  return btoa(String.fromCharCode(...merged));
-}
+import { decryptSalonboardText, encryptSalonboardText, getSalonboardKeyDiagnostic } from "../_shared/salonboardCrypto.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -52,8 +34,18 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "forbidden" }), { status: 403, headers: corsHeaders });
     }
 
-    const loginEnc = await encryptText(String(login_id));
-    const pwEnc = await encryptText(String(password));
+    const keyDiagnostic = getSalonboardKeyDiagnostic();
+    if (!keyDiagnostic.key_present || keyDiagnostic.key_length_after_base64_decode !== 32) {
+      return new Response(JSON.stringify({
+        error: "invalid_encryption_key",
+        diagnostic: { ...keyDiagnostic, owner_id, location_id: location_id || null, upsert_target: "salonboard_credentials" },
+      }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const loginEnc = await encryptSalonboardText(String(login_id));
+    const pwEnc = await encryptSalonboardText(String(password));
 
     // 1) salonboard_credentials（ID/PW正本: tenant単位）にupsert
     const { data: credExisting } = await sb.from("salonboard_credentials")
