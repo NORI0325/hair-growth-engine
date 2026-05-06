@@ -8,6 +8,8 @@ interface ImportItem {
   setmenu_id?: string | null;
   menu_id?: string | null;
   menu_category_cd?: string | null;
+  net_coupon_id?: string | null;
+  source_type?: string | null;
   menu_name: string;
   rsv_term?: number | null;
   price?: number | null;
