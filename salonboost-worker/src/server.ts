@@ -9,6 +9,7 @@ import { updateReservation } from "./salonboard/updateReservation.js";
 import { cancelReservation } from "./salonboard/cancelReservation.js";
 import { WorkerError } from "./errorMapper.js";
 import { postCallback } from "./callback.js";
+import { fetchSession, saveSession } from "./sessionStore.js";
 import { logger } from "./logger.js";
 
 const app = express();
@@ -18,7 +19,7 @@ app.get("/healthz", (_req, res) => res.json({ ok: true }));
 
 const JobSchema = z.object({
   job_id: z.string(),
-  store_id: z.string().optional(),
+  store_id: z.string().min(1),                 // = owner_id
   location_id: z.string().nullable().optional(),
   reservation_id: z.string().nullable().optional(),
   target_channel: z.literal("salonboard"),
@@ -33,27 +34,18 @@ app.post("/api/sync-job", bearerAuth, async (req, res) => {
     return res.status(400).json({ success: false, error_type: "unknown_error", message: "invalid_body", details: parsed.error.flatten() });
   }
   const job = parsed.data;
-  logger.info({ job_id: job.job_id, type: job.job_type, dry_run: (job.reservation as any)?.dry_run === true }, "job received");
+  logger.info({ job_id: job.job_id, owner: job.store_id, location: job.location_id, type: job.job_type }, "job received");
 
-  // dry-run モード：サロンボードに一切触らず疎通だけ確認
   if ((job.reservation as any)?.dry_run === true) {
-    logger.info({ job_id: job.job_id }, "dry_run: skipping salonboard");
-    return res.json({
-      success: true,
-      dry_run: true,
-      external_reservation_id: null,
-      message: "dry_run ok - no salonboard action performed",
-    });
+    return res.json({ success: true, dry_run: true, external_reservation_id: null, message: "dry_run ok" });
   }
 
-  // 非同期モード（async_callback=true）なら即200を返してバックグラウンド実行
   if (job.async_callback) {
     res.status(202).json({ accepted: true });
     runJob(job).catch((e) => logger.error({ e }, "async job error"));
     return;
   }
 
-  // 同期モード
   try {
     const result = await runJob(job);
     res.json({ success: true, ...result });
@@ -68,14 +60,28 @@ app.post("/api/sync-job", bearerAuth, async (req, res) => {
 });
 
 async function runJob(job: z.infer<typeof JobSchema>) {
+  // 店舗別の認証情報・保存セッションを取得
+  const creds = await fetchSession(job.store_id, job.location_id ?? null).catch((e) => {
+    throw new WorkerError("login_failed", `session fetch failed: ${e instanceof Error ? e.message : String(e)}`);
+  });
+
   let result: { external_reservation_id?: string | null } = {};
   try {
-    result = await withContext(async (ctx) => {
-      const page = await loginSalonboard(ctx);
+    result = await withContext({ storageState: creds.storage_state }, async (ctx) => {
+      const { page, freshLogin } = await loginSalonboard(ctx, { login_id: creds.login_id, password: creds.password });
+
+      // freshLoginならstorageStateを保存
+      if (freshLogin) {
+        try {
+          const state = await ctx.storageState();
+          await saveSession(job.store_id, job.location_id ?? null, state, "ok");
+        } catch (e) { logger.warn({ e }, "saveSession failed"); }
+      }
+
       switch (job.job_type) {
-        case "create":  return await createReservation(page, job.reservation as any);
-        case "update":  return await updateReservation(page, job.reservation as any);
-        case "cancel":  return await cancelReservation(page, job.reservation as any);
+        case "create": return await createReservation(page, job.reservation as any);
+        case "update": return await updateReservation(page, job.reservation as any);
+        case "cancel": return await cancelReservation(page, job.reservation as any);
       }
     });
     if (job.async_callback) {
@@ -85,6 +91,10 @@ async function runJob(job: z.infer<typeof JobSchema>) {
   } catch (e) {
     const errorType = e instanceof WorkerError ? e.errorType : "unknown_error";
     const message = e instanceof Error ? e.message : String(e);
+    // 認証起因なら保存セッションを invalidate
+    if (errorType === "login_failed" || errorType === "captcha_required") {
+      await saveSession(job.store_id, job.location_id ?? null, null, "invalid", message).catch(() => {});
+    }
     if (job.async_callback) {
       await postCallback({ job_id: job.job_id, success: false, error_type: errorType, message });
     }
