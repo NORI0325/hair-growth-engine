@@ -1,135 +1,86 @@
-## 棚卸し結果（既存 vs 不足）
+## 目的
 
-| # | 要件 | 既存 | 不足 |
-|---|---|---|---|
-| 1 | 店舗ごとの連携設定 | `channel_integrations`（owner_id+location_id, enabled, sync_enabled, last_status, failure_count, last_error） | `connection_status` / `default_rsv_route_id` / `storage_state_path` / `last_login_at` / `last_success_at` / `mapping_complete` / `test_passed_at` カラム |
-| 2 | サロンボード認証保存 | `salonboard_credentials`（tenant単位・login_id/password/cookie_session 暗号化） | **location単位ではない**（tenant単位）。`storage_state_encrypted` 列なし（Playwright storageState 用）。Worker側で店舗別に読み出す仕組みなし |
-| 3 | staff/menu マッピング | `staff_channel_mappings` / `menu_channel_mappings`（owner_id, location_id, channel, external_id, external_name） | `enabled` フラグ無し。menu側に `external_setmenu_id` / `rsv_term` 専用列なし（external_id に setmenuId を入れている運用） |
-| 4 | 公開予約での絞り込み | なし（`public_create_booking_v3` は全 active staff/menu 対象） | sync_enabled 店舗ではマッピング済みのみ表示 / 仮受付許可フラグ `allow_unmapped_booking` |
-| 5 | ステータス管理 | `last_status` のみ（success/failed/pending） | `connection_status` enum（未接続/接続済/マッピング未完了/テスト未完了/本番ON/停止中/要再認証）+ 本番ON判定 RPC |
-| 6 | Worker店舗分離 | Worker は `.env` の単一 `SALONBOARD_USER_ID/PASSWORD` 固定 | **致命的ギャップ**: job ごとに owner_id/location_id から credentials を取得 → 店舗別 storageState で実行する仕組みが無い |
-| 7 | 予約作成→確定フロー | `staff-create-booking` は `pending` で作成、`sync-job-dispatch` は同期invoke | `pending_sync` ステータス・10〜20秒待機ロジック・confirmed昇格・タイムアウト時 syncing 維持 |
-| 8 | 再試行/needs_review | `sync-job-retry`、`SyncReview.tsx` 一覧 | error_type 別の再試行可否分類、needs_review 行アクション（再同期 / 手動済み / 予約キャンセル）、通知 |
-| 9 | 権限・RLS | tenant member/manager で全テーブル分離 OK | Worker の job 検証（owner_id/location_id 突合）。ログマスク（`storageState`/`Cookie`/`password`） |
-| 10 | オンボーディング画面 | `ChannelIntegrations.tsx`（一覧/ON-OFF/再同期）、`Staff.tsx`/`MenuItems.tsx` にマッピングUI（`ChannelMappingDialog`） | サロンボード専用ウィザード（接続→セッション→staff/menu マッピング→経路設定→3種テスト→本番ON）。`/onboarding/salonboard/:locationId` |
-| 11 | 導入フロー | バラバラに存在 | 上記ウィザードで順序強制、各ステップ完了でフラグ更新 |
+サロンボード連携を「疎通テスト経由でしか live に昇格しない」安全な自動昇格パイプラインにする。
+手動の強制 live は使わない。失敗理由は管理画面で可視化。
 
----
+## 現状の問題
 
-## 実装提案（フェーズ分け）
+- `bookings` 5/7 10:00 テスト太郎 は作成されたが、`channel_integrations.salonboard.connection_status='disconnected'` のため `staff-create-booking` の `liveIntegrations` フィルタで除外され、`sync_jobs` が作られず Worker にも送られていない。
+- 既存の `worker-dry-run` Edge Function は、新しい Worker JobSchema が要求する `store_id` を含んでいないため、現状そのままでは Worker で 400 になる。
+- 疎通テストの結果を保存し可視化する仕組みがない。
 
-### Phase A: DB拡張（マイグレーション 1本）
+## 実装内容
 
-1. **`channel_integrations` 列追加**
-   - `connection_status TEXT DEFAULT 'disconnected'`（disconnected/connected/mapping_incomplete/test_pending/live/paused/reauth_required）
-   - `default_rsv_route_id TEXT DEFAULT 'K000000001'`
-   - `storage_state_path TEXT`（"salonboard/{owner_id}/{location_id}/state.json"）
-   - `last_login_at`, `last_success_at TIMESTAMPTZ`
-   - `test_create_passed_at`, `test_update_passed_at`, `test_cancel_passed_at TIMESTAMPTZ`
-   - `allow_unmapped_booking BOOLEAN DEFAULT false`
-   - `live_enabled_at TIMESTAMPTZ`（明示ON時刻）
+### 1. `worker_request_logs` テーブル新規作成（マイグレーション）
 
-2. **`salonboard_credentials` 拡張**（tenant単位 → location単位）
-   - 新規 `salonboard_sessions` テーブル：`owner_id, location_id, login_id_encrypted, password_encrypted, storage_state_encrypted, last_login_at, login_status, last_error`
-   - UNIQUE(`owner_id, location_id`)
-   - 既存 `salonboard_credentials` は互換のため残し、移行スクリプトで location_id=primary に詰め直す
+カラム:
+- `owner_id` / `location_id` / `channel`
+- `kind`（`dry_run_create` / `dry_run_update` / `dry_run_cancel` / `live_create` 等）
+- `request_payload` / `response_status` / `response_body` / `latency_ms`
+- `success`（boolean）/ `error_message`
+- `created_at`
 
-3. **`staff_channel_mappings` / `menu_channel_mappings`**
-   - `enabled BOOLEAN DEFAULT true` 追加
-   - menu側に `external_setmenu_id TEXT`, `rsv_term INT`（既存 `external_id` を `external_setmenu_id` にコピー）
+RLS: テナントメンバーのみ自店分を閲覧可。書き込みは Edge Function の service role のみ。
 
-4. **`bookings` 拡張**
-   - `last_sync_error TEXT`, `sync_attempt_count INT DEFAULT 0`
-   - `booking_status` enum に `pending_sync` 追加（`syncing` は `sync_status` 側で表現）
+### 2. Edge Function: `salonboard-connection-test` 新規作成
 
-5. **RPC追加**
-   - `is_salonboard_live(_owner_id, _location_id) RETURNS boolean`
-     条件: `connection_status='live'` AND `sync_enabled` AND セッション有効 AND staff/menu マッピング1件以上 AND 3テスト合格
-   - `recompute_channel_status(_owner_id, _location_id)`：上記条件で connection_status を更新（マッピング保存・テスト通過時に呼ぶ）
+入力: `{ owner_id, location_id }`
 
-### Phase B: Worker 店舗分離（最重要）
+処理（順番に実行、失敗即停止）:
 
-- 本アプリ側に新Edge Function `salonboard-session-fetch`（Worker専用Bearer認証）を作成
-  - 入力: `owner_id, location_id`
-  - 出力: 復号した `login_id` / `password` / `storage_state`（JSON）
-- Worker `src/server.ts`:
-  - job スキーマに `owner_id, location_id` 必須化
-  - `loginSalonboard` を呼ぶ前に `fetchSession(owner_id, location_id)` で取得
-  - `storage_state` があれば `browser.newContext({ storageState })` で再利用
-  - ログイン成功後の `context.storageState()` を本アプリの `salonboard-session-save` で暗号化保存
-- ファイルシステム保存はせず DB 暗号化に統一（VPS 障害耐性のため）
-- `.env` の `SALONBOARD_USER_ID/PASSWORD` は撤去（dev フォールバックのみ）
-- ログ出力に `password / cookie / authorization / storage_state` のキーをマスクする helper を `logger.ts` に追加
+1. `salonboard-session-fetch` 相当のロジックで login_id / password を復号取得  
+   失敗時 → `connection_status='error'`, `last_error='credentials_decrypt_failed'`
+2. Worker `/api/sync-job` に **dry_run create** をPOST（`store_id`/`location_id` 付き、`reservation.dry_run=true`）
+3. Worker に **dry_run update** をPOST
+4. Worker に **dry_run cancel** をPOST
+5. すべて success の場合のみ:
+   - `channel_integrations` を以下に更新:
+     - `connection_status='live'`
+     - `test_create_passed_at` / `test_update_passed_at` / `test_cancel_passed_at = now()`
+     - `live_enabled_at = now()`
+     - `last_error = null`
+6. 失敗があった場合:
+   - `connection_status='needs_review'`（または `'error'`）
+   - `last_error` に失敗内容を保存
 
-### Phase C: 予約作成フロー強化
+各ステップで `worker_request_logs` に request/response/latency を保存。
+レスポンスでフロントへ各ステップの ok/ng と理由を返す。
 
-- `staff-create-booking` / `public_create_booking_v3` を改修：
-  - `is_salonboard_live` が true の店舗 → `booking.status='pending_sync'`, `sync_status='pending'`
-  - sync-job-dispatch を invoke、最大15秒ポーリング（500ms間隔）で `sync_jobs.status` 監視
-  - 成功 → `confirmed` + `synced` + `external_reservation_id`
-  - 失敗 → `needs_review` + `last_sync_error`
-  - タイムアウト → `pending_sync` 維持、バックグラウンド処理に委譲
-- `sync-worker-callback` でバックグラウンド完了時に bookings を更新
+### 3. `staff-create-booking` の判定緩和
 
-### Phase D: 公開予約 UI 絞り込み
+現状 `connection_status === "live"` のみ通すのは正しいので維持。
+ただし `disconnected` でスキップされた場合の `bookings.sync_status` を、現在の `not_required` から **`skipped_disconnected`**（または同等）に変えて、管理画面で「連携未完了のため未送信」と区別可能にする。
 
-- `public_create_booking_v3` / `get_available_slots_by_staff` を改修：
-  - sync_enabled かつ NOT allow_unmapped_booking なら staff/menu に `EXISTS staff_channel_mappings/enabled` を JOIN
-- `PublicBooking.tsx` の staff/menu 取得側でも同条件
-- `Settings` に「未マッピング予約を仮受付として許可する」トグル
+### 4. 管理画面: チャンネル連携ページに「疎通テスト実行」ボタン
 
-### Phase E: 再試行・needs_review 強化
+`src/pages/ChannelIntegrations.tsx` に:
 
-- `sync-job-retry` に再試行可否マップを追加
-  - 可: `network_error / timeout / temporary_external_error`
-  - 不可: `mapping_not_found / captcha_required / duplicate_risk / capacity_exceeded / out_of_business_hours / required_field_missing`
-- `SyncReview.tsx` に行アクション3種（再同期 / 手動済 / 予約キャンセル）と失敗理由表示
-- 失敗時オーナーへ通知（`notify-owner-booking` 流用、新 type `sync_failed`）
+- 「疎通テストを実行」ボタン（manager+ のみ）
+- 実行中スピナー
+- 結果表示（create/update/cancel それぞれの ok/ng と理由）
+- `connection_status` バッジ（disconnected / needs_review / error / live）
+- `last_error` の文章表示
+- 直近の `worker_request_logs` 数件をリスト表示（latency, status, success, error_message）
 
-### Phase F: オンボーディングウィザード
+### 5. 5/7 10:00 テスト太郎の取り扱い
 
-- 新ページ `/onboarding/salonboard/:locationId`（`SalonboardOnboarding.tsx`）
-  - ステップ1: 接続（ID/PW入力 → `salonboard-credentials-save` → ログインテスト）
-  - ステップ2: セッション保存確認
-  - ステップ3: staff マッピング（既存 `ChannelMappingDialog` 流用）
-  - ステップ4: menu マッピング
-  - ステップ5: rsvRouteId 設定
-  - ステップ6: create→update→cancel テスト（テスト顧客で実行 → 各成功で `test_*_passed_at` 更新）
-  - ステップ7: 本番同期ON ボタン（`is_salonboard_live` 条件満たす時のみ活性）
-- `ChannelIntegrations.tsx` から「サロンボードを設定する」ボタンで遷移
+既存予約は `sync_jobs` が無く `not_required` 確定済みなので、Worker 経由の同期は走らない。
+連携 live 化後に同等の予約をもう1件作ってE2Eテストする。
+（既存予約を再キックするのは別タスク。今回は触らない）
 
-### Phase G: セキュリティ確認
+## 実装順序
 
-- 新 `salonboard_sessions` の RLS: `is_tenant_member(owner_id) AND has_location_role(location_id, 'manager')`
-- Worker→本アプリ呼び出しは Bearer (`WORKER_API_KEY`) かつ owner_id/location_id 検証
-- `sync_logs.metadata` insert 前にマスク関数を通す（既存 plan.md にあるが未実装ならここで実装）
+1. マイグレーション: `worker_request_logs` テーブル + RLS
+2. Edge Function `salonboard-connection-test` 新規作成
+3. `staff-create-booking` の `sync_status` ラベル調整
+4. `ChannelIntegrations.tsx` に疎通テストUI追加
+5. ユーザーが画面から疎通テスト → 全パスで自動 live 化 → もう1件公開予約してE2E
 
----
+## ユーザー側で必要な操作
 
-## 技術メモ
+- 実装後、チャンネル連携画面の「疎通テストを実行」ボタンを押すだけ。
+- VM Worker 側は既に最新版で稼働済みなので変更不要。
 
-```text
-[公開予約画面]
-   │ submit
-   ▼
-[public_create_booking_v3] ── is_salonboard_live? ──No──▶ confirmed (即時)
-   │ Yes
-   ▼
-[booking: pending_sync / sync_status: pending]
-   │ invoke sync-job-dispatch
-   ▼
-[sync_jobs: pending] ──HTTP──▶ [Worker] ──┐
-                                          │ session DB から取得
-                                          │ storageState で再ログイン省略
-                                          ▼
-                                    [salonboard create]
-                                          │
-   ┌─ ≤15s polling ◀──── result ──────────┘
-   │
-   ├─ success → confirmed + synced + external_reservation_id
-   ├─ failure(non-retry) → needs_review
-   └─ timeout → pending_sync (callback待ち)
-```
+## 確認
 
-実装順序の推奨: A → B（最重要・現状全店舗で同じ認証情報になるリスク）→ C → D → E → F。
-Phase A のマイグレーション内容を承認いただき次第、順次着手します。
+このプランで進めて良いですか？ 特に「失敗時のステータス名」を `needs_review` にするか `error` にするかは2案あります（plan承認時にどちらか教えてください。デフォルトは `needs_review`）。
