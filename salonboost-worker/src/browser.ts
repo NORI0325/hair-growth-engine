@@ -13,13 +13,18 @@ export function getBrowser(): Promise<Browser> {
   return browserPromise;
 }
 
-export async function withContext<T>(fn: (ctx: BrowserContext) => Promise<T>): Promise<T> {
+export interface ContextOptions {
+  storageState?: any | null;
+}
+
+export async function withContext<T>(opts: ContextOptions, fn: (ctx: BrowserContext) => Promise<T>): Promise<T> {
   const browser = await getBrowser();
   const ctx = await browser.newContext({
     viewport: { width: 1280, height: 900 },
     locale: "ja-JP",
     userAgent:
       "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    ...(opts.storageState ? { storageState: opts.storageState } : {}),
   });
   try {
     return await fn(ctx);
