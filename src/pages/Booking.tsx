@@ -38,6 +38,7 @@ const Booking = () => {
   const [customer, setCustomer] = useState<any>(null);
   const [salonName, setSalonName] = useState("");
   const [salonSlug, setSalonSlug] = useState<string | null>(null);
+  const [locationResolved, setLocationResolved] = useState<boolean>(false);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
 
@@ -63,28 +64,30 @@ const Booking = () => {
         setLeadHours(data.booking_lead_time_hours ?? 24);
         setMaxDaysAhead(data.booking_max_days_ahead ?? 60);
 
-        // メニュー & スタッフ取得（location_id があれば店舗単位で絞り込み）
-        if (data.owner_id) {
-          let menusQuery = supabase
+        // location_id 必須：店舗が確定できない場合は混在事故防止のためメニュー非表示
+        if (data.owner_id && data.location_id) {
+          setLocationResolved(true);
+          const menusQuery = supabase
             .from("menu_items")
             .select("id, name, duration_minutes, price, image_url")
             .eq("owner_id", data.owner_id)
+            .eq("location_id", data.location_id)
             .eq("active", true)
             .order("sort_order", { ascending: true });
-          let staffQuery = supabase
+          const staffQuery = supabase
             .from("staff")
             .select("id, name, display_color, note")
             .eq("owner_id", data.owner_id)
+            .eq("location_id", data.location_id)
             .eq("active", true)
             .eq("bookable", true)
             .order("sort_order", { ascending: true });
-          if (data.location_id) {
-            menusQuery = menusQuery.eq("location_id", data.location_id);
-            staffQuery = staffQuery.eq("location_id", data.location_id);
-          }
           const [menusRes, staffRes] = await Promise.all([menusQuery, staffQuery]);
           setMenuItems(menusRes.data || []);
           setStaffList(staffRes.data || []);
+        } else {
+          setMenuItems([]);
+          setStaffList([]);
         }
       } else {
         toast.error("リンクが無効です");
@@ -186,6 +189,21 @@ const Booking = () => {
           <p className="text-sm text-muted-foreground leading-loose">
             このリンクは期限切れか無効です。<br />
             お手数ですがサロンへ直接お問い合わせください。
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!locationResolved) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6 bg-background">
+        <div className="max-w-md w-full text-center">
+          <p className="eyebrow mb-4">— Notice —</p>
+          <h2 className="display text-2xl mb-4">店舗情報を確認できませんでした</h2>
+          <div className="hairline w-16 mx-auto mb-6" />
+          <p className="text-sm text-muted-foreground leading-loose">
+            お手数ですが、LINEまたは店舗へお問い合わせください。
           </p>
         </div>
       </div>
@@ -396,16 +414,8 @@ const Booking = () => {
                 })}
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-px bg-border">
-                {FALLBACK_MENUS.map(m => {
-                  const active = selectedMenus.includes(m);
-                  return (
-                    <button key={m} type="button" onClick={() => toggleMenu(m)}
-                      className={`py-3 text-sm font-serif transition-all ${active ? "bg-primary text-primary-foreground" : "bg-card hover:bg-secondary"}`}>
-                      {m}
-                    </button>
-                  );
-                })}
+              <div className="text-xs text-muted-foreground border border-border p-4 bg-secondary/30">
+                メニューが登録されていません。お手数ですが、店舗へお問い合わせください。
               </div>
             )}
 

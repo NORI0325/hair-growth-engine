@@ -134,6 +134,10 @@ export default function SalonboardAutoMapping() {
   };
 
   const importMenus = async () => {
+    if (!loc) {
+      toast.error("店舗情報が取得できないため、メニューを取り込めません。店舗を選択してください。");
+      return;
+    }
     const items = menuOpts
       .filter((m) => !mappedMenuExt.has(m.external_menu_id))
       .map((m) => {
@@ -234,6 +238,11 @@ export default function SalonboardAutoMapping() {
             サロンボードから取得
           </Button>
         </div>
+        {!loc && (
+          <div className="text-xs border border-amber-500/40 bg-amber-50 text-amber-900 px-3 py-2 mb-4">
+            店舗情報が取得できないため、メニューを取り込めません。店舗を選択してください。
+          </div>
+        )}
         {menuOpts.length === 0 ? (
           <div className="text-sm text-muted-foreground py-6 text-center">未取得です。「サロンボードから取得」を押してください。</div>
         ) : (() => {
@@ -361,7 +370,7 @@ export default function SalonboardAutoMapping() {
                 )}
               </section>
 
-              <Button onClick={importMenus} disabled={importing} className="rounded-none">
+              <Button onClick={importMenus} disabled={importing || !loc} className="rounded-none">
                 <Upload className="w-4 h-4 mr-2" />一括取り込み・保存（初期は組み合わせメニューのみ）
               </Button>
             </>
