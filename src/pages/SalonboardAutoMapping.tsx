@@ -137,7 +137,10 @@ export default function SalonboardAutoMapping() {
     const items = menuOpts
       .filter((m) => !mappedMenuExt.has(m.external_menu_id))
       .map((m) => {
-        const a = menuActions[m.external_menu_id] || { action: "create" };
+        const src = getSrcType(m);
+        // 初期は setmenu のみ create、coupon/category はユーザーが明示しない限り skip
+        const defaultAction = src === "setmenu" ? "create" : "skip";
+        const a = menuActions[m.external_menu_id] || { action: defaultAction };
         const editedTerm = menuRsvTerm[m.external_menu_id];
         const rsv_term = editedTerm === "" || editedTerm === undefined ? m.rsv_term : Number(editedTerm);
         return {
@@ -145,7 +148,7 @@ export default function SalonboardAutoMapping() {
           setmenu_id: m.setmenu_id, menu_id: m.menu_id,
           menu_category_cd: m.menu_category_cd,
           net_coupon_id: m.net_coupon_id ?? null,
-          source_type: m.source_type ?? null,
+          source_type: src,
           menu_name: m.menu_name,
           rsv_term, price: m.price,
           action: a.action, target_menu_id: a.target || null,
