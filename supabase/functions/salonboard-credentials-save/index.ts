@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
 
 async function getKey(): Promise<CryptoKey | null> {
-  const raw = Deno.env.get("SALONBOARD_ENC_KEY");
+  const raw = Deno.env.get("SALONBOARD_ENCRYPTION_KEY");
   if (!raw) return null;
   try {
     const bytes = Uint8Array.from(atob(raw), (c) => c.charCodeAt(0));
