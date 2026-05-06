@@ -748,7 +748,7 @@ Deno.serve(async (req) => {
         // 既存顧客にline_user_idが既に紐付いているか（再フォロー時はソフト復活）
         const { data: linkedCustomer } = await supabase
           .from("customers")
-          .select("id, full_name, line_unfollowed_at, email, birthday, phone, info_request_last_sent_at, info_request_pending, imported_from")
+          .select("id, full_name, line_unfollowed_at, email, birthday, phone, info_request_last_sent_at, info_request_pending, imported_from, location_id")
           .eq("owner_id", owner.id)
           .eq("line_user_id", userId)
           .maybeSingle();
