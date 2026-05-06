@@ -294,45 +294,136 @@ Deno.serve(async (req) => {
     return new Response("OK", { status: 200, headers: corsHeaders });
   }
 
-  // 全プロフィールから access_token を持つものを取得（secretは未設定も許容しフォールバック）
-  const { data: profiles } = await supabase
-    .from("profiles")
-    .select("id, salon_name, line_channel_access_token, line_channel_secret, open_time, close_time, auto_reply_enabled, auto_reply_message, auto_reply_use_ai, line_reservation_enabled, notification_recipients")
-    .not("line_channel_access_token", "is", null);
+  // ============================================================
+  // Phase A/B: マルチテナント署名検証
+  //   profiles.line_channel_secret （オーナー共通LINE）
+  //   locations.line_channel_secret （店舗別LINE公式アカウント）
+  //   どちらにも該当しなければ処理せず 200 のみ返す（fallback はオプトインのみ）
+  // ============================================================
+  const [{ data: profilesAll }, { data: locationsAll }] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("id, salon_name, line_channel_access_token, line_channel_secret, open_time, close_time, auto_reply_enabled, auto_reply_message, auto_reply_use_ai, line_reservation_enabled, notification_recipients")
+      .not("line_channel_access_token", "is", null),
+    supabase
+      .from("locations")
+      .select("id, tenant_id, name, line_channel_access_token, line_channel_secret")
+      .not("line_channel_secret", "is", null),
+  ]);
 
-  if (!profiles || profiles.length === 0) {
-    console.warn("[line-webhook] no profile with access_token configured");
+  const profiles = profilesAll || [];
+  const locations = locationsAll || [];
+
+  if (profiles.length === 0 && locations.length === 0) {
+    console.warn("[line-webhook] no profile/location with LINE credentials configured");
     return new Response("OK", { status: 200, headers: corsHeaders });
   }
 
-  // まず署名検証で正しいオーナーを特定
-  let owner: any = null;
+  // tenant_id → owner_user_id マップ（locations 側で署名一致した時にownerを特定するため）
+  let tenantOwnerMap = new Map<string, string>();
+  if (locations.length > 0) {
+    const tenantIds = Array.from(new Set(locations.map((l: any) => l.tenant_id).filter(Boolean)));
+    if (tenantIds.length > 0) {
+      const { data: tenants } = await supabase
+        .from("tenants").select("id, owner_user_id").in("id", tenantIds);
+      tenantOwnerMap = new Map((tenants || []).map((t: any) => [t.id, t.owner_user_id]));
+    }
+  }
+
+  // 署名検証ループ
+  let owner: any = null;            // profiles 行（owner レベル設定）
   let verified = false;
-  for (const p of profiles) {
-    if (!p.line_channel_secret) continue;
-    const ok = await verifySignature(p.line_channel_secret, rawBody, signature);
-    if (ok) { owner = p; verified = true; break; }
+  let webhookLocationId: string | null = null;
+  let credentialSource: "owner" | "location" | "fallback" = "owner";
+  let accessToken: string | null = null;
+  let signedHasSecret = false;
+
+  // 1) location 側で一致を試す（店舗別LINEを優先）
+  for (const loc of locations) {
+    if (!loc.line_channel_secret) continue;
+    const ok = await verifySignature(loc.line_channel_secret, rawBody, signature);
+    if (ok) {
+      const ownerId = tenantOwnerMap.get(loc.tenant_id);
+      if (!ownerId) {
+        console.warn(`[line-webhook] location ${loc.id} matched but tenant owner not found`);
+        continue;
+      }
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("id, salon_name, line_channel_access_token, line_channel_secret, open_time, close_time, auto_reply_enabled, auto_reply_message, auto_reply_use_ai, line_reservation_enabled, notification_recipients")
+        .eq("id", ownerId)
+        .maybeSingle();
+      if (!prof) continue;
+      owner = prof;
+      verified = true;
+      webhookLocationId = loc.id;
+      // 店舗別tokenを優先、無ければownerのtokenにfallback（後方互換）
+      accessToken = (loc.line_channel_access_token && String(loc.line_channel_access_token).length > 10)
+        ? loc.line_channel_access_token
+        : prof.line_channel_access_token;
+      credentialSource = loc.line_channel_access_token ? "location" : "owner";
+      signedHasSecret = true;
+      break;
+    }
   }
 
-  // フォールバック：シングルテナント運用かつシークレット未設定の場合は唯一のオーナーを使う
-  // （セキュリティは弱まるが、設定未完でも友だち追加時の応答くらいは返したい）
-  if (!owner && profiles.length === 1) {
-    owner = profiles[0];
-    console.warn(`[line-webhook] fallback to single owner ${owner.id} (signature ${owner.line_channel_secret ? "MISMATCH" : "secret not set"})`);
-  }
-
+  // 2) profiles 側で一致を試す（オーナー共通LINE）
   if (!owner) {
-    console.warn("[line-webhook] could not identify owner. destination:", destination);
+    for (const p of profiles) {
+      if (!p.line_channel_secret) continue;
+      const ok = await verifySignature(p.line_channel_secret, rawBody, signature);
+      if (ok) {
+        owner = p;
+        verified = true;
+        webhookLocationId = null; // 後段で customer.location_id 等から解決
+        accessToken = p.line_channel_access_token;
+        credentialSource = "owner";
+        signedHasSecret = true;
+        break;
+      }
+    }
+  }
+
+  // 3) fallback はオプトインのみ（既存ユーザーが何も変更しなくても動くよう、
+  //    profile が1件しかない時は本番でも互換動作させる）
+  if (!owner) {
+    const allowFallback = (Deno.env.get("ENABLE_LINE_SINGLE_TENANT_FALLBACK") || "true") === "true";
+    if (allowFallback && profiles.length === 1 && locations.every((l: any) => !l.line_channel_secret)) {
+      owner = profiles[0];
+      accessToken = owner.line_channel_access_token;
+      credentialSource = "fallback";
+      signedHasSecret = !!owner.line_channel_secret;
+      console.warn(`[line-webhook] single-tenant fallback to owner=${owner.id} (verified=false, secretConfigured=${signedHasSecret})`);
+    }
+  }
+
+  if (!owner || !accessToken) {
+    console.warn(`[line-webhook] could not identify owner from signature. dest=${destination ? "set" : "none"} sigPresent=${!!signature} profileCount=${profiles.length} locationCount=${locations.length}`);
     return new Response("OK", { status: 200, headers: corsHeaders });
   }
 
-  console.log(`[line-webhook] owner=${owner.id} verified=${verified}`);
+  console.log(`[line-webhook] resolved owner=${owner.id} verified=${verified} credentialSource=${credentialSource} hasLocationContext=${webhookLocationId ? "yes" : "no"}`);
 
-  const accessToken = owner.line_channel_access_token;
-  if (!accessToken) {
-    console.warn("[line-webhook] no access token for owner", owner.id);
-    return new Response("OK", { status: 200, headers: corsHeaders });
-  }
+  // ============================================================
+  // location_id 解決ヘルパー
+  //   優先順位: 1.webhook署名で確定した location_id  2.顧客.location_id
+  //            3.pending/inbound に保存済み  4.owner default location
+  //            5. null （駐車場/営業時間/店舗別テンプレ用途では owner 共通へfallback or 未設定案内）
+  // ============================================================
+  let cachedDefaultLocationId: string | null | undefined = undefined;
+  const resolveLocationId = async (customerLocationId?: string | null): Promise<string | null> => {
+    if (webhookLocationId) return webhookLocationId;
+    if (customerLocationId) return customerLocationId;
+    if (cachedDefaultLocationId !== undefined) return cachedDefaultLocationId;
+    try {
+      const { data: loc } = await supabase
+        .rpc("default_location_for_owner", { p_owner_id: owner.id });
+      cachedDefaultLocationId = (typeof loc === "string" ? loc : null) || null;
+    } catch {
+      cachedDefaultLocationId = null;
+    }
+    return cachedDefaultLocationId;
+  };
 
   for (const ev of events) {
     try {
