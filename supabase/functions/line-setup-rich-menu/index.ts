@@ -94,7 +94,7 @@ Deno.serve(async (req) => {
     }
 
     const APP_ORIGIN = Deno.env.get("APP_ORIGIN") || "https://saronboost.com";
-    const bookingUrl = `${APP_ORIGIN}/salon/${profile.public_slug}`;
+    const bookingUrl = `${APP_ORIGIN}/salon/${slug}`;
 
     // 既存メニュー全削除
     try {
