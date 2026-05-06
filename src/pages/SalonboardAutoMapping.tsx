@@ -90,7 +90,7 @@ export default function SalonboardAutoMapping() {
     setMappedMenuExt(new Set((mcm || []).flatMap((r: any) => [r.external_setmenu_id, r.external_id, r.menu_category_cd, r.net_coupon_id]).filter(Boolean).map(String)));
   };
 
-  useEffect(() => { load(); }, [user, locationId]);
+  useEffect(() => { load(); }, [user, locationId, currentLocationId]);
 
   const fetchStaff = async () => {
     if (!loc) { toast.error("店舗情報が取得できないため、スタッフを取得できません。店舗を選択してください。"); return; }
