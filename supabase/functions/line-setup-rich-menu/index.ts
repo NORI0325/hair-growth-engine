@@ -2,6 +2,7 @@
 // オーナー認証必須。設定画面の「リッチメニュー設定」ボタンから呼び出される。
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
+import { getLineCredentials } from "../_shared/line-push.ts";
 
 const LINE_API = "https://api.line.me/v2/bot";
 const LINE_DATA_API = "https://api-data.line.me/v2/bot";
