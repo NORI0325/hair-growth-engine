@@ -1,0 +1,2 @@
+DELETE FROM public.salonboard_credentials WHERE tenant_id = 'bacec668-c498-482d-bb40-66599cc9bf9f';
+DELETE FROM public.salonboard_sessions WHERE owner_id = 'bacec668-c498-482d-bb40-66599cc9bf9f' AND location_id IS NULL;
