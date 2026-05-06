@@ -1609,6 +1609,7 @@ export type Database = {
           id: string
           job_type: string
           line_user_id: string | null
+          location_id: string | null
           message: string
           owner_id: string
           status: string
@@ -1622,6 +1623,7 @@ export type Database = {
           id?: string
           job_type: string
           line_user_id?: string | null
+          location_id?: string | null
           message: string
           owner_id: string
           status?: string
@@ -1635,6 +1637,7 @@ export type Database = {
           id?: string
           job_type?: string
           line_user_id?: string | null
+          location_id?: string | null
           message?: string
           owner_id?: string
           status?: string
@@ -1808,6 +1811,7 @@ export type Database = {
           line_add_friend_url: string | null
           line_channel_access_token: string | null
           line_channel_secret: string | null
+          line_rich_menu_id: string | null
           name: string
           open_time: string | null
           owner_notification_email: string | null
@@ -1828,6 +1832,7 @@ export type Database = {
           line_add_friend_url?: string | null
           line_channel_access_token?: string | null
           line_channel_secret?: string | null
+          line_rich_menu_id?: string | null
           name: string
           open_time?: string | null
           owner_notification_email?: string | null
@@ -1848,6 +1853,7 @@ export type Database = {
           line_add_friend_url?: string | null
           line_channel_access_token?: string | null
           line_channel_secret?: string | null
+          line_rich_menu_id?: string | null
           name?: string
           open_time?: string | null
           owner_notification_email?: string | null
@@ -2135,6 +2141,7 @@ export type Database = {
           line_reservation_auto_reply: string | null
           line_reservation_enabled: boolean
           line_reservation_outside_hours_reply: string | null
+          line_rich_menu_id: string | null
           notification_recipients: Json
           onboarding_completed_at: string | null
           onboarding_progress: Json
@@ -2185,6 +2192,7 @@ export type Database = {
           line_reservation_auto_reply?: string | null
           line_reservation_enabled?: boolean
           line_reservation_outside_hours_reply?: string | null
+          line_rich_menu_id?: string | null
           notification_recipients?: Json
           onboarding_completed_at?: string | null
           onboarding_progress?: Json
@@ -2235,6 +2243,7 @@ export type Database = {
           line_reservation_auto_reply?: string | null
           line_reservation_enabled?: boolean
           line_reservation_outside_hours_reply?: string | null
+          line_rich_menu_id?: string | null
           notification_recipients?: Json
           onboarding_completed_at?: string | null
           onboarding_progress?: Json
