@@ -109,6 +109,8 @@ app.post("/api/salonboard/fetch-menus", bearerAuth, async (req, res) => {
     else { logger.error({ err: e }, "fetch-menus failed"); res.json({ success: false, error_type: "unknown_error", message: e instanceof Error ? e.message : String(e) }); }
   }
 });
+
+async function runJob(job: z.infer<typeof JobSchema>) {
   // 店舗別の認証情報・保存セッションを取得
   const creds = await fetchSession(job.store_id, job.location_id ?? null).catch((e) => {
     throw new WorkerError("login_failed", `session fetch failed: ${e instanceof Error ? e.message : String(e)}`);
