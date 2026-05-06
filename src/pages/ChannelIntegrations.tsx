@@ -235,6 +235,8 @@ export default function ChannelIntegrations() {
         </div>
       )}
 
+      <div className="mt-10 p-5 bg-secondary/30 border border-border text-xs text-muted-foreground leading-relaxed">
+        <div className="font-serif text-foreground mb-2">⚠️ 安全運用について</div>
         <ul className="list-disc list-inside space-y-1">
           <li>本機能は店舗様が正当に管理権限を持つ自社アカウントのみを対象としています</li>
           <li>外部サービス側の規約に反する操作・画像認証回避は実装していません</li>
