@@ -50,6 +50,34 @@ export default function ChannelIntegrations() {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; steps: any[] } | null>(null);
   const [logs, setLogs] = useState<WorkerLog[]>([]);
+  const [credsOpen, setCredsOpen] = useState(false);
+  const [credLoginId, setCredLoginId] = useState("");
+  const [credPassword, setCredPassword] = useState("");
+  const [savingCreds, setSavingCreds] = useState(false);
+
+  const saveCreds = async () => {
+    if (!user) return;
+    if (!credLoginId || !credPassword) { toast.error("ID/PWを入力してください"); return; }
+    setSavingCreds(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("salonboard-credentials-save", {
+        body: { owner_id: user.id, location_id: null, login_id: credLoginId, password: credPassword },
+      });
+      if (error) {
+        toast.error("保存失敗: " + error.message);
+      } else if ((data as any)?.error) {
+        toast.error("保存失敗: " + (data as any).error);
+      } else {
+        toast.success("ID/PWを保存しました");
+        setCredsOpen(false); setCredLoginId(""); setCredPassword("");
+        load();
+      }
+    } catch (e: any) {
+      toast.error("保存失敗: " + (e?.message || String(e)));
+    } finally {
+      setSavingCreds(false);
+    }
+  };
 
   const load = async () => {
     if (!user) return;
