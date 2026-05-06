@@ -1675,6 +1675,51 @@ export type Database = {
         }
         Relationships: []
       }
+      line_registration_logs: {
+        Row: {
+          action: string
+          created_at: string
+          customer_id: string | null
+          error_code: string | null
+          error_message: string | null
+          id: string
+          line_user_id: string | null
+          location_id: string | null
+          owner_id: string
+          phone_masked: string | null
+          raw_event_id: string | null
+          success: boolean
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          customer_id?: string | null
+          error_code?: string | null
+          error_message?: string | null
+          id?: string
+          line_user_id?: string | null
+          location_id?: string | null
+          owner_id: string
+          phone_masked?: string | null
+          raw_event_id?: string | null
+          success?: boolean
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          customer_id?: string | null
+          error_code?: string | null
+          error_message?: string | null
+          id?: string
+          line_user_id?: string | null
+          location_id?: string | null
+          owner_id?: string
+          phone_masked?: string | null
+          raw_event_id?: string | null
+          success?: boolean
+        }
+        Relationships: []
+      }
       line_templates: {
         Row: {
           category: string | null
@@ -3611,6 +3656,10 @@ export type Database = {
       }
       create_reactivation_jobs: { Args: never; Returns: number }
       current_tenant_id: { Args: never; Returns: string }
+      default_location_for_owner: {
+        Args: { p_owner_id: string }
+        Returns: string
+      }
       delete_email: {
         Args: { message_id: number; queue_name: string }
         Returns: boolean
@@ -3619,6 +3668,16 @@ export type Database = {
       enqueue_email: {
         Args: { payload: Json; queue_name: string }
         Returns: number
+      }
+      find_customer_by_normalized_phone: {
+        Args: { p_owner_id: string; p_phone: string }
+        Returns: {
+          full_name: string
+          id: string
+          line_user_id: string
+          location_id: string
+          phone: string
+        }[]
       }
       get_available_slots: {
         Args: { _date: string; _duration_minutes: number; _salon_slug: string }
