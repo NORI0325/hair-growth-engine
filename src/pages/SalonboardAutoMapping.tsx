@@ -60,9 +60,9 @@ export default function SalonboardAutoMapping() {
     const { data: scm } = await supabase.from("staff_channel_mappings").select("external_id")
       .eq("owner_id", user.id).eq("channel", "salonboard").eq("enabled", true);
     setMappedStaffExt(new Set((scm || []).map((r: any) => String(r.external_id))));
-    const { data: mcm } = await supabase.from("menu_channel_mappings").select("external_setmenu_id, external_id")
+    const { data: mcm } = await supabase.from("menu_channel_mappings").select("external_setmenu_id, external_id, menu_category_cd, net_coupon_id")
       .eq("owner_id", user.id).eq("channel", "salonboard").eq("enabled", true);
-    setMappedMenuExt(new Set((mcm || []).flatMap((r: any) => [r.external_setmenu_id, r.external_id]).filter(Boolean).map(String)));
+    setMappedMenuExt(new Set((mcm || []).flatMap((r: any) => [r.external_setmenu_id, r.external_id, r.menu_category_cd, r.net_coupon_id]).filter(Boolean).map(String)));
   };
 
   useEffect(() => { load(); }, [user, locationId]);
