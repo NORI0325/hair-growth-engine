@@ -29,12 +29,26 @@ type Integration = {
   failure_count?: number | null;
   last_error?: string | null;
   note?: string | null;
+  connection_status?: string | null;
+};
+
+type WorkerLog = {
+  id: string;
+  kind: string;
+  response_status: number | null;
+  latency_ms: number | null;
+  success: boolean;
+  error_message: string | null;
+  created_at: string;
 };
 
 export default function ChannelIntegrations() {
   const { user } = useAuth();
   const [rows, setRows] = useState<Record<string, Integration>>({});
   const [loading, setLoading] = useState(true);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; steps: any[] } | null>(null);
+  const [logs, setLogs] = useState<WorkerLog[]>([]);
 
   const load = async () => {
     if (!user) return;
