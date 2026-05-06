@@ -11,6 +11,27 @@ import {
 } from "../_shared/reservation-intent.ts";
 import { signActionToken, hashToken, publicAppOrigin } from "../_shared/reservation-token.ts";
 
+// 問い合わせクイックリプライ分類
+type InquiryIntent = "booking_change" | "cancel" | "price" | "parking" | "hours" | "staff_consult" | "style_consult" | "other";
+const INQUIRY_CATEGORIES: { intent: InquiryIntent; label: string; urgency: "high" | "normal"; notify: boolean; reply: string; templateKind: string }[] = [
+  { intent: "booking_change", label: "予約変更", urgency: "high", notify: true, templateKind: "inquiry_booking_change",
+    reply: "ご予約変更ですね🙇‍♀️\n変更したい日時をお送りください。スタッフが確認のうえご連絡いたします。" },
+  { intent: "cancel", label: "キャンセル", urgency: "high", notify: true, templateKind: "inquiry_cancel",
+    reply: "キャンセルのご連絡ですね🙇‍♀️\nご予約日時をお送りください。確認のうえご連絡いたします。" },
+  { intent: "price", label: "料金確認", urgency: "normal", notify: false, templateKind: "inquiry_price",
+    reply: "料金についてのご質問ですね。気になるメニュー名をお送りください🙇‍♀️" },
+  { intent: "parking", label: "駐車場", urgency: "normal", notify: false, templateKind: "inquiry_parking",
+    reply: "駐車場についてご案内します。少々お待ちください🙇‍♀️" },
+  { intent: "hours", label: "営業時間", urgency: "normal", notify: false, templateKind: "inquiry_hours",
+    reply: "営業時間についてご案内します。少々お待ちください🙇‍♀️" },
+  { intent: "staff_consult", label: "担当者相談", urgency: "high", notify: true, templateKind: "inquiry_staff_consult",
+    reply: "担当者についてのご相談ですね。ご希望やお悩みをお送りください🙇‍♀️" },
+  { intent: "style_consult", label: "髪型相談", urgency: "normal", notify: true, templateKind: "inquiry_style_consult",
+    reply: "髪型相談ですね✨\nご希望のイメージや現在のお悩みをお送りください。参考画像があれば一緒に送っていただけると嬉しいです🌸" },
+  { intent: "other", label: "その他", urgency: "normal", notify: true, templateKind: "inquiry_other",
+    reply: "お問い合わせありがとうございます🙇‍♀️\n内容をお送りください。スタッフが確認のうえご連絡いたします。" },
+];
+
 // LINE署名検証 (HMAC-SHA256)
 async function verifySignature(secret: string, body: string, signature: string): Promise<boolean> {
   try {
@@ -318,6 +339,91 @@ Deno.serve(async (req) => {
       const replyToken: string | undefined = ev?.replyToken;
       console.log(`[line-webhook] event type=${ev.type} userId=${userId}`);
 
+      // ============= 問い合わせクイックリプライ postback =============
+      if (ev.type === "postback" && replyToken && userId) {
+        const data: string = ev.postback?.data || "";
+        if (data.startsWith("inq:")) {
+          const intentRaw = data.slice(4);
+          const cat = INQUIRY_CATEGORIES.find((c) => c.intent === intentRaw);
+          if (cat) {
+            // 紐付き顧客を引く
+            const { data: cust } = await supabase
+              .from("customers")
+              .select("id, full_name, location_id")
+              .eq("owner_id", owner.id)
+              .eq("line_user_id", userId)
+              .maybeSingle();
+
+            // テンプレート上書きがあれば優先
+            let replyBody = cat.reply;
+            try {
+              const { data: tpl } = await supabase
+                .from("customer_message_templates")
+                .select("body")
+                .eq("owner_id", owner.id)
+                .eq("kind", cat.templateKind)
+                .eq("active", true)
+                .order("updated_at", { ascending: false })
+                .limit(1)
+                .maybeSingle();
+              if (tpl?.body && tpl.body.trim().length > 0) replyBody = tpl.body;
+            } catch (e) { console.warn("[line-webhook] inquiry tpl fetch failed:", e); }
+
+            // 受信ログ保存（AI分類はスキップ）
+            await supabase.from("line_inbound_messages").insert({
+              owner_id: owner.id,
+              location_id: cust?.location_id ?? null,
+              customer_id: cust?.id ?? null,
+              line_user_id: userId,
+              display_name: cust?.full_name || null,
+              message_text: `(クイックリプライ選択: ${cat.label})`,
+              intent: cat.intent,
+              urgency: cat.urgency,
+              summary: `お問い合わせ: ${cat.label}`,
+              suggested_action: cat.urgency === "high" ? "至急ご対応ください" : "営業時間内に確認",
+              ai_processed: true,
+              handled: false,
+            });
+
+            // 一次返信
+            await replyLine(accessToken, replyToken, replyBody);
+
+            // スタッフ通知（要対応カテゴリのみ）
+            if (cat.notify) {
+              try {
+                const { data: prof } = await supabase
+                  .from("profiles")
+                  .select("owner_notification_email, salon_name")
+                  .eq("id", owner.id)
+                  .maybeSingle();
+                const notifyTo = prof?.owner_notification_email;
+                if (notifyTo) {
+                  const urgencyLabel = cat.urgency === "high" ? "🚨 要対応" : "📩 お問い合わせ";
+                  await supabase.functions.invoke("send-transactional-email", {
+                    body: {
+                      to: notifyTo,
+                      subject: `${urgencyLabel} LINE: ${cat.label}${cust ? ` - ${cust.full_name}様` : ""}`,
+                      html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
+  <h2 style="color:${cat.urgency === "high" ? "#c0392b" : "#1f6f8b"}">${urgencyLabel} LINE受信通知</h2>
+  <p style="color:#555">${prof?.salon_name || "サロン"}</p>
+  <table style="width:100%;border-collapse:collapse;margin:16px 0">
+    <tr><td style="padding:8px;background:#f5f5f5;width:120px"><b>カテゴリ</b></td><td style="padding:8px">${cat.label}</td></tr>
+    <tr><td style="padding:8px;background:#f5f5f5"><b>お客様</b></td><td style="padding:8px">${cust?.full_name || "（未連携）"}</td></tr>
+    <tr><td style="padding:8px;background:#f5f5f5"><b>緊急度</b></td><td style="padding:8px">${cat.urgency}</td></tr>
+  </table>
+  <p style="font-size:12px;color:#888">受信トレイから返信できます。</p>
+</div>`,
+                      template_name: "line_inquiry_alert",
+                    },
+                  });
+                }
+              } catch (e) { console.error("[line-webhook] inquiry notify failed:", e); }
+            }
+          }
+          continue;
+        }
+      }
+
       if (ev.type === "follow" && replyToken && userId) {
         // LINEプロフィール取得（display_name保存用）
         let displayName: string | null = null;
@@ -416,9 +522,24 @@ Deno.serve(async (req) => {
           await replyLine(accessToken, replyToken, msg);
           continue;
         }
-        if (text === "お問合せ") {
-          await replyLine(accessToken, replyToken,
-            `お問合せありがとうございます🙇‍♀️\n\nご質問・ご要望はこのトークに直接お送りください。担当者が営業時間内に確認のうえ返信いたします。\n\n※ ご予約の変更・キャンセルは「予約する」ボタンから行えます。`);
+        if (text === "お問合せ" || text === "お問い合わせ") {
+          // クイックリプライ8択（postback で intent を受ける）
+          const items = INQUIRY_CATEGORIES.map((c) => ({
+            type: "action",
+            action: { type: "postback", label: c.label, data: `inq:${c.intent}`, displayText: c.label },
+          }));
+          await fetch("https://api.line.me/v2/bot/message/reply", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              replyToken,
+              messages: [{
+                type: "text",
+                text: `お問合せありがとうございます🙇‍♀️\n\nご用件をお選びください。該当がない場合は「その他」からどうぞ。`,
+                quickReply: { items },
+              }],
+            }),
+          }).catch((e) => console.error("[line-webhook] inquiry quickReply failed:", e));
           continue;
         }
 
