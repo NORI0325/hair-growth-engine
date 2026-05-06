@@ -44,7 +44,7 @@ Deno.serve(async (req) => {
 
     const { data: customer } = await supabase
       .from("customers")
-      .select("id, full_name, line_user_id, owner_id")
+      .select("id, full_name, line_user_id, owner_id, location_id")
       .eq("id", customerId)
       .maybeSingle();
 
@@ -61,29 +61,33 @@ Deno.serve(async (req) => {
       }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const { data: prof } = await supabase
-      .from("profiles")
-      .select("line_channel_access_token, salon_name")
-      .eq("id", ownerId)
-      .maybeSingle();
-
-    if (!prof?.line_channel_access_token) {
+    const locationId = (customer as any).location_id || null;
+    const creds = await getLineCredentials(supabase, ownerId, locationId);
+    if (!creds) {
       return new Response(JSON.stringify({ error: "line_not_configured" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const finalMessage = `${message}\n\n— ${prof.salon_name || "サロン"}`;
-    await sendLinePush(prof.line_channel_access_token, customer.line_user_id, finalMessage);
+    const { data: prof } = await supabase
+      .from("profiles")
+      .select("salon_name")
+      .eq("id", ownerId)
+      .maybeSingle();
+
+    const finalMessage = `${message}\n\n— ${prof?.salon_name || "サロン"}`;
+    const r = await sendLinePush(creds.accessToken, customer.line_user_id, finalMessage);
 
     // ログに記録
     await supabase.from("line_message_log").insert({
       owner_id: ownerId,
+      location_id: locationId,
       customer_id: customer.id,
       line_user_id: customer.line_user_id,
       job_type: "customer_message",
       message: finalMessage,
-      status: "sent",
+      status: r.ok ? "sent" : "failed",
+      error: r.ok ? null : r.err,
     });
 
     return new Response(JSON.stringify({ success: true }), {
