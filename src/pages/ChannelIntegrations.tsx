@@ -191,8 +191,11 @@ export default function ChannelIntegrations() {
                   <div className="flex flex-col gap-2">
                     {c.key === "salonboard" && (
                       <>
-                        <Button variant="default" size="sm" className="rounded-none" onClick={() => (window.location.href = "/onboarding/salonboard")}>
-                          セットアップ
+                        <Button variant="default" size="sm" className="rounded-none" onClick={() => setCredsOpen(true)}>
+                          <KeyRound className="w-3 h-3 mr-1" />ログイン情報設定
+                        </Button>
+                        <Button variant="outline" size="sm" className="rounded-none" onClick={() => (window.location.href = "/onboarding/salonboard")}>
+                          詳細セットアップ
                         </Button>
                         <Button variant="outline" size="sm" className="rounded-none" disabled={testing} onClick={runConnectionTest}>
                           {testing ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <PlugZap className="w-3 h-3 mr-1" />}
