@@ -129,24 +129,27 @@ Deno.serve(async (req) => {
       else errorCode = "decrypt_failed_key_mismatch";
     }
 
+    const decryptDiagnostic = {
+      credentials_found: credentialsFound,
+      owner_id,
+      location_id: location_id || null,
+      encrypted_fields_present: encryptedFieldsPresent,
+      ...keyDiagnostic,
+      source,
+      loaded_record_id: loadedRecordId,
+      loaded_updated_at: loadedUpdatedAt,
+      encrypted_login_id_present: encryptedLoginIdPresent,
+      encrypted_password_present: encryptedPasswordPresent,
+      decrypt_login_ok: !!loginId,
+      decrypt_password_ok: !!password,
+    };
+    console.log("salonboard-connection-test decrypt_credentials diagnostics", decryptDiagnostic);
+
     steps.push({
       kind: "decrypt_credentials",
       ok: credsOk,
       error: errorCode,
-      diagnostic: {
-        credentials_found: credentialsFound,
-        owner_id,
-        location_id: location_id || null,
-        encrypted_fields_present: encryptedFieldsPresent,
-        ...keyDiagnostic,
-        source,
-        loaded_record_id: loadedRecordId,
-        loaded_updated_at: loadedUpdatedAt,
-        encrypted_login_id_present: encryptedLoginIdPresent,
-        encrypted_password_present: encryptedPasswordPresent,
-        decrypt_login_ok: !!loginId,
-        decrypt_password_ok: !!password,
-      },
+      diagnostic: decryptDiagnostic,
     });
 
     if (!credsOk) {
