@@ -1079,10 +1079,12 @@ AI信頼度: ${parsed.confidence}/100
             } catch { /* noop */ }
           }
 
+          const inboundLocationId = await resolveLocationId((linkedCustomer as any)?.location_id ?? null);
           const { data: inserted } = await supabase
             .from("line_inbound_messages")
             .insert({
               owner_id: owner.id,
+              location_id: inboundLocationId,
               customer_id: linkedCustomer?.id || null,
               line_user_id: userId,
               display_name: displayName || linkedCustomer?.full_name || null,
