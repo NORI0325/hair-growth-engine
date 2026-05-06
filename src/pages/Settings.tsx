@@ -873,6 +873,13 @@ const Settings = () => {
               </div>
             </section>
 
+            {/* 店舗別LINE設定 */}
+            <section className="space-y-5 pt-6 border-t border-border">
+              <SectionTitle icon={MessageCircle} title="店舗別LINE公式アカウント設定"
+                desc="店舗ごとにLINE公式アカウントを分けたい場合のみ設定してください。未設定の店舗は上記のオーナー共通LINEで送受信されます。" />
+              <LocationLineSettingsEditor />
+            </section>
+
             {/* 外部予約サイト */}
             <section
               id="inbound"
