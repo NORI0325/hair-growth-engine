@@ -167,9 +167,12 @@ export async function loginSalonboard(
     throw new WorkerError("captcha_required", "captcha required after submit");
   }
 
-  if (looksLikeLogin(snap.url)) {
-    logger.warn("login_failed");
-    throw new WorkerError("login_failed", "still on login page after submit");
+  // 成功判定はURLではなくbody内容で行う
+  if (looksLikeHome(snap.url, snap.title, snap.body)) {
+    logger.info("salonboard fresh login ok");
+    logger.info(`currentUrl: ${snap.url}`);
+    logger.info(`title: ${snap.title}`);
+    return { page, freshLogin: true };
   }
 
   if (isSessionExpired(snap.title, snap.body)) {
@@ -177,13 +180,17 @@ export async function loginSalonboard(
     throw new WorkerError("login_failed", "session expired page after login");
   }
 
-  // TOP画面到達確認のためHOMEへ
-  if (!looksLikeHome(snap.url, snap.title, snap.body)) {
-    await gotoSafe(page, HOME_URL, "top-after-login");
-    snap = await snapshot(page);
-    logger.info(`currentUrl: ${snap.url}`);
-    logger.info(`title: ${snap.title}`);
+  if (looksLikeLoginForm(snap.body)) {
+    logger.warn("login_failed");
+    throw new WorkerError("login_failed", "login form still visible after submit");
   }
+
+  // 不明なページ → HOMEへ遷移して再判定
+  await gotoSafe(page, HOME_URL, "top-after-login");
+  snap = await snapshot(page);
+  logger.info(`currentUrl: ${snap.url}`);
+  logger.info(`title: ${snap.title}`);
+  logger.info(`body snippet: ${snap.body.substring(0, 500)}`);
 
   if (isSessionExpired(snap.title, snap.body) || !looksLikeHome(snap.url, snap.title, snap.body)) {
     logger.warn("login_failed");
