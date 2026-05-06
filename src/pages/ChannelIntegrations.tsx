@@ -61,9 +61,36 @@ export default function ChannelIntegrations() {
     }
     setRows(map);
     setLoading(false);
+    // 直近の Worker ログ
+    const { data: logRows } = await supabase.from("worker_request_logs")
+      .select("id,kind,response_status,latency_ms,success,error_message,created_at")
+      .eq("owner_id", user.id).order("created_at", { ascending: false }).limit(10);
+    setLogs((logRows as WorkerLog[]) || []);
   };
 
   useEffect(() => { load(); }, [user]);
+
+  const runConnectionTest = async () => {
+    if (!user) return;
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("salonboard-connection-test", {
+        body: { owner_id: user.id, location_id: null },
+      });
+      if (error) {
+        toast.error("疎通テスト失敗: " + error.message);
+        setTestResult({ ok: false, steps: [{ kind: "invoke_error", ok: false, error: error.message }] });
+      } else {
+        setTestResult(data);
+        if (data?.ok) toast.success("疎通テスト成功 → ライブ運用開始");
+        else toast.error("疎通テストで一部ステップが失敗しました");
+      }
+    } finally {
+      setTesting(false);
+      load();
+    }
+  };
 
   const upsert = async (channel: string, patch: Partial<Integration>) => {
     if (!user) return;
