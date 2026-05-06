@@ -65,11 +65,17 @@ export default function SalonboardOnboarding() {
 
   const saveCreds = async () => {
     if (!loginId || !password) { toast.error("ID/PWを入力してください"); return; }
+    if (!confirm("このID/PWはSalonBoostではなく、サロンボード管理画面のログイン情報です。保存しますか？")) return;
     const res = await supabase.functions.invoke("salonboard-credentials-save", {
-      body: { owner_id: user!.id, location_id: locationId === "default" ? null : locationId, login_id: loginId, password },
+      body: {
+        owner_id: user!.id,
+        location_id: locationId === "default" ? null : locationId,
+        login_id: loginId,
+        password,
+      },
     });
     if (res.error) toast.error("保存失敗: " + res.error.message);
-    else { toast.success("認証情報を保存しました"); setPassword(""); load(); }
+    else { toast.success("認証情報を保存しました"); setLoginId(""); setPassword(""); load(); }
   };
 
   const saveRoute = async () => {
