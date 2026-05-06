@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import HolidayNoticeBroadcast from "@/components/HolidayNoticeBroadcast";
 import SalonHoursEditor from "@/components/SalonHoursEditor";
+import ParkingSettingsEditor from "@/components/ParkingSettingsEditor";
 import ReactivationStagesEditor, { type ReactivationStage } from "@/components/ReactivationStagesEditor";
 import NotificationRecipientsBadge from "@/components/NotificationRecipientsBadge";
 
@@ -334,6 +335,10 @@ const Settings = () => {
 
             <section className="pt-6 border-t border-border">
               <SalonHoursEditor />
+            </section>
+
+            <section className="pt-6 border-t border-border">
+              <ParkingSettingsEditor />
             </section>
 
             <section className="space-y-5 pt-6 border-t border-border">

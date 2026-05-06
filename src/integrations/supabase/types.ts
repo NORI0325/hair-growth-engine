@@ -2567,6 +2567,57 @@ export type Database = {
         }
         Relationships: []
       }
+      salon_parking_settings: {
+        Row: {
+          created_at: string
+          id: string
+          location_id: string | null
+          owner_id: string
+          parking_description: string | null
+          parking_fee_note: string | null
+          parking_full_notice: string | null
+          parking_landmark: string | null
+          parking_map_url: string | null
+          parking_photo_url: string | null
+          parking_reply_template: string | null
+          parking_spaces: number | null
+          parking_status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          location_id?: string | null
+          owner_id: string
+          parking_description?: string | null
+          parking_fee_note?: string | null
+          parking_full_notice?: string | null
+          parking_landmark?: string | null
+          parking_map_url?: string | null
+          parking_photo_url?: string | null
+          parking_reply_template?: string | null
+          parking_spaces?: number | null
+          parking_status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          location_id?: string | null
+          owner_id?: string
+          parking_description?: string | null
+          parking_fee_note?: string | null
+          parking_full_notice?: string | null
+          parking_landmark?: string | null
+          parking_map_url?: string | null
+          parking_photo_url?: string | null
+          parking_reply_template?: string | null
+          parking_spaces?: number | null
+          parking_status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       salonboard_credentials: {
         Row: {
           cookie_session_encrypted: string | null
