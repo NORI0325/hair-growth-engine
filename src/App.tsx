@@ -54,6 +54,7 @@ import Reservations from "./pages/Reservations";
 import ReservationAction from "./pages/ReservationAction";
 import ChannelIntegrations from "./pages/ChannelIntegrations";
 import SyncReview from "./pages/SyncReview";
+import SalonboardOnboarding from "./pages/SalonboardOnboarding";
 import NotFound from "./pages/NotFound";
 import { LocationProvider } from "@/hooks/useLocations";
 
@@ -118,6 +119,8 @@ const App = () => (
             <Route path="/r/:actionPath/:token" element={<ReservationAction />} />
             <Route path="/channel-integrations" element={<ProtectedRoute><ChannelIntegrations /></ProtectedRoute>} />
             <Route path="/sync-review" element={<ProtectedRoute><SyncReview /></ProtectedRoute>} />
+            <Route path="/onboarding/salonboard" element={<ProtectedRoute><SalonboardOnboarding /></ProtectedRoute>} />
+            <Route path="/onboarding/salonboard/:locationId" element={<ProtectedRoute><SalonboardOnboarding /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
           </LocationProvider>
