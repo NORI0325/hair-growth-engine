@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import HolidayNoticeBroadcast from "@/components/HolidayNoticeBroadcast";
 import SalonHoursEditor from "@/components/SalonHoursEditor";
+import ParkingSettingsEditor from "@/components/ParkingSettingsEditor";
 import ReactivationStagesEditor, { type ReactivationStage } from "@/components/ReactivationStagesEditor";
 import NotificationRecipientsBadge from "@/components/NotificationRecipientsBadge";
 
