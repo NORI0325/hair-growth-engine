@@ -54,21 +54,24 @@ export default function ChannelIntegrations() {
   const [credLoginId, setCredLoginId] = useState("");
   const [credPassword, setCredPassword] = useState("");
   const [savingCreds, setSavingCreds] = useState(false);
+  const [saveDiagnostic, setSaveDiagnostic] = useState<any | null>(null);
 
   const saveCreds = async () => {
     if (!user) return;
     if (!credLoginId || !credPassword) { toast.error("ID/PWを入力してください"); return; }
     setSavingCreds(true);
+    setSaveDiagnostic(null);
     try {
       const { data, error } = await supabase.functions.invoke("salonboard-credentials-save", {
         body: { owner_id: user.id, location_id: null, login_id: credLoginId, password: credPassword },
       });
+      if ((data as any)?.diagnostic) setSaveDiagnostic((data as any).diagnostic);
       if (error) {
         toast.error("保存失敗: " + error.message);
       } else if ((data as any)?.error) {
         toast.error("保存失敗: " + (data as any).error);
       } else {
-        toast.success("ID/PWを保存しました");
+        toast.success((data as any)?.diagnostic?.self_decrypt_ok ? "ID/PWを保存しました（self-decrypt OK）" : "ID/PWを保存しました");
         setCredsOpen(false); setCredLoginId(""); setCredPassword("");
         load();
       }
@@ -269,6 +272,13 @@ export default function ChannelIntegrations() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {saveDiagnostic && (
+        <div className="mt-6 border border-border bg-secondary/20 p-3 text-xs">
+          <div className="font-serif mb-2">ログイン情報保存診断</div>
+          <pre className="text-[10px] text-muted-foreground bg-background/50 p-2 overflow-x-auto">{JSON.stringify(saveDiagnostic, null, 2)}</pre>
         </div>
       )}
 

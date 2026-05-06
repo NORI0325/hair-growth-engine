@@ -3,25 +3,7 @@
 // salonboard_sessions は storage_state 用なので、ID/PW再保存時は古いセッションを無効化する。
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
-
-async function getKey(): Promise<CryptoKey | null> {
-  const raw = Deno.env.get("SALONBOARD_ENCRYPTION_KEY");
-  if (!raw) return null;
-  try {
-    const bytes = Uint8Array.from(atob(raw), (c) => c.charCodeAt(0));
-    if (bytes.length !== 32) return null;
-    return await crypto.subtle.importKey("raw", bytes, "AES-GCM", false, ["encrypt", "decrypt"]);
-  } catch { return null; }
-}
-async function encryptText(plain: string): Promise<string> {
-  const key = await getKey();
-  if (!key) return plain;
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const enc = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(plain));
-  const merged = new Uint8Array(iv.length + enc.byteLength);
-  merged.set(iv, 0); merged.set(new Uint8Array(enc), iv.length);
-  return btoa(String.fromCharCode(...merged));
-}
+import { decryptSalonboardText, encryptSalonboardText, getSalonboardKeyDiagnostic } from "../_shared/salonboardCrypto.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -52,8 +34,23 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "forbidden" }), { status: 403, headers: corsHeaders });
     }
 
-    const loginEnc = await encryptText(String(login_id));
-    const pwEnc = await encryptText(String(password));
+    const keyDiagnostic = getSalonboardKeyDiagnostic();
+    if (!keyDiagnostic.key_present || keyDiagnostic.key_length_after_base64_decode !== 32) {
+      return new Response(JSON.stringify({
+        error: "invalid_encryption_key",
+        diagnostic: { ...keyDiagnostic, owner_id, location_id: location_id || null, upsert_target: "salonboard_credentials" },
+      }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const loginEnc = await encryptSalonboardText(String(login_id));
+    const pwEnc = await encryptSalonboardText(String(password));
+    if (!loginEnc || !pwEnc) {
+      return new Response(JSON.stringify({ error: "encrypt_failed", diagnostic: keyDiagnostic }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // 1) salonboard_credentials（ID/PW正本: tenant単位）にupsert
     const { data: credExisting } = await sb.from("salonboard_credentials")
@@ -65,11 +62,31 @@ Deno.serve(async (req) => {
       login_status: "unknown",
       last_error: null,
     };
-    if (credExisting) {
-      await sb.from("salonboard_credentials").update(credPatch).eq("id", credExisting.id);
-    } else {
-      await sb.from("salonboard_credentials").insert(credPatch);
+    const writeResult = credExisting
+      ? await sb.from("salonboard_credentials").update(credPatch).eq("id", credExisting.id).select("id,created_at,updated_at,login_id_encrypted,password_encrypted").single()
+      : await sb.from("salonboard_credentials").insert(credPatch).select("id,created_at,updated_at,login_id_encrypted,password_encrypted").single();
+    if (writeResult.error || !writeResult.data) {
+      return new Response(JSON.stringify({ error: "credentials_save_failed", message: writeResult.error?.message }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
+    const savedCred = writeResult.data;
+    const selfLoginOk = (await decryptSalonboardText(savedCred.login_id_encrypted)) !== null;
+    const selfPasswordOk = (await decryptSalonboardText(savedCred.password_encrypted)) !== null;
+    const diagnostic = {
+      ...keyDiagnostic,
+      owner_id,
+      location_id: location_id || null,
+      upsert_target: "salonboard_credentials",
+      saved_record_id: savedCred.id,
+      saved_at: savedCred.updated_at || savedCred.created_at,
+      encrypted_login_id_present: !!savedCred.login_id_encrypted,
+      encrypted_password_present: !!savedCred.password_encrypted,
+      self_decrypt_login_ok: selfLoginOk,
+      self_decrypt_password_ok: selfPasswordOk,
+      self_decrypt_ok: selfLoginOk && selfPasswordOk,
+    };
+    console.log("salonboard-credentials-save diagnostics", diagnostic);
 
     // 2) 古い salonboard_sessions（storage_state 含む）は無効化のため削除
     //    新キーで再ログインさせて新しい storage_state を保存させる。
@@ -92,7 +109,7 @@ Deno.serve(async (req) => {
     }
     await sb.rpc("recompute_channel_status", { _owner_id: owner_id, _location_id: location_id || null });
 
-    return new Response(JSON.stringify({ success: true }), {
+    return new Response(JSON.stringify({ success: true, diagnostic }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {

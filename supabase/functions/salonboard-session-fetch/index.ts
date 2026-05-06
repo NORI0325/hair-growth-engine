@@ -7,29 +7,7 @@
 //   D. login_id/password の復号に失敗した場合のみエラー
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
-
-async function getKey(): Promise<CryptoKey | null> {
-  const raw = Deno.env.get("SALONBOARD_ENCRYPTION_KEY");
-  if (!raw) return null;
-  try {
-    const bytes = Uint8Array.from(atob(raw), (c) => c.charCodeAt(0));
-    if (bytes.length !== 32) return null;
-    return await crypto.subtle.importKey("raw", bytes, "AES-GCM", false, ["encrypt", "decrypt"]);
-  } catch { return null; }
-}
-
-export async function decryptText(payload: string | null): Promise<string | null> {
-  if (!payload) return null;
-  const key = await getKey();
-  if (!key) return null;
-  try {
-    const buf = Uint8Array.from(atob(payload), (c) => c.charCodeAt(0));
-    const iv = buf.slice(0, 12);
-    const data = buf.slice(12);
-    const dec = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, data);
-    return new TextDecoder().decode(dec);
-  } catch { return null; }
-}
+import { decryptSalonboardText } from "../_shared/salonboardCrypto.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -58,8 +36,8 @@ Deno.serve(async (req) => {
     const { data: cred } = await supabase.from("salonboard_credentials")
       .select("login_id_encrypted,password_encrypted").eq("tenant_id", owner_id).maybeSingle();
     if (cred) {
-      loginId = await decryptText(cred.login_id_encrypted);
-      password = await decryptText(cred.password_encrypted);
+      loginId = await decryptSalonboardText(cred.login_id_encrypted);
+      password = await decryptSalonboardText(cred.password_encrypted);
     }
 
     // B/C) salonboard_sessions から storage_state を取得（復号失敗は無視）
@@ -70,9 +48,9 @@ Deno.serve(async (req) => {
     const { data: session } = await sQ.maybeSingle();
     if (session) {
       // ID/PW がまだ未取得ならフォールバックで salonboard_sessions からも試す
-      if (!loginId) loginId = await decryptText(session.login_id_encrypted);
-      if (!password) password = await decryptText(session.password_encrypted);
-      const stateRaw = await decryptText(session.storage_state_encrypted);
+      if (!loginId) loginId = await decryptSalonboardText(session.login_id_encrypted);
+      if (!password) password = await decryptSalonboardText(session.password_encrypted);
+      const stateRaw = await decryptSalonboardText(session.storage_state_encrypted);
       if (stateRaw) {
         try { storageState = JSON.parse(stateRaw); } catch { storageState = null; }
       }
