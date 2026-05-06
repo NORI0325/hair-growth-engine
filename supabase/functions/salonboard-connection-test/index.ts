@@ -69,6 +69,8 @@ Deno.serve(async (req) => {
     let loginId: string | null = null, password: string | null = null;
     let credentialsFound = false;
     let encryptedFieldsPresent = false;
+    let encryptedLoginIdPresent = false;
+    let encryptedPasswordPresent = false;
     let source: "salonboard_sessions" | "salonboard_credentials" | "none" = "none";
     let loadedRecordId: string | null = null;
     let loadedUpdatedAt: string | null = null;
@@ -84,7 +86,9 @@ Deno.serve(async (req) => {
       source = "salonboard_credentials";
       loadedRecordId = cred.id;
       loadedUpdatedAt = cred.updated_at || cred.created_at || null;
-      encryptedFieldsPresent = !!(cred.login_id_encrypted && cred.password_encrypted);
+      encryptedLoginIdPresent = !!cred.login_id_encrypted;
+      encryptedPasswordPresent = !!cred.password_encrypted;
+      encryptedFieldsPresent = encryptedLoginIdPresent && encryptedPasswordPresent;
       loginId = await decryptSalonboardText(cred.login_id_encrypted);
       password = await decryptSalonboardText(cred.password_encrypted);
     } else {
@@ -96,7 +100,9 @@ Deno.serve(async (req) => {
         source = "salonboard_sessions";
         loadedRecordId = session.id;
         loadedUpdatedAt = session.updated_at || session.created_at || null;
-        encryptedFieldsPresent = !!(session.login_id_encrypted && session.password_encrypted);
+        encryptedLoginIdPresent = !!session.login_id_encrypted;
+        encryptedPasswordPresent = !!session.password_encrypted;
+        encryptedFieldsPresent = encryptedLoginIdPresent && encryptedPasswordPresent;
         loginId = await decryptSalonboardText(session.login_id_encrypted);
         password = await decryptSalonboardText(session.password_encrypted);
       }
@@ -136,8 +142,8 @@ Deno.serve(async (req) => {
         source,
         loaded_record_id: loadedRecordId,
         loaded_updated_at: loadedUpdatedAt,
-        encrypted_login_id_present: encryptedFieldsPresent,
-        encrypted_password_present: encryptedFieldsPresent,
+        encrypted_login_id_present: encryptedLoginIdPresent,
+        encrypted_password_present: encryptedPasswordPresent,
         decrypt_login_ok: !!loginId,
         decrypt_password_ok: !!password,
       },
