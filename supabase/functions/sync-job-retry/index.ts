@@ -1,7 +1,14 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
 
-// 要確認画面からの手動再同期。最大3回まで。
+// 再試行可否マップ
+const RETRYABLE = new Set(["network_error", "timeout", "temporary_external_error"]);
+const NON_RETRYABLE = new Set([
+  "mapping_not_found", "captcha_required", "duplicate_risk",
+  "capacity_exceeded", "out_of_business_hours", "required_field_missing",
+  "login_failed",
+]);
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -12,13 +19,11 @@ Deno.serve(async (req) => {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
       { global: { headers: { Authorization: authHeader } } },
     );
-
     const { data: claims } = await supabase.auth.getClaims(authHeader.replace("Bearer ", ""));
     if (!claims?.claims?.sub) {
       return new Response(JSON.stringify({ error: "unauthorized" }), {
@@ -39,16 +44,20 @@ Deno.serve(async (req) => {
         status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+    if (job.error_type && NON_RETRYABLE.has(job.error_type)) {
+      return new Response(JSON.stringify({
+        error: "not_retryable",
+        error_type: job.error_type,
+        message: "このエラーは自動再試行できません。マッピング・設定・サロンボード側を確認してください。",
+      }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
     if ((job.retry_count ?? 0) >= 3) {
-      return new Response(JSON.stringify({ error: "retry_limit_reached", message: "再試行は3回までです。設定や外部媒体側をご確認ください。" }), {
+      return new Response(JSON.stringify({ error: "retry_limit_reached", message: "再試行は3回までです。" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // 一旦pendingに戻す
     await supabase.from("sync_jobs").update({ status: "pending", error_type: null, error_message: null }).eq("id", sync_job_id);
-
-    // dispatch呼び出し
     const dispatchRes = await supabase.functions.invoke("sync-job-dispatch", {
       body: { job_ids: [sync_job_id] },
     });
