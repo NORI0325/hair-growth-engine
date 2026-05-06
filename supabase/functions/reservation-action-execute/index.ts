@@ -170,7 +170,7 @@ Deno.serve(async (req) => {
       const replyMsg = `${customerName}様\n\nご予約が確定いたしました🌸\n\n📅 ${jpDate(body.confirmed_date)} ${body.confirmed_time}\n💇 ${menu}\n\nご来店を心よりお待ちしております。${extra}\n\n— ${salonName}`;
       const r = await sendLinePush(accessToken, rr.line_user_id, replyMsg);
       await supabase.from("line_message_log").insert({
-        owner_id: rr.owner_id, customer_id: rr.customer_id, line_user_id: rr.line_user_id,
+        owner_id: rr.owner_id, location_id: locationId, customer_id: rr.customer_id, line_user_id: rr.line_user_id,
         job_type: "reservation_approved", message: replyMsg,
         status: r.ok ? "sent" : "failed", error: r.ok ? null : r.err,
       });
@@ -190,7 +190,7 @@ Deno.serve(async (req) => {
       const replyMsg = `${customerName}様\n\nご予約のご相談ありがとうございます🌸\n\n${body.proposal_message}\n\nご都合いかがでしょうか？このトークでお返事をお待ちしております。\n\n— ${salonName}`;
       const r = await sendLinePush(accessToken, rr.line_user_id, replyMsg);
       await supabase.from("line_message_log").insert({
-        owner_id: rr.owner_id, customer_id: rr.customer_id, line_user_id: rr.line_user_id,
+        owner_id: rr.owner_id, location_id: locationId, customer_id: rr.customer_id, line_user_id: rr.line_user_id,
         job_type: "reservation_proposal", message: replyMsg,
         status: r.ok ? "sent" : "failed", error: r.ok ? null : r.err,
       });
@@ -212,7 +212,7 @@ Deno.serve(async (req) => {
       const replyMsg = body.reject_message || `${customerName}様\n\nご予約のお問い合わせありがとうございます。\n\n申し訳ございません、ご希望の日時はあいにくお席が満席となっております。\n別日でのご相談を承りますので、よろしければ改めてご希望をお送りください。\n\n— ${salonName}`;
       const r = await sendLinePush(accessToken, rr.line_user_id, replyMsg);
       await supabase.from("line_message_log").insert({
-        owner_id: rr.owner_id, customer_id: rr.customer_id, line_user_id: rr.line_user_id,
+        owner_id: rr.owner_id, location_id: locationId, customer_id: rr.customer_id, line_user_id: rr.line_user_id,
         job_type: "reservation_rejected", message: replyMsg,
         status: r.ok ? "sent" : "failed", error: r.ok ? null : r.err,
       });
