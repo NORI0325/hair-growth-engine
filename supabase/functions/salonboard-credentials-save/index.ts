@@ -46,6 +46,11 @@ Deno.serve(async (req) => {
 
     const loginEnc = await encryptSalonboardText(String(login_id));
     const pwEnc = await encryptSalonboardText(String(password));
+    if (!loginEnc || !pwEnc) {
+      return new Response(JSON.stringify({ error: "encrypt_failed", diagnostic: keyDiagnostic }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // 1) salonboard_credentials（ID/PW正本: tenant単位）にupsert
     const { data: credExisting } = await sb.from("salonboard_credentials")
@@ -57,11 +62,31 @@ Deno.serve(async (req) => {
       login_status: "unknown",
       last_error: null,
     };
-    if (credExisting) {
-      await sb.from("salonboard_credentials").update(credPatch).eq("id", credExisting.id);
-    } else {
-      await sb.from("salonboard_credentials").insert(credPatch);
+    const writeResult = credExisting
+      ? await sb.from("salonboard_credentials").update(credPatch).eq("id", credExisting.id).select("id,created_at,updated_at,login_id_encrypted,password_encrypted").single()
+      : await sb.from("salonboard_credentials").insert(credPatch).select("id,created_at,updated_at,login_id_encrypted,password_encrypted").single();
+    if (writeResult.error || !writeResult.data) {
+      return new Response(JSON.stringify({ error: "credentials_save_failed", message: writeResult.error?.message }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
+    const savedCred = writeResult.data;
+    const selfLoginOk = (await decryptSalonboardText(savedCred.login_id_encrypted)) !== null;
+    const selfPasswordOk = (await decryptSalonboardText(savedCred.password_encrypted)) !== null;
+    const diagnostic = {
+      ...keyDiagnostic,
+      owner_id,
+      location_id: location_id || null,
+      upsert_target: "salonboard_credentials",
+      saved_record_id: savedCred.id,
+      saved_at: savedCred.updated_at || savedCred.created_at,
+      encrypted_login_id_present: !!savedCred.login_id_encrypted,
+      encrypted_password_present: !!savedCred.password_encrypted,
+      self_decrypt_login_ok: selfLoginOk,
+      self_decrypt_password_ok: selfPasswordOk,
+      self_decrypt_ok: selfLoginOk && selfPasswordOk,
+    };
+    console.log("salonboard-credentials-save diagnostics", diagnostic);
 
     // 2) 古い salonboard_sessions（storage_state 含む）は無効化のため削除
     //    新キーで再ログインさせて新しい storage_state を保存させる。
