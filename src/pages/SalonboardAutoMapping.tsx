@@ -120,11 +120,16 @@ export default function SalonboardAutoMapping() {
       .filter((m) => !mappedMenuExt.has(m.external_menu_id))
       .map((m) => {
         const a = menuActions[m.external_menu_id] || { action: "create" };
+        const editedTerm = menuRsvTerm[m.external_menu_id];
+        const rsv_term = editedTerm === "" || editedTerm === undefined ? m.rsv_term : Number(editedTerm);
         return {
           external_menu_id: m.external_menu_id,
           setmenu_id: m.setmenu_id, menu_id: m.menu_id,
-          menu_category_cd: m.menu_category_cd, menu_name: m.menu_name,
-          rsv_term: m.rsv_term, price: m.price,
+          menu_category_cd: m.menu_category_cd,
+          net_coupon_id: m.net_coupon_id ?? null,
+          source_type: m.source_type ?? null,
+          menu_name: m.menu_name,
+          rsv_term, price: m.price,
           action: a.action, target_menu_id: a.target || null,
         };
       });
