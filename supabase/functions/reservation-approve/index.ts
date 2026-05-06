@@ -212,6 +212,7 @@ ${body.confirmed_staff_id ? "担当: 指定あり" : ""}
       const r = await sendLinePush(accessToken, rr.line_user_id, replyMsg);
       await supabase.from("line_message_log").insert({
         owner_id: rr.owner_id,
+        location_id: locationId,
         customer_id: rr.customer_id,
         line_user_id: rr.line_user_id,
         job_type: "reservation_approved",
@@ -252,6 +253,7 @@ ${body.proposal_message}
       const r = await sendLinePush(accessToken, rr.line_user_id, replyMsg);
       await supabase.from("line_message_log").insert({
         owner_id: rr.owner_id,
+        location_id: locationId,
         customer_id: rr.customer_id,
         line_user_id: rr.line_user_id,
         job_type: "reservation_proposal",
@@ -321,6 +323,7 @@ ${body.proposal_message}
       const r = await sendLinePush(accessToken, rr.line_user_id, replyMsg);
       await supabase.from("line_message_log").insert({
         owner_id: rr.owner_id,
+        location_id: locationId,
         customer_id: rr.customer_id,
         line_user_id: rr.line_user_id,
         job_type: "reservation_rejected",
