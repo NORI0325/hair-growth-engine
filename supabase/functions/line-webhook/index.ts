@@ -1249,6 +1249,7 @@ AI信頼度: ${parsed.confidence}/100
             supabase, owner.id, null, userId,
             "unlinked_guidance", guideMsg,
             r.ok ? "sent" : "failed", r.ok ? undefined : r.err,
+            webhookLocationId,
           );
           continue;
         }
