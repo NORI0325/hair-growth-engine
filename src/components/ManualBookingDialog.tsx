@@ -53,7 +53,7 @@ export default function ManualBookingDialog({ onCreated, trigger }: Props) {
       setStaff((s.data as StaffOpt[]) || []);
       setMenus((m.data as MenuOpt[]) || []);
     })();
-  }, [open, user]);
+  }, [open, user, locationId]);
 
   const filteredCustomers = useMemo(() => {
     const q = customerSearch.trim().toLowerCase();
