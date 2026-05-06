@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { RefreshCw, AlertTriangle, CheckCircle2, Clock } from "lucide-react";
+import { RefreshCw, AlertTriangle, CheckCircle2, Clock, PlugZap, Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 
 const CHANNELS = [
@@ -29,12 +29,26 @@ type Integration = {
   failure_count?: number | null;
   last_error?: string | null;
   note?: string | null;
+  connection_status?: string | null;
+};
+
+type WorkerLog = {
+  id: string;
+  kind: string;
+  response_status: number | null;
+  latency_ms: number | null;
+  success: boolean;
+  error_message: string | null;
+  created_at: string;
 };
 
 export default function ChannelIntegrations() {
   const { user } = useAuth();
   const [rows, setRows] = useState<Record<string, Integration>>({});
   const [loading, setLoading] = useState(true);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; steps: any[] } | null>(null);
+  const [logs, setLogs] = useState<WorkerLog[]>([]);
 
   const load = async () => {
     if (!user) return;
@@ -47,9 +61,36 @@ export default function ChannelIntegrations() {
     }
     setRows(map);
     setLoading(false);
+    // 直近の Worker ログ
+    const { data: logRows } = await supabase.from("worker_request_logs")
+      .select("id,kind,response_status,latency_ms,success,error_message,created_at")
+      .eq("owner_id", user.id).order("created_at", { ascending: false }).limit(10);
+    setLogs((logRows as WorkerLog[]) || []);
   };
 
   useEffect(() => { load(); }, [user]);
+
+  const runConnectionTest = async () => {
+    if (!user) return;
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("salonboard-connection-test", {
+        body: { owner_id: user.id, location_id: null },
+      });
+      if (error) {
+        toast.error("疎通テスト失敗: " + error.message);
+        setTestResult({ ok: false, steps: [{ kind: "invoke_error", ok: false, error: error.message }] });
+      } else {
+        setTestResult(data);
+        if (data?.ok) toast.success("疎通テスト成功 → ライブ運用開始");
+        else toast.error("疎通テストで一部ステップが失敗しました");
+      }
+    } finally {
+      setTesting(false);
+      load();
+    }
+  };
 
   const upsert = async (channel: string, patch: Partial<Integration>) => {
     if (!user) return;
@@ -102,10 +143,14 @@ export default function ChannelIntegrations() {
               <Card key={c.key} className="rounded-none border-border p-6 space-y-4">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-1">
+                    <div className="flex items-center gap-3 mb-1 flex-wrap">
                       <h3 className="font-serif text-lg">{c.label}</h3>
-                      {status === "success" && <Badge className="rounded-none bg-emerald-50 text-emerald-700 border-emerald-200"><CheckCircle2 className="w-3 h-3 mr-1" />成功</Badge>}
-                      {(status === "failed" || status === "needs_review") && <Badge className="rounded-none bg-red-50 text-red-700 border-red-200"><AlertTriangle className="w-3 h-3 mr-1" />要確認</Badge>}
+                      {c.key === "salonboard" && r.connection_status === "live" && <Badge className="rounded-none bg-emerald-50 text-emerald-700 border-emerald-200"><CheckCircle2 className="w-3 h-3 mr-1" />ライブ運用中</Badge>}
+                      {c.key === "salonboard" && r.connection_status === "needs_review" && <Badge className="rounded-none bg-red-50 text-red-700 border-red-200"><AlertTriangle className="w-3 h-3 mr-1" />要確認</Badge>}
+                      {c.key === "salonboard" && r.connection_status === "error" && <Badge className="rounded-none bg-red-50 text-red-700 border-red-200"><AlertTriangle className="w-3 h-3 mr-1" />エラー</Badge>}
+                      {c.key === "salonboard" && (!r.connection_status || r.connection_status === "disconnected") && <Badge variant="outline" className="rounded-none">未接続</Badge>}
+                      {status === "success" && c.key !== "salonboard" && <Badge className="rounded-none bg-emerald-50 text-emerald-700 border-emerald-200"><CheckCircle2 className="w-3 h-3 mr-1" />成功</Badge>}
+                      {(status === "failed" || status === "needs_review") && c.key !== "salonboard" && <Badge className="rounded-none bg-red-50 text-red-700 border-red-200"><AlertTriangle className="w-3 h-3 mr-1" />要確認</Badge>}
                       {status === "pending" && <Badge className="rounded-none bg-amber-50 text-amber-700 border-amber-200"><Clock className="w-3 h-3 mr-1" />同期待ち</Badge>}
                     </div>
                     <div className="text-xs text-muted-foreground">
@@ -116,15 +161,36 @@ export default function ChannelIntegrations() {
                   </div>
                   <div className="flex flex-col gap-2">
                     {c.key === "salonboard" && (
-                      <Button variant="default" size="sm" className="rounded-none" onClick={() => (window.location.href = "/onboarding/salonboard")}>
-                        セットアップ
-                      </Button>
+                      <>
+                        <Button variant="default" size="sm" className="rounded-none" onClick={() => (window.location.href = "/onboarding/salonboard")}>
+                          セットアップ
+                        </Button>
+                        <Button variant="outline" size="sm" className="rounded-none" disabled={testing} onClick={runConnectionTest}>
+                          {testing ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <PlugZap className="w-3 h-3 mr-1" />}
+                          疎通テスト
+                        </Button>
+                      </>
                     )}
                     <Button variant="outline" size="sm" className="rounded-none" onClick={() => retry(c.key)}>
                       <RefreshCw className="w-3 h-3 mr-1" />再同期
                     </Button>
                   </div>
                 </div>
+
+                {c.key === "salonboard" && testResult && (
+                  <div className="border border-border p-3 text-xs space-y-1 bg-secondary/20">
+                    <div className="font-serif mb-1">疎通テスト結果</div>
+                    {testResult.steps.map((s: any, i: number) => (
+                      <div key={i} className="flex items-center gap-2">
+                        {s.ok ? <CheckCircle2 className="w-3 h-3 text-emerald-600" /> : <AlertTriangle className="w-3 h-3 text-red-600" />}
+                        <span className="font-mono">{s.kind}</span>
+                        {s.status && <span className="text-muted-foreground">HTTP {s.status}</span>}
+                        {s.latency_ms != null && <span className="text-muted-foreground">{s.latency_ms}ms</span>}
+                        {s.error && <span className="text-red-600">{s.error}</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-6 pt-2 border-t border-border">
                   <div className="flex items-center justify-between">
@@ -147,6 +213,25 @@ export default function ChannelIntegrations() {
               </Card>
             );
           })}
+        </div>
+      )}
+
+      {logs.length > 0 && (
+        <div className="mt-10">
+          <div className="text-[10px] tracking-luxury text-gold mb-2">WORKER REQUEST LOGS</div>
+          <h2 className="font-serif text-lg mb-3">直近のワーカー送信ログ</h2>
+          <div className="border border-border divide-y divide-border text-xs">
+            {logs.map((l) => (
+              <div key={l.id} className="px-3 py-2 flex items-center gap-3 flex-wrap">
+                {l.success ? <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" /> : <AlertTriangle className="w-3 h-3 text-red-600 shrink-0" />}
+                <span className="font-mono">{l.kind}</span>
+                <span className="text-muted-foreground">HTTP {l.response_status ?? "-"}</span>
+                <span className="text-muted-foreground">{l.latency_ms ?? "-"}ms</span>
+                <span className="text-muted-foreground ml-auto">{new Date(l.created_at).toLocaleString("ja-JP")}</span>
+                {l.error_message && <div className="w-full text-red-600 mt-1">{l.error_message}</div>}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

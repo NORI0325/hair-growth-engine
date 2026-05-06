@@ -3346,6 +3346,51 @@ export type Database = {
         }
         Relationships: []
       }
+      worker_request_logs: {
+        Row: {
+          channel: string
+          created_at: string
+          error_message: string | null
+          id: string
+          kind: string
+          latency_ms: number | null
+          location_id: string | null
+          owner_id: string
+          request_payload: Json | null
+          response_body: Json | null
+          response_status: number | null
+          success: boolean
+        }
+        Insert: {
+          channel?: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          kind: string
+          latency_ms?: number | null
+          location_id?: string | null
+          owner_id: string
+          request_payload?: Json | null
+          response_body?: Json | null
+          response_status?: number | null
+          success?: boolean
+        }
+        Update: {
+          channel?: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          kind?: string
+          latency_ms?: number | null
+          location_id?: string | null
+          owner_id?: string
+          request_payload?: Json | null
+          response_body?: Json | null
+          response_status?: number | null
+          success?: boolean
+        }
+        Relationships: []
+      }
     }
     Views: {
       customer_delivery_timeline: {
