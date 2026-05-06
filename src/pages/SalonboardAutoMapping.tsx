@@ -14,7 +14,8 @@ type StaffOpt = {
 };
 type MenuOpt = {
   id: string; external_menu_id: string; setmenu_id: string | null; menu_id: string | null;
-  menu_category_cd: string | null; menu_name: string; rsv_term: number | null; price: number | null;
+  menu_category_cd: string | null; net_coupon_id?: string | null; source_type?: string | null;
+  menu_name: string; rsv_term: number | null; price: number | null;
   active: boolean; fetched_at: string;
 };
 type ExistingStaff = { id: string; name: string };
