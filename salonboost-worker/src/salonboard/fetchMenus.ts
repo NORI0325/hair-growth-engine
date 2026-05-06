@@ -3,113 +3,160 @@ import { WorkerError } from "../errorMapper.js";
 import { logger } from "../logger.js";
 
 export interface FetchedMenu {
-  external_menu_id: string;       // setmenuId 優先、無ければ menuId
+  external_menu_id: string;
   setmenu_id: string | null;
   menu_id: string | null;
   menu_category_cd: string | null;
+  net_coupon_id: string | null;
   menu_name: string;
   rsv_term: number | null;
   price: number | null;
   active: boolean;
+  source_type: "setmenu" | "category" | "coupon";
 }
 
-/**
- * 予約登録フォームから setmenuId / menuIdList のセレクトを抽出してメニュー一覧を得る。
- * data-* 属性に rsvTerm / price / categoryCd が埋まっている場合があるのでそれも吸う。
- */
+function extractPrice(label: string): number | null {
+  // 「→¥11000」「¥13200→¥11000」のように矢印後の値を優先
+  const arrow = label.match(/(?:→|->)\s*[¥￥]?\s*([0-9,]+)/);
+  if (arrow) return Number(arrow[1].replace(/,/g, ""));
+  const m = label.match(/[¥￥]\s*([0-9,]+)/);
+  if (m) return Number(m[1].replace(/,/g, ""));
+  return null;
+}
+
+async function snapshot(page: Page) {
+  const url = page.url();
+  let title = "";
+  let body = "";
+  let selects: Array<{ name: string; id: string; option_count: number }> = [];
+  try { title = await page.title(); } catch {}
+  try { body = (await page.locator("body").innerText({ timeout: 3000 })).slice(0, 1000); } catch {}
+  try {
+    selects = await page.locator("select").evaluateAll((els) =>
+      els.map((el) => {
+        const s = el as HTMLSelectElement;
+        return { name: s.name, id: s.id, option_count: s.options.length };
+      })
+    );
+  } catch {}
+  return { url, title, body, selects };
+}
+
+async function extractOptions(page: Page, selector: string) {
+  const exists = await page.locator(selector).count();
+  if (exists === 0) return [] as Array<{ value: string; label: string; disabled: boolean }>;
+  return await page.locator(`${selector} option`).evaluateAll((els) =>
+    els.map((el) => {
+      const o = el as HTMLOptionElement;
+      return {
+        value: o.value,
+        label: (o.textContent || "").replace(/\s+/g, " ").trim(),
+        disabled: o.disabled,
+      };
+    })
+  );
+}
+
 export async function fetchSalonboardMenus(page: Page): Promise<FetchedMenu[]> {
   const today = new Date();
   const j = new Date(today.getTime() + 9 * 60 * 60 * 1000);
   const date = `${j.getUTCFullYear()}${String(j.getUTCMonth() + 1).padStart(2, "0")}${String(j.getUTCDate()).padStart(2, "0")}`;
-  const url = `https://salonboard.com/CLP/bt/reserve/ext/extReserveRegistInput/?date=${date}&time=1000&stylistId=0000000000`;
+  const url = `https://salonboard.com/CLP/bt/reserve/ext/extReserveRegist/?date=${date}&time=1000&stylistId=0000000000`;
 
-  await page.goto(url, { waitUntil: "domcontentloaded" });
-  if (/\/login/i.test(page.url())) {
+  logger.info({ url }, "navigating to reserve regist page (fetchMenus)");
+  try {
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 90000 });
+  } catch (e) {
+    logger.warn({ e: (e as Error).message }, "goto timeout but continuing (fetchMenus)");
+  }
+
+  if (/\/login/i.test(page.url()) && !/doLogin/i.test(page.url())) {
     throw new WorkerError("session_expired", "redirected to login (fetchMenus)");
   }
 
-  // setmenuId 優先
-  const setmenuOptions = await page.locator('select[name="setmenuId"] option').evaluateAll((els) =>
-    els.map((el) => {
-      const o = el as HTMLOptionElement;
-      const ds = (o as any).dataset || {};
-      const numFromText = (s: string, re: RegExp): number | null => {
-        const m = s.match(re); return m ? Number(m[1]) : null;
-      };
-      const label = (o.textContent || "").trim();
-      return {
-        value: o.value,
-        label,
-        disabled: o.disabled,
-        rsvTerm: ds.rsvterm ? Number(ds.rsvterm) : numFromText(label, /(\d{2,3})\s*分/),
-        price: ds.price ? Number(ds.price) : numFromText(label, /([0-9,]+)\s*円/) ? Number((label.match(/([0-9,]+)\s*円/) || [])[1]?.replace(/,/g, "")) : null,
-        categoryCd: ds.categorycd || null,
-        menuId: ds.menuid || null,
-      };
-    })
-  );
+  // 何かしらの select が現れるのを待つ（最低限 setmenuId or menuCategoryCdList or netCouponId）
+  try {
+    await page.waitForSelector(
+      'select[name="setmenuId"], select[name="menuCategoryCdList"], select[name="netCouponId"]',
+      { timeout: 30000 }
+    );
+  } catch {
+    // 後段の診断に任せる
+  }
+
+  const [setmenuOpts, categoryOpts, couponOpts] = await Promise.all([
+    extractOptions(page, 'select[name="setmenuId"]'),
+    extractOptions(page, 'select[name="menuCategoryCdList"]'),
+    extractOptions(page, 'select[name="netCouponId"]'),
+  ]);
 
   const result: FetchedMenu[] = [];
 
-  if (setmenuOptions.length > 0) {
-    for (const o of setmenuOptions) {
-      if (!o.value) continue;
-      result.push({
-        external_menu_id: o.value,
-        setmenu_id: o.value,
-        menu_id: o.menuId,
-        menu_category_cd: o.categoryCd,
-        menu_name: o.label,
-        rsv_term: o.rsvTerm,
-        price: o.price,
-        active: !o.disabled,
-      });
-    }
-  } else {
-    // menuIdList セレクト or チェックボックスへフォールバック
-    const menuOptions = await page.locator('select[name="menuIdList"] option, input[name="menuIdList"]').evaluateAll((els) =>
-      els.map((el) => {
-        const tag = el.tagName;
-        if (tag === "OPTION") {
-          const o = el as HTMLOptionElement;
-          const label = (o.textContent || "").trim();
-          const ds = (o as any).dataset || {};
-          return {
-            value: o.value,
-            label,
-            disabled: o.disabled,
-            rsvTerm: ds.rsvterm ? Number(ds.rsvterm) : null,
-            categoryCd: ds.categorycd || null,
-          };
-        } else {
-          const inp = el as HTMLInputElement;
-          const label = (inp.parentElement?.textContent || inp.value).trim();
-          const ds = (inp as any).dataset || {};
-          return {
-            value: inp.value,
-            label,
-            disabled: inp.disabled,
-            rsvTerm: ds.rsvterm ? Number(ds.rsvterm) : null,
-            categoryCd: ds.categorycd || null,
-          };
-        }
-      })
-    );
-    for (const o of menuOptions) {
-      if (!o.value) continue;
-      result.push({
-        external_menu_id: o.value,
-        setmenu_id: null,
-        menu_id: o.value,
-        menu_category_cd: o.categoryCd,
-        menu_name: o.label,
-        rsv_term: o.rsvTerm,
-        price: null,
-        active: !o.disabled,
-      });
-    }
+  for (const o of setmenuOpts) {
+    if (!o.value) continue;
+    result.push({
+      external_menu_id: o.value,
+      setmenu_id: o.value,
+      menu_id: null,
+      menu_category_cd: null,
+      net_coupon_id: null,
+      menu_name: o.label || o.value,
+      rsv_term: null,
+      price: extractPrice(o.label),
+      active: !o.disabled,
+      source_type: "setmenu",
+    });
   }
 
-  logger.info({ count: result.length }, "fetched salonboard menus");
+  for (const o of categoryOpts) {
+    if (!o.value) continue;
+    result.push({
+      external_menu_id: o.value,
+      setmenu_id: null,
+      menu_id: null,
+      menu_category_cd: o.value,
+      net_coupon_id: null,
+      menu_name: o.label || o.value,
+      rsv_term: null,
+      price: null,
+      active: !o.disabled,
+      source_type: "category",
+    });
+  }
+
+  for (const o of couponOpts) {
+    if (!o.value) continue;
+    result.push({
+      external_menu_id: o.value,
+      setmenu_id: null,
+      menu_id: null,
+      menu_category_cd: null,
+      net_coupon_id: o.value,
+      menu_name: o.label || o.value,
+      rsv_term: null,
+      price: extractPrice(o.label),
+      active: !o.disabled,
+      source_type: "coupon",
+    });
+  }
+
+  if (result.length === 0) {
+    const snap = await snapshot(page);
+    logger.error(snap, "no menu options found");
+    throw new WorkerError(
+      "external_site_changed",
+      `no menu options found url=${snap.url} title=${snap.title} selects=${JSON.stringify(snap.selects)} body=${snap.body}`
+    );
+  }
+
+  logger.info(
+    {
+      count: result.length,
+      setmenu: setmenuOpts.length,
+      category: categoryOpts.length,
+      coupon: couponOpts.length,
+    },
+    "fetched salonboard menus"
+  );
   return result;
 }
