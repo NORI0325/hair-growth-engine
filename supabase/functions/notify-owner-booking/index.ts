@@ -76,12 +76,14 @@ Deno.serve(async (req) => {
 
       const recips: any[] = Array.isArray(prof?.notification_recipients) ? prof!.notification_recipients : [];
       const results: string[] = [];
+      // owner共通LINE（cancel_needs_reviewはbookingが特定できないためlocation_idはnull）
+      const creds = await getLineCredentials(supabase, ownerId, null);
       for (const r of recips) {
         const channels = r.channels?.length ? r.channels : ["email"];
-        if (channels.includes("line") && r.line_user_id && prof?.line_channel_access_token) {
-          const lr = await sendLinePush(prof.line_channel_access_token, r.line_user_id, msg);
+        if (channels.includes("line") && r.line_user_id && creds) {
+          const lr = await sendLinePush(creds.accessToken, r.line_user_id, msg);
           await supabase.from("line_message_log").insert({
-            owner_id: ownerId, line_user_id: r.line_user_id,
+            owner_id: ownerId, location_id: null, line_user_id: r.line_user_id,
             job_type: "cancel_needs_review", message: msg,
             status: lr.ok ? "sent" : "failed", error: lr.ok ? null : lr.err,
           });
