@@ -33,16 +33,33 @@ function isCaptcha(body: string): boolean {
   return /画像認証|captcha|reCAPTCHA/i.test(body);
 }
 
-function looksLikeHome(url: string, title: string, body: string): boolean {
-  // タイトルがTOPか、本文にTOP固有の文言があれば成功
+const HOME_KEYWORDS = [
+  "予約管理",
+  "本日のスケジュール",
+  "本日の予約一覧",
+  "掲載管理",
+  "お客様管理",
+  "売上管理",
+];
+
+function looksLikeHome(_url: string, title: string, body: string): boolean {
   if (title.includes(HOME_TITLE)) return true;
-  if (body.includes("予約管理") || body.includes("スケジュール")) return true;
-  // URLだけでは判定しない（エラーページでも /CLP/bt/top/ になることがあるため）
+  // bodyに管理画面TOP固有の文言が複数あれば成功
+  const hits = HOME_KEYWORDS.filter((k) => body.includes(k)).length;
+  if (hits >= 2) return true;
+  if (body.includes("予約管理") && body.includes("SALON BOARD")) return true;
   return false;
 }
 
-function looksLikeLogin(url: string): boolean {
-  return /\/login|\/doLogin/i.test(url);
+function looksLikeLoginForm(body: string): boolean {
+  // ログインフォーム特有の文言があり、かつTOP文言がない場合のみ
+  const hasLoginForm =
+    body.includes("ログインID") ||
+    body.includes("パスワードを入力") ||
+    body.includes("入力してください") ||
+    body.includes("正しくありません") ||
+    body.includes("認証に失敗");
+  return hasLoginForm;
 }
 
 async function gotoSafe(page: Page, url: string, label: string) {
