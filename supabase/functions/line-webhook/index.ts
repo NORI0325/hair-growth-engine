@@ -339,6 +339,91 @@ Deno.serve(async (req) => {
       const replyToken: string | undefined = ev?.replyToken;
       console.log(`[line-webhook] event type=${ev.type} userId=${userId}`);
 
+      // ============= 問い合わせクイックリプライ postback =============
+      if (ev.type === "postback" && replyToken && userId) {
+        const data: string = ev.postback?.data || "";
+        if (data.startsWith("inq:")) {
+          const intentRaw = data.slice(4);
+          const cat = INQUIRY_CATEGORIES.find((c) => c.intent === intentRaw);
+          if (cat) {
+            // 紐付き顧客を引く
+            const { data: cust } = await supabase
+              .from("customers")
+              .select("id, full_name, location_id")
+              .eq("owner_id", owner.id)
+              .eq("line_user_id", userId)
+              .maybeSingle();
+
+            // テンプレート上書きがあれば優先
+            let replyBody = cat.reply;
+            try {
+              const { data: tpl } = await supabase
+                .from("customer_message_templates")
+                .select("body")
+                .eq("owner_id", owner.id)
+                .eq("kind", cat.templateKind)
+                .eq("active", true)
+                .order("updated_at", { ascending: false })
+                .limit(1)
+                .maybeSingle();
+              if (tpl?.body && tpl.body.trim().length > 0) replyBody = tpl.body;
+            } catch (e) { console.warn("[line-webhook] inquiry tpl fetch failed:", e); }
+
+            // 受信ログ保存（AI分類はスキップ）
+            await supabase.from("line_inbound_messages").insert({
+              owner_id: owner.id,
+              location_id: cust?.location_id ?? null,
+              customer_id: cust?.id ?? null,
+              line_user_id: userId,
+              display_name: cust?.full_name || null,
+              message_text: `(クイックリプライ選択: ${cat.label})`,
+              intent: cat.intent,
+              urgency: cat.urgency,
+              summary: `お問い合わせ: ${cat.label}`,
+              suggested_action: cat.urgency === "high" ? "至急ご対応ください" : "営業時間内に確認",
+              ai_processed: true,
+              handled: false,
+            });
+
+            // 一次返信
+            await replyLine(accessToken, replyToken, replyBody);
+
+            // スタッフ通知（要対応カテゴリのみ）
+            if (cat.notify) {
+              try {
+                const { data: prof } = await supabase
+                  .from("profiles")
+                  .select("owner_notification_email, salon_name")
+                  .eq("id", owner.id)
+                  .maybeSingle();
+                const notifyTo = prof?.owner_notification_email;
+                if (notifyTo) {
+                  const urgencyLabel = cat.urgency === "high" ? "🚨 要対応" : "📩 お問い合わせ";
+                  await supabase.functions.invoke("send-transactional-email", {
+                    body: {
+                      to: notifyTo,
+                      subject: `${urgencyLabel} LINE: ${cat.label}${cust ? ` - ${cust.full_name}様` : ""}`,
+                      html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
+  <h2 style="color:${cat.urgency === "high" ? "#c0392b" : "#1f6f8b"}">${urgencyLabel} LINE受信通知</h2>
+  <p style="color:#555">${prof?.salon_name || "サロン"}</p>
+  <table style="width:100%;border-collapse:collapse;margin:16px 0">
+    <tr><td style="padding:8px;background:#f5f5f5;width:120px"><b>カテゴリ</b></td><td style="padding:8px">${cat.label}</td></tr>
+    <tr><td style="padding:8px;background:#f5f5f5"><b>お客様</b></td><td style="padding:8px">${cust?.full_name || "（未連携）"}</td></tr>
+    <tr><td style="padding:8px;background:#f5f5f5"><b>緊急度</b></td><td style="padding:8px">${cat.urgency}</td></tr>
+  </table>
+  <p style="font-size:12px;color:#888">受信トレイから返信できます。</p>
+</div>`,
+                      template_name: "line_inquiry_alert",
+                    },
+                  });
+                }
+              } catch (e) { console.error("[line-webhook] inquiry notify failed:", e); }
+            }
+          }
+          continue;
+        }
+      }
+
       if (ev.type === "follow" && replyToken && userId) {
         // LINEプロフィール取得（display_name保存用）
         let displayName: string | null = null;
