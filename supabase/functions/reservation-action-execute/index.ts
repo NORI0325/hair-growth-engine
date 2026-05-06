@@ -1,7 +1,7 @@
 // ワンタイムトークンによる予約承認・別日提案・却下の実行
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
-import { sendLinePush } from "../_shared/line-push.ts";
+import { sendLinePush, getLineCredentials } from "../_shared/line-push.ts";
 import { verifyActionToken, hashToken } from "../_shared/reservation-token.ts";
 
 interface Body {
