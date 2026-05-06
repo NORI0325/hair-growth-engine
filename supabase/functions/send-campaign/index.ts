@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
+import { getLineCredentials } from "../_shared/line-push.ts";
 
 // オリジン取得（公開URL or Lovable preview）
 const getAppOrigin = (req: Request): string => {
