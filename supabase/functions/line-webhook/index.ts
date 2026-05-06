@@ -1164,6 +1164,7 @@ AI信頼度: ${parsed.confidence}/100
                   supabase, owner.id, linkedCustomer.id, userId,
                   "linked_main_reply", finalReply,
                   r.ok ? "sent" : "failed", r.ok ? undefined : r.err,
+                  inboundLocationId,
                 );
               } catch (e) {
                 console.error("[line-webhook] reply task error:", e);
