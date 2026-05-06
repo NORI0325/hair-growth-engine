@@ -109,7 +109,7 @@ Deno.serve(async (req) => {
     }
     await sb.rpc("recompute_channel_status", { _owner_id: owner_id, _location_id: location_id || null });
 
-    return new Response(JSON.stringify({ success: true }), {
+    return new Response(JSON.stringify({ success: true, diagnostic }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
