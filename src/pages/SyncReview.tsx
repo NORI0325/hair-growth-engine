@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { RefreshCw, AlertTriangle, CheckCheck } from "lucide-react";
+import { RefreshCw, AlertTriangle, CheckCheck, XCircle } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 
 const CHANNEL_LABEL: Record<string, string> = {
@@ -70,6 +70,15 @@ export default function SyncReview() {
     load();
   };
 
+  const cancelBooking = async (jobId: string, reservationId: string | null) => {
+    if (!reservationId) return;
+    if (!confirm("この予約をキャンセルしますか？（顧客には自動通知されません）")) return;
+    await supabase.from("bookings").update({ status: "cancelled", needs_manual_review: false, sync_status: "not_required" }).eq("id", reservationId);
+    await supabase.from("sync_jobs").update({ status: "cancelled", error_message: "管理者が予約キャンセル" }).eq("id", jobId);
+    toast.success("予約をキャンセルしました");
+    load();
+  };
+
   return (
     <div className="container max-w-6xl py-12 px-6">
       <div className="mb-10">
@@ -117,6 +126,9 @@ export default function SyncReview() {
                     </Button>
                     <Button variant="ghost" size="sm" className="rounded-none" onClick={() => markResolved(it.id, it.reservation_id)}>
                       <CheckCheck className="w-3 h-3 mr-1" />確認済みに
+                    </Button>
+                    <Button variant="ghost" size="sm" className="rounded-none text-red-600" onClick={() => cancelBooking(it.id, it.reservation_id)}>
+                      <XCircle className="w-3 h-3 mr-1" />予約キャンセル
                     </Button>
                   </div>
                 </div>
