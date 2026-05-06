@@ -429,6 +429,11 @@ Deno.serve(async (req) => {
             }
 
             // 受信ログ保存（AI分類はスキップ）
+            const effectiveUrgency = parkingUnregistered ? "normal" : cat.urgency;
+            const effectiveHandled = autoAnswered;
+            const effectiveAction = parkingUnregistered
+              ? "駐車場情報が未登録です。店舗設定に駐車場情報を登録してください。必要に応じてお客様へ返信してください。"
+              : (autoAnswered ? "自動回答済み" : (cat.urgency === "high" ? "至急ご対応ください" : "営業時間内に確認"));
             await supabase.from("line_inbound_messages").insert({
               owner_id: owner.id,
               location_id: cust?.location_id ?? null,
@@ -437,12 +442,12 @@ Deno.serve(async (req) => {
               display_name: cust?.full_name || null,
               message_text: `(クイックリプライ選択: ${cat.label})`,
               intent: cat.intent,
-              urgency: cat.urgency,
-              summary: `お問い合わせ: ${cat.label}`,
-              suggested_action: autoAnswered ? "自動回答済み" : (cat.urgency === "high" ? "至急ご対応ください" : "営業時間内に確認"),
+              urgency: effectiveUrgency,
+              summary: parkingUnregistered ? `お問い合わせ: ${cat.label}（駐車場情報未登録）` : `お問い合わせ: ${cat.label}`,
+              suggested_action: effectiveAction,
               ai_processed: true,
-              handled: autoAnswered,
-              handled_at: autoAnswered ? new Date().toISOString() : null,
+              handled: effectiveHandled,
+              handled_at: effectiveHandled ? new Date().toISOString() : null,
             });
 
             // 一次返信
