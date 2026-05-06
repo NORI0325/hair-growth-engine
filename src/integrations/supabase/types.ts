@@ -151,6 +151,7 @@ export type Database = {
           id: string
           is_nominated: boolean
           is_test: boolean
+          last_sync_error: string | null
           last_synced_at: string | null
           location_id: string | null
           menu: string
@@ -164,6 +165,7 @@ export type Database = {
           source_template: string | null
           staff_id: string | null
           status: Database["public"]["Enums"]["booking_status"]
+          sync_attempt_count: number
           sync_error_message: string | null
           sync_status: string
           total_duration_minutes: number | null
@@ -182,6 +184,7 @@ export type Database = {
           id?: string
           is_nominated?: boolean
           is_test?: boolean
+          last_sync_error?: string | null
           last_synced_at?: string | null
           location_id?: string | null
           menu: string
@@ -195,6 +198,7 @@ export type Database = {
           source_template?: string | null
           staff_id?: string | null
           status?: Database["public"]["Enums"]["booking_status"]
+          sync_attempt_count?: number
           sync_error_message?: string | null
           sync_status?: string
           total_duration_minutes?: number | null
@@ -213,6 +217,7 @@ export type Database = {
           id?: string
           is_nominated?: boolean
           is_test?: boolean
+          last_sync_error?: string | null
           last_synced_at?: string | null
           location_id?: string | null
           menu?: string
@@ -226,6 +231,7 @@ export type Database = {
           source_template?: string | null
           staff_id?: string | null
           status?: Database["public"]["Enums"]["booking_status"]
+          sync_attempt_count?: number
           sync_error_message?: string | null
           sync_status?: string
           total_duration_minutes?: number | null
@@ -463,48 +469,78 @@ export type Database = {
       }
       channel_integrations: {
         Row: {
+          allow_unmapped_booking: boolean
           channel: string
+          connection_status: string
           created_at: string
+          default_rsv_route_id: string
           enabled: boolean
           failure_count: number
           id: string
           last_error: string | null
+          last_login_at: string | null
           last_status: string | null
+          last_success_at: string | null
           last_synced_at: string | null
+          live_enabled_at: string | null
           location_id: string | null
           note: string | null
           owner_id: string
+          storage_state_path: string | null
           sync_enabled: boolean
+          test_cancel_passed_at: string | null
+          test_create_passed_at: string | null
+          test_update_passed_at: string | null
           updated_at: string
         }
         Insert: {
+          allow_unmapped_booking?: boolean
           channel: string
+          connection_status?: string
           created_at?: string
+          default_rsv_route_id?: string
           enabled?: boolean
           failure_count?: number
           id?: string
           last_error?: string | null
+          last_login_at?: string | null
           last_status?: string | null
+          last_success_at?: string | null
           last_synced_at?: string | null
+          live_enabled_at?: string | null
           location_id?: string | null
           note?: string | null
           owner_id: string
+          storage_state_path?: string | null
           sync_enabled?: boolean
+          test_cancel_passed_at?: string | null
+          test_create_passed_at?: string | null
+          test_update_passed_at?: string | null
           updated_at?: string
         }
         Update: {
+          allow_unmapped_booking?: boolean
           channel?: string
+          connection_status?: string
           created_at?: string
+          default_rsv_route_id?: string
           enabled?: boolean
           failure_count?: number
           id?: string
           last_error?: string | null
+          last_login_at?: string | null
           last_status?: string | null
+          last_success_at?: string | null
           last_synced_at?: string | null
+          live_enabled_at?: string | null
           location_id?: string | null
           note?: string | null
           owner_id?: string
+          storage_state_path?: string | null
           sync_enabled?: boolean
+          test_cancel_passed_at?: string | null
+          test_create_passed_at?: string | null
+          test_update_passed_at?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -1683,34 +1719,43 @@ export type Database = {
         Row: {
           channel: string
           created_at: string
+          enabled: boolean
           external_id: string | null
           external_name: string | null
+          external_setmenu_id: string | null
           id: string
           location_id: string | null
           menu_id: string
           owner_id: string
+          rsv_term: number | null
           updated_at: string
         }
         Insert: {
           channel: string
           created_at?: string
+          enabled?: boolean
           external_id?: string | null
           external_name?: string | null
+          external_setmenu_id?: string | null
           id?: string
           location_id?: string | null
           menu_id: string
           owner_id: string
+          rsv_term?: number | null
           updated_at?: string
         }
         Update: {
           channel?: string
           created_at?: string
+          enabled?: boolean
           external_id?: string | null
           external_name?: string | null
+          external_setmenu_id?: string | null
           id?: string
           location_id?: string | null
           menu_id?: string
           owner_id?: string
+          rsv_term?: number | null
           updated_at?: string
         }
         Relationships: [
@@ -2461,6 +2506,48 @@ export type Database = {
         }
         Relationships: []
       }
+      salonboard_sessions: {
+        Row: {
+          created_at: string
+          id: string
+          last_error: string | null
+          last_login_at: string | null
+          location_id: string | null
+          login_id_encrypted: string | null
+          login_status: string
+          owner_id: string
+          password_encrypted: string | null
+          storage_state_encrypted: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          last_login_at?: string | null
+          location_id?: string | null
+          login_id_encrypted?: string | null
+          login_status?: string
+          owner_id: string
+          password_encrypted?: string | null
+          storage_state_encrypted?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          last_login_at?: string | null
+          location_id?: string | null
+          login_id_encrypted?: string | null
+          login_status?: string
+          owner_id?: string
+          password_encrypted?: string | null
+          storage_state_encrypted?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       salonboard_sync_jobs: {
         Row: {
           attempts: number
@@ -2629,6 +2716,7 @@ export type Database = {
         Row: {
           channel: string
           created_at: string
+          enabled: boolean
           external_id: string | null
           external_name: string | null
           id: string
@@ -2640,6 +2728,7 @@ export type Database = {
         Insert: {
           channel: string
           created_at?: string
+          enabled?: boolean
           external_id?: string | null
           external_name?: string | null
           id?: string
@@ -2651,6 +2740,7 @@ export type Database = {
         Update: {
           channel?: string
           created_at?: string
+          enabled?: boolean
           external_id?: string | null
           external_name?: string | null
           id?: string
@@ -3451,6 +3541,10 @@ export type Database = {
         Args: { _location_id: string; _user_id: string }
         Returns: boolean
       }
+      is_salonboard_live: {
+        Args: { _location_id: string; _owner_id: string }
+        Returns: boolean
+      }
       is_tenant_member: {
         Args: { _tenant_id: string; _user_id: string }
         Returns: boolean
@@ -3512,6 +3606,10 @@ export type Database = {
           read_ct: number
         }[]
       }
+      recompute_channel_status: {
+        Args: { _location_id: string; _owner_id: string }
+        Returns: string
+      }
       record_customer_communication: {
         Args: {
           _channel: string
@@ -3536,6 +3634,7 @@ export type Database = {
         | "completed"
         | "cancelled"
         | "no_show"
+        | "pending_sync"
       campaign_status: "draft" | "sending" | "sent" | "failed"
       customer_gender: "female" | "male" | "other" | "unknown"
       customer_segment: "active" | "at_risk" | "dormant" | "new"
@@ -3688,6 +3787,7 @@ export const Constants = {
         "completed",
         "cancelled",
         "no_show",
+        "pending_sync",
       ],
       campaign_status: ["draft", "sending", "sent", "failed"],
       customer_gender: ["female", "male", "other", "unknown"],
