@@ -3,29 +3,7 @@
 // 失敗時は connection_status='needs_review' (or 'error') にして last_error を記録
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
-
-async function getKey(): Promise<CryptoKey | null> {
-  const raw = Deno.env.get("SALONBOARD_ENCRYPTION_KEY");
-  if (!raw) return null;
-  try {
-    const bytes = Uint8Array.from(atob(raw), (c) => c.charCodeAt(0));
-    if (bytes.length !== 32) return null;
-    return await crypto.subtle.importKey("raw", bytes, "AES-GCM", false, ["encrypt", "decrypt"]);
-  } catch { return null; }
-}
-
-async function decryptText(payload: string | null): Promise<string | null> {
-  if (!payload) return null;
-  const key = await getKey();
-  if (!key) return null;
-  try {
-    const buf = Uint8Array.from(atob(payload), (c) => c.charCodeAt(0));
-    const iv = buf.slice(0, 12);
-    const data = buf.slice(12);
-    const dec = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, data);
-    return new TextDecoder().decode(dec);
-  } catch { return null; }
-}
+import { decryptSalonboardText, getSalonboardKeyDiagnostic } from "../_shared/salonboardCrypto.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
