@@ -195,6 +195,21 @@ const Booking = () => {
     );
   }
 
+  if (!locationResolved) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6 bg-background">
+        <div className="max-w-md w-full text-center">
+          <p className="eyebrow mb-4">— Notice —</p>
+          <h2 className="display text-2xl mb-4">店舗情報を確認できませんでした</h2>
+          <div className="hairline w-16 mx-auto mb-6" />
+          <p className="text-sm text-muted-foreground leading-loose">
+            お手数ですが、LINEまたは店舗へお問い合わせください。
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (completed) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6 bg-background animate-fade-up">
