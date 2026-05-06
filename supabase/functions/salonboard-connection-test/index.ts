@@ -1,0 +1,180 @@
+// 疎通テスト：認証情報復号 → Worker dry-run create/update/cancel を順に実行
+// 全パスで channel_integrations.connection_status='live' に自動昇格
+// 失敗時は connection_status='needs_review' (or 'error') にして last_error を記録
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { corsHeaders } from "../_shared/cors.ts";
+
+async function getKey(): Promise<CryptoKey | null> {
+  const raw = Deno.env.get("SALONBOARD_ENCRYPTION_KEY");
+  if (!raw) return null;
+  try {
+    const bytes = Uint8Array.from(atob(raw), (c) => c.charCodeAt(0));
+    if (bytes.length !== 32) return null;
+    return await crypto.subtle.importKey("raw", bytes, "AES-GCM", false, ["encrypt", "decrypt"]);
+  } catch { return null; }
+}
+
+async function decryptText(payload: string | null): Promise<string | null> {
+  if (!payload) return null;
+  const key = await getKey();
+  if (!key) return null;
+  try {
+    const buf = Uint8Array.from(atob(payload), (c) => c.charCodeAt(0));
+    const iv = buf.slice(0, 12);
+    const data = buf.slice(12);
+    const dec = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, data);
+    return new TextDecoder().decode(dec);
+  } catch { return null; }
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), {
+    status, headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+
+  try {
+    const auth = req.headers.get("authorization") || "";
+    if (!auth.startsWith("Bearer ")) return json({ error: "unauthorized" }, 401);
+
+    const supabaseAuth = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: auth } } },
+    );
+    const { data: userRes } = await supabaseAuth.auth.getUser();
+    if (!userRes?.user) return json({ error: "unauthorized" }, 401);
+    const userId = userRes.user.id;
+
+    const { owner_id, location_id } = await req.json();
+    if (!owner_id) return json({ error: "missing_owner_id" }, 400);
+
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+
+    // tenant manager+ チェック
+    const { data: hasRole } = await supabase.rpc("has_tenant_role", {
+      _tenant_id: owner_id, _user_id: userId, _min_role: "manager",
+    });
+    if (!hasRole) return json({ error: "forbidden" }, 403);
+
+    const workerUrl = Deno.env.get("EXTERNAL_WORKER_API_URL");
+    const workerKey = Deno.env.get("EXTERNAL_WORKER_API_KEY");
+    if (!workerUrl || !workerKey) {
+      return json({ ok: false, error: "worker_env_missing" }, 500);
+    }
+
+    const steps: Array<{ kind: string; ok: boolean; status?: number; latency_ms?: number; error?: string; body?: unknown }> = [];
+
+    const updateIntegration = async (patch: Record<string, unknown>) => {
+      let q = supabase.from("channel_integrations").update(patch)
+        .eq("owner_id", owner_id).eq("channel", "salonboard");
+      q = location_id ? q.eq("location_id", location_id) : q.is("location_id", null);
+      await q;
+    };
+
+    const logRow = async (kind: string, payload: unknown, status: number | null, body: unknown, latency: number, success: boolean, error?: string) => {
+      await supabase.from("worker_request_logs").insert({
+        owner_id, location_id: location_id || null, channel: "salonboard",
+        kind, request_payload: payload, response_status: status,
+        response_body: typeof body === "object" ? body : { raw: String(body) },
+        latency_ms: latency, success, error_message: error || null,
+      });
+    };
+
+    // Step 1: 認証情報復号確認
+    let q = supabase.from("salonboard_sessions").select("login_id_encrypted,password_encrypted").eq("owner_id", owner_id);
+    q = location_id ? q.eq("location_id", location_id) : q.is("location_id", null);
+    const { data: session } = await q.maybeSingle();
+    let loginId: string | null = null, password: string | null = null;
+    if (session) {
+      loginId = await decryptText(session.login_id_encrypted);
+      password = await decryptText(session.password_encrypted);
+    } else {
+      const { data: legacy } = await supabase.from("salonboard_credentials")
+        .select("login_id_encrypted,password_encrypted").eq("tenant_id", owner_id).maybeSingle();
+      if (legacy) {
+        loginId = await decryptText(legacy.login_id_encrypted);
+        password = await decryptText(legacy.password_encrypted);
+      }
+    }
+    const credsOk = !!(loginId && password);
+    steps.push({ kind: "decrypt_credentials", ok: credsOk, error: credsOk ? undefined : "credentials_decrypt_failed" });
+    if (!credsOk) {
+      await updateIntegration({
+        connection_status: "error",
+        last_error: "credentials_decrypt_failed: ID/PWを保存し直してください",
+      });
+      return json({ ok: false, steps });
+    }
+
+    // Step 2-4: Worker dry-run create/update/cancel
+    const sendDryRun = async (kind: "create" | "update" | "cancel") => {
+      const payload = {
+        job_id: `connection-test-${kind}-${crypto.randomUUID()}`,
+        store_id: owner_id,
+        location_id: location_id || null,
+        reservation_id: null,
+        target_channel: "salonboard",
+        job_type: kind,
+        reservation: { dry_run: true, kind, note: "connection-test" },
+        async_callback: false,
+      };
+      const t0 = Date.now();
+      try {
+        const res = await fetch(`${workerUrl.replace(/\/+$/, "")}/api/sync-job`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${workerKey}` },
+          body: JSON.stringify(payload),
+        });
+        const text = await res.text();
+        let body: unknown; try { body = JSON.parse(text); } catch { body = text; }
+        const latency = Date.now() - t0;
+        const success = res.ok && (body as any)?.success !== false;
+        const error = success ? undefined : (((body as any)?.message) || `http_${res.status}`);
+        await logRow(`dry_run_${kind}`, payload, res.status, body, latency, success, error);
+        steps.push({ kind: `dry_run_${kind}`, ok: success, status: res.status, latency_ms: latency, body, error });
+        return success;
+      } catch (e) {
+        const latency = Date.now() - t0;
+        const error = e instanceof Error ? e.message : String(e);
+        await logRow(`dry_run_${kind}`, payload, null, { error }, latency, false, error);
+        steps.push({ kind: `dry_run_${kind}`, ok: false, latency_ms: latency, error });
+        return false;
+      }
+    };
+
+    const okCreate = await sendDryRun("create");
+    const okUpdate = okCreate ? await sendDryRun("update") : false;
+    const okCancel = okUpdate ? await sendDryRun("cancel") : false;
+
+    const allOk = credsOk && okCreate && okUpdate && okCancel;
+    const now = new Date().toISOString();
+    if (allOk) {
+      await updateIntegration({
+        connection_status: "live",
+        test_create_passed_at: now,
+        test_update_passed_at: now,
+        test_cancel_passed_at: now,
+        live_enabled_at: now,
+        last_error: null,
+        last_status: "success",
+        last_synced_at: now,
+      });
+    } else {
+      const failed = steps.find((s) => !s.ok);
+      await updateIntegration({
+        connection_status: "needs_review",
+        last_error: `${failed?.kind || "unknown"}: ${failed?.error || "failed"}`,
+        last_status: "failed",
+      });
+    }
+
+    return json({ ok: allOk, steps, connection_status: allOk ? "live" : "needs_review" });
+  } catch (e) {
+    console.error("salonboard-connection-test error", e);
+    return json({ ok: false, error: e instanceof Error ? e.message : String(e) }, 500);
+  }
+});
