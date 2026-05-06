@@ -416,9 +416,24 @@ Deno.serve(async (req) => {
           await replyLine(accessToken, replyToken, msg);
           continue;
         }
-        if (text === "お問合せ") {
-          await replyLine(accessToken, replyToken,
-            `お問合せありがとうございます🙇‍♀️\n\nご質問・ご要望はこのトークに直接お送りください。担当者が営業時間内に確認のうえ返信いたします。\n\n※ ご予約の変更・キャンセルは「予約する」ボタンから行えます。`);
+        if (text === "お問合せ" || text === "お問い合わせ") {
+          // クイックリプライ8択（postback で intent を受ける）
+          const items = INQUIRY_CATEGORIES.map((c) => ({
+            type: "action",
+            action: { type: "postback", label: c.label, data: `inq:${c.intent}`, displayText: c.label },
+          }));
+          await fetch("https://api.line.me/v2/bot/message/reply", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              replyToken,
+              messages: [{
+                type: "text",
+                text: `お問合せありがとうございます🙇‍♀️\n\nご用件をお選びください。該当がない場合は「その他」からどうぞ。`,
+                quickReply: { items },
+              }],
+            }),
+          }).catch((e) => console.error("[line-webhook] inquiry quickReply failed:", e));
           continue;
         }
 
