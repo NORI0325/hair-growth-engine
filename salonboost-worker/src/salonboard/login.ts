@@ -19,10 +19,25 @@ async function snapshot(page: Page) {
   return { url, title, body };
 }
 
+function isSessionExpired(title: string, body: string): boolean {
+  if (title.includes("SALON BOARD : エラー")) return true;
+  if (
+    body.includes("一定時間操作されなかった") ||
+    body.includes("ログインの有効期限が切れました") ||
+    body.includes("再度ログインしなおしてください")
+  ) return true;
+  return false;
+}
+
+function isCaptcha(body: string): boolean {
+  return /画像認証|captcha|reCAPTCHA/i.test(body);
+}
+
 function looksLikeHome(url: string, title: string, body: string): boolean {
-  if (/\/CLP\/bt\/top\//i.test(url)) return true;
+  // タイトルがTOPか、本文にTOP固有の文言があれば成功
   if (title.includes(HOME_TITLE)) return true;
   if (body.includes("予約管理") || body.includes("スケジュール")) return true;
+  // URLだけでは判定しない（エラーページでも /CLP/bt/top/ になることがあるため）
   return false;
 }
 
@@ -30,11 +45,36 @@ function looksLikeLogin(url: string): boolean {
   return /\/login|\/doLogin/i.test(url);
 }
 
-/**
- * 店舗別の認証情報を受け取り、ログイン済みPageを返す。
- * /CLP/bt/top/ の domcontentloaded タイムアウトに依存せず、
- * goto の timeout を catch しても URL/title/body で実際の状態を判定する。
- */
+async function gotoSafe(page: Page, url: string, label: string) {
+  try {
+    await page.goto(url, { waitUntil: "commit" as any, timeout: NAV_TIMEOUT });
+  } catch (e) {
+    logger.warn({ err: e instanceof Error ? e.message : String(e) }, `${label} goto timeout but continuing`);
+  }
+  try {
+    await page.waitForLoadState("domcontentloaded", { timeout: 5000 });
+  } catch { /* ignore */ }
+}
+
+async function performLogin(page: Page, creds: LoginCreds) {
+  if (!creds.login_id || !creds.password) {
+    throw new WorkerError("login_failed", "credentials not provided for this store");
+  }
+  await page.locator('input[name="userId"]').fill(creds.login_id);
+  await page.locator('input[name="password"]').fill(creds.password);
+  try {
+    await Promise.all([
+      page.waitForLoadState("domcontentloaded", { timeout: NAV_TIMEOUT }).catch(() => {}),
+      page
+        .locator("a.common-CNCcommon__primaryBtn.loginBtnSize, input[type=submit], button[type=submit]")
+        .first()
+        .click(),
+    ]);
+  } catch (e) {
+    logger.warn({ err: e instanceof Error ? e.message : String(e) }, "login submit nav warning");
+  }
+}
+
 export async function loginSalonboard(
   ctx: BrowserContext,
   creds: LoginCreds,
@@ -44,77 +84,93 @@ export async function loginSalonboard(
   page.setDefaultNavigationTimeout(NAV_TIMEOUT);
 
   logger.info("checking saved salonboard session");
-
-  try {
-    // "commit" を優先（型が無い環境のフォールバック付き）
-    await page.goto(HOME_URL, { waitUntil: "commit" as any, timeout: NAV_TIMEOUT });
-  } catch (e) {
-    logger.warn({ err: e instanceof Error ? e.message : String(e) }, "top goto timeout but continuing");
-    try {
-      await page.waitForLoadState("domcontentloaded", { timeout: 3000 });
-    } catch { /* ignore */ }
-  }
+  await gotoSafe(page, HOME_URL, "top");
 
   let snap = await snapshot(page);
   logger.info(`currentUrl: ${snap.url}`);
   logger.info(`title: ${snap.title}`);
   logger.info(`body snippet: ${snap.body.substring(0, 500)}`);
 
-  if (looksLikeHome(snap.url, snap.title, snap.body)) {
+  if (isCaptcha(snap.body)) {
+    logger.warn("captcha_required");
+    throw new WorkerError("captcha_required", "captcha shown on top page");
+  }
+
+  // セッション期限切れページの判定（URLだけで判定しない）
+  const expired = isSessionExpired(snap.title, snap.body);
+  if (!expired && looksLikeHome(snap.url, snap.title, snap.body)) {
     logger.info("salonboard saved session ok");
     return { page, freshLogin: false };
   }
 
-  // captcha検出
-  if (/画像認証|captcha/i.test(snap.body)) {
-    throw new WorkerError("captcha_required", "captcha shown on top page");
+  if (expired) {
+    logger.info("session expired page detected");
   }
 
-  // ログインフォームが見えていない & ログインURLでもない場合は明示的に /login/ へ
-  const hasUserField = (await page.locator('input[name="userId"]').count().catch(() => 0)) > 0;
-  if (!hasUserField && !looksLikeLogin(snap.url)) {
+  logger.info("trying fresh login");
+
+  // 「ログインへ」リンクがあればクリック、なければ /login/ へ遷移
+  const loginLink = page.locator('a:has-text("ログインへ")').first();
+  const hasLoginLink = (await loginLink.count().catch(() => 0)) > 0;
+  if (hasLoginLink) {
     try {
-      await page.goto(LOGIN_URL, { waitUntil: "commit" as any, timeout: NAV_TIMEOUT });
+      await Promise.all([
+        page.waitForLoadState("domcontentloaded", { timeout: NAV_TIMEOUT }).catch(() => {}),
+        loginLink.click(),
+      ]);
     } catch (e) {
-      logger.warn({ err: e instanceof Error ? e.message : String(e) }, "login goto timeout but continuing");
+      logger.warn({ err: e instanceof Error ? e.message : String(e) }, "login link click warning");
     }
+  }
+
+  snap = await snapshot(page);
+  const userCount = await page.locator('input[name="userId"]').count().catch(() => 0);
+  if (userCount === 0 && !looksLikeLogin(snap.url)) {
+    await gotoSafe(page, LOGIN_URL, "login");
+    snap = await snapshot(page);
+  }
+
+  logger.info(`currentUrl: ${snap.url}`);
+  logger.info(`title: ${snap.title}`);
+
+  if (isCaptcha(snap.body)) {
+    logger.warn("captcha_required");
+    throw new WorkerError("captcha_required", "captcha shown on login page");
+  }
+
+  await performLogin(page, creds);
+
+  snap = await snapshot(page);
+  logger.info(`currentUrl: ${snap.url}`);
+  logger.info(`title: ${snap.title}`);
+  logger.info(`body snippet: ${snap.body.substring(0, 500)}`);
+
+  if (isCaptcha(snap.body)) {
+    logger.warn("captcha_required");
+    throw new WorkerError("captcha_required", "captcha required after submit");
+  }
+
+  if (looksLikeLogin(snap.url)) {
+    logger.warn("login_failed");
+    throw new WorkerError("login_failed", "still on login page after submit");
+  }
+
+  if (isSessionExpired(snap.title, snap.body)) {
+    logger.warn("login_failed");
+    throw new WorkerError("login_failed", "session expired page after login");
+  }
+
+  // TOP画面到達確認のためHOMEへ
+  if (!looksLikeHome(snap.url, snap.title, snap.body)) {
+    await gotoSafe(page, HOME_URL, "top-after-login");
     snap = await snapshot(page);
     logger.info(`currentUrl: ${snap.url}`);
     logger.info(`title: ${snap.title}`);
   }
 
-  const userCount = await page.locator('input[name="userId"]').count().catch(() => 0);
-  const passCount = await page.locator('input[name="password"]').count().catch(() => 0);
-  const isLoginPage = userCount > 0 || passCount > 0 || looksLikeLogin(snap.url);
-  if (!isLoginPage) {
-    throw new WorkerError("login_failed", `unexpected page url=${snap.url} title=${snap.title}`);
-  }
-
-  if (!creds.login_id || !creds.password) {
-    throw new WorkerError("login_failed", "credentials not provided for this store");
-  }
-
-  await page.locator('input[name="userId"]').fill(creds.login_id);
-  await page.locator('input[name="password"]').fill(creds.password);
-
-  try {
-    await Promise.all([
-      page.waitForLoadState("domcontentloaded", { timeout: NAV_TIMEOUT }).catch(() => {}),
-      page.locator("a.common-CNCcommon__primaryBtn.loginBtnSize, input[type=submit], button[type=submit]").first().click(),
-    ]);
-  } catch (e) {
-    logger.warn({ err: e instanceof Error ? e.message : String(e) }, "login submit nav warning");
-  }
-
-  snap = await snapshot(page);
-  logger.info(`currentUrl: ${snap.url}`);
-  logger.info(`title: ${snap.title}`);
-
-  if (looksLikeLogin(snap.url)) {
-    if (/画像認証|captcha/i.test(snap.body)) {
-      throw new WorkerError("captcha_required", "captcha required after submit");
-    }
-    throw new WorkerError("login_failed", "still on login page after submit");
+  if (isSessionExpired(snap.title, snap.body) || !looksLikeHome(snap.url, snap.title, snap.body)) {
+    logger.warn("login_failed");
+    throw new WorkerError("login_failed", `unexpected page after login url=${snap.url} title=${snap.title}`);
   }
 
   logger.info("salonboard fresh login ok");
