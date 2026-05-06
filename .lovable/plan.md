@@ -1,86 +1,142 @@
-## 目的
+## 現状調査結果
 
-サロンボード連携を「疎通テスト経由でしか live に昇格しない」安全な自動昇格パイプラインにする。
-手動の強制 live は使わない。失敗理由は管理画面で可視化。
+### 1. LINE基本連携 — ほぼ実装済み
+| 項目 | 状態 | 備考 |
+|---|---|---|
+| Webhook処理（`line-webhook` 1255行） | 実装済 | follow / unfollow / message / postback すべて分岐あり |
+| 電話番号登録フロー | 実装済 | `find_customer_by_normalized_phone` RPC（先日整備）で既存顧客マッチ |
+| `customers.line_user_id` 紐付け | 実装済 | 4状態（success / link_existing / needs_review / failed）対応 |
+| `line_registration_logs` | 実装済 | 4状態すべて記録 |
+| `line_inbound_messages` | 実装済 | 自由テキスト全件保存。`intent / urgency / handled / suggested_action` 列あり |
+| `line_message_log` | 実装済 | 送信成否・error 記録 |
+| RLS / service role | 実装済 | service_role で書込、テナントメンバーで読取 |
 
-## 現状の問題
+### 2. リッチメニュー — 基本3ボタンのみ
+- `line-setup-rich-menu`：800x270/2500x843 単一画像、3ボタン（予約URI / 「特典を見る」message / 「お問合せ」message）。`/user/all/richmenu` で**全ユーザー一律**設定。
+- **未実装**：状態別alias、`linkRichMenuToUser`、`line_user_id↔rich_menu_id` 管理テーブル、postback action。
 
-- `bookings` 5/7 10:00 テスト太郎 は作成されたが、`channel_integrations.salonboard.connection_status='disconnected'` のため `staff-create-booking` の `liveIntegrations` フィルタで除外され、`sync_jobs` が作られず Worker にも送られていない。
-- 既存の `worker-dry-run` Edge Function は、新しい Worker JobSchema が要求する `store_id` を含んでいないため、現状そのままでは Worker で 400 になる。
-- 疎通テストの結果を保存し可視化する仕組みがない。
+### 3. 問い合わせ対応 — テキスト案内のみ
+- 「お問合せ」押下時：単一テキスト返信のみ。**クイックリプライなし**。
+- 自由テキスト：`line_inbound_messages` に保存 →`ai-classify-inbound` がAI分類（`booking_request / reschedule / cancel / question / complaint / thanks / chitchat / other` の8値）。
+- `classifyMessageKind`：`urgent / booking / question / casual` の4種（返信遅延の長さ調整用）。
+- 管理画面 `Inbox` / `InboundLogs` で `intent / urgency / handled` 表示済。
+- `critical / high` 時にオーナー宛メール通知済。
+- **未実装**：`booking_change / price / parking / hours / staff_consult / style_consult` の細分類、ユーザー明示intent優先ロジック。
 
-## 実装内容
+### 4. 予約リマインド・お礼 — DB triggerで自動化済
+- `bookings` triggers：
+  - `trg_schedule_reminder`（INSERT）→ `schedule_reminder_on_booking()` が **前日19時 JST に reminder enqueue**、`booking_id+job_type` 重複防止＋`scheduled_jobs_dedupe_pending` UNIQUE併用、`ON CONFLICT DO NOTHING`
+  - `trg_schedule_thank_you`（UPDATE→completed）→ thank_you / aftercare / next_suggestion / review_request / VIP昇格 を一括 enqueue（580行超の複雑実装）
+  - `trg_cancel_reminder`、`trg_activate_customer_on_booking`、`trg_award_points_on_complete` も稼働中
+- 実績 enqueue 数：welcome 51 / reminder 20 / thank_you 2 / reactivation 2 / aftercare 1 / next_suggestion 1
+- `process-thank-you-jobs`：12種すべて捌く。LINE優先、なければEmail。`opt_out_automation / quiet_until / frequency_cap_*` 尊重済。
+- **結論：Phase 1-7/1-8 の trigger 整備は不要**（既に網羅的に実装済）。
 
-### 1. `worker_request_logs` テーブル新規作成（マイグレーション）
+### 5. セグメント配信 — 高機能
+- `bulk-broadcast` / `broadcast-preview` 稼働中。
+- `_shared/segment-filter.ts` 対応条件：`gender / age_group / days_since / vip_only / visit_count / total_spent / staff_ids / birthday_months / menu_keyword（部分一致）/ tag_ids_any / exclude_tag_ids / has_email / has_phone / has_line / recommended_cycle_days±tolerance / 直近予約除外`
+- `frequency_cap_days / frequency_cap_per_month / quiet_until / opt_out_automation` すべて尊重。
+- **未実装**：「顧客ランク」「失客リスク」「来店周期超過」「メニュータグ」を直接指す名前付き条件。ただし `vip_only` / `days_since_min/max` / `menu_keyword` 等の組合せで近似可能。
 
-カラム:
-- `owner_id` / `location_id` / `channel`
-- `kind`（`dry_run_create` / `dry_run_update` / `dry_run_cancel` / `live_create` 等）
-- `request_payload` / `response_status` / `response_body` / `latency_ms`
-- `success`（boolean）/ `error_message`
-- `created_at`
+### 6. 顧客ランク — DB列なし、フロント計算のみ
+- DB：`customers.rank` 等の列は**存在しない**。
+- フロント：`src/lib/vip.ts` の `calculateVipTier(visits, spent)` が唯一の定義。
+  - 4段階：`bronze / silver / gold / platinum`
+  - 閾値：`platinum ≥ ¥300k or 30回` / `gold ≥ ¥150k or 15回` / `silver ≥ ¥50k or 5回` / `bronze` その他
+- DB関数 `calculate_vip_tier` も存在（types.ts に登録あり）。
+- 自動計算（visits/spent から純関数）。手動上書き不可。
+- **「一見/ライト/失客予備軍/失客済み」概念は未定義**。
+- セグメントには `vip_only`（gold以上相当）しか露出していない。
+- リッチメニュー切替・jobs作成条件には未活用。
 
-RLS: テナントメンバーのみ自店分を閲覧可。書き込みは Edge Function の service role のみ。
+### 7. 年齢・性別 — 完備
+- `customers.gender`（USER-DEFINED enum）/ `birthday`（date）あり。
+- セグメント・テンプレートで `genders[] / age_groups[]` が利用可能（`teens/20s/30s/40s/50s/60s+`）。
 
-### 2. Edge Function: `salonboard-connection-test` 新規作成
+### 8. メニュー履歴 — 自由テキストのみ
+- `chart_treatments.menu_summary`（自由テキスト）が唯一の履歴。
+- `bookings.menus`（配列）/ `menu` あり。
+- カット/カラー/パーマ/縮毛矯正/トリートメントの**正規化タグ列は無し**。
+- セグメントは `menu_keyword` の部分一致のみ。
 
-入力: `{ owner_id, location_id }`
+### 既存の `customer_tags`（自由タグ） は流用可。
 
-処理（順番に実行、失敗即停止）:
+---
 
-1. `salonboard-session-fetch` 相当のロジックで login_id / password を復号取得  
-   失敗時 → `connection_status='error'`, `last_error='credentials_decrypt_failed'`
-2. Worker `/api/sync-job` に **dry_run create** をPOST（`store_id`/`location_id` 付き、`reservation.dry_run=true`）
-3. Worker に **dry_run update** をPOST
-4. Worker に **dry_run cancel** をPOST
-5. すべて success の場合のみ:
-   - `channel_integrations` を以下に更新:
-     - `connection_status='live'`
-     - `test_create_passed_at` / `test_update_passed_at` / `test_cancel_passed_at = now()`
-     - `live_enabled_at = now()`
-     - `last_error = null`
-6. 失敗があった場合:
-   - `connection_status='needs_review'`（または `'error'`）
-   - `last_error` に失敗内容を保存
+## まとめ表
 
-各ステップで `worker_request_logs` に request/response/latency を保存。
-レスポンスでフロントへ各ステップの ok/ng と理由を返す。
+| 要望 | 状態 |
+|---|---|
+| LINE基本連携・電話登録・ログ | ✅ 実装済 |
+| 予約 reminder / thank_you 自動enqueue | ✅ 実装済（DB trigger） |
+| `process-thank-you-jobs` でLINE優先送信 | ✅ 実装済 |
+| セグメント配信（年齢/性別/VIP/タグ/周期） | ✅ 実装済 |
+| 顧客ランク（4段階tier） | 🟡 一部（フロント関数のみ、DB列・LINE活用なし） |
+| 問い合わせ7分類クイックリプライ | ❌ 未実装 |
+| 細分類 intent 値 | ❌ 未実装 |
+| カテゴリ別一次返信＋スタッフ通知強化 | ❌ 未実装 |
+| ランク別/状態別 リッチメニュー | ❌ 未実装（Phase 3） |
+| メニュータグ正規化 | ❌ 未実装（Phase 2-5） |
 
-### 3. `staff-create-booking` の判定緩和
+---
 
-現状 `connection_status === "live"` のみ通すのは正しいので維持。
-ただし `disconnected` でスキップされた場合の `bookings.sync_status` を、現在の `not_required` から **`skipped_disconnected`**（または同等）に変えて、管理画面で「連携未完了のため未送信」と区別可能にする。
+## Phase 1 実装計画
 
-### 4. 管理画面: チャンネル連携ページに「疎通テスト実行」ボタン
+ご指示通り、Phase 1 は以下4点に絞ります。**reminder / thank_you の trigger は既に完備のため新規実装ナシ**（動作確認のみ）。
 
-`src/pages/ChannelIntegrations.tsx` に:
+### 1-A. クイックリプライ7分類（webhook修正のみ）
 
-- 「疎通テストを実行」ボタン（manager+ のみ）
-- 実行中スピナー
-- 結果表示（create/update/cancel それぞれの ok/ng と理由）
-- `connection_status` バッジ（disconnected / needs_review / error / live）
-- `last_error` の文章表示
-- 直近の `worker_request_logs` 数件をリスト表示（latency, status, success, error_message）
+**ファイル**：`supabase/functions/line-webhook/index.ts`
 
-### 5. 5/7 10:00 テスト太郎の取り扱い
+- `text === "お問合せ"` 分岐を、テキスト返信＋ **quickReply（postback 8択）** に差し替え：
+  ```
+  予約変更 / キャンセル / 料金確認 / 駐車場 / 営業時間 / 担当者相談 / 髪型相談 / その他
+  ```
+  postback data: `inq:booking_change` 等。
+- `event.type === "postback"` ハンドラに `inq:*` 分岐を追加：
+  1. `line_inbound_messages` に `intent / urgency / message_text="(quickreply選択: ラベル)" / ai_processed=true / handled=false / raw_event_id=postback.id` を保存
+  2. カテゴリ別一次返信（reply）を返す
+  3. urgency 設定：`cancel=high` / `booking_change/staff_consult=high` / その他 normal
+  4. `cancel / booking_change / staff_consult / style_consult / other` はオーナーへメール通知（既存 `send-transactional-email` 流用、`ai-classify-inbound` の通知ロジック切出し）
 
-既存予約は `sync_jobs` が無く `not_required` 確定済みなので、Worker 経由の同期は走らない。
-連携 live 化後に同等の予約をもう1件作ってE2Eテストする。
-（既存予約を再キックするのは別タスク。今回は触らない）
+### 1-B. AI分類との優先順位
 
-## 実装順序
+- ユーザーが quickReply で intent を選んだ場合は `ai_processed=true` で確定保存し `ai-classify-inbound` を**呼ばない**。
+- 自由テキストフローは現状維持。
 
-1. マイグレーション: `worker_request_logs` テーブル + RLS
-2. Edge Function `salonboard-connection-test` 新規作成
-3. `staff-create-booking` の `sync_status` ラベル調整
-4. `ChannelIntegrations.tsx` に疎通テストUI追加
-5. ユーザーが画面から疎通テスト → 全パスで自動 live 化 → もう1件公開予約してE2E
+### 1-C. 一次返信テンプレート（DBに登録）
 
-## ユーザー側で必要な操作
+`customer_message_templates` に `kind = inquiry_*` の8件をシード。
+- ただし**ハードコードのフォールバック**を webhook 側に持たせる（テンプレート未登録でも動くように）。
+- 管理画面でオーナーがテキストを上書き可能（既存テンプレート管理画面が使える）。
 
-- 実装後、チャンネル連携画面の「疎通テストを実行」ボタンを押すだけ。
-- VM Worker 側は既に最新版で稼働済みなので変更不要。
+→ 初期値 INSERT は migration ではなく `supabase--insert` 用シードSQL を別途実行。
 
-## 確認
+### 1-D. reminder / thank_you 自動enqueue 動作確認
 
-このプランで進めて良いですか？ 特に「失敗時のステータス名」を `needs_review` にするか `error` にするかは2案あります（plan承認時にどちらか教えてください。デフォルトは `needs_review`）。
+- migration 不要。
+- `scheduled_jobs` の現状件数と過去 trigger 動作ログを口頭で確認するのみ。
+- LINE優先送信（line_user_id あり時 LINE、なければ Email）は `process-thank-you-jobs` で既に正しく動作中。
+
+---
+
+## 変更ファイル一覧（Phase 1）
+
+| 種別 | ファイル | 変更内容 |
+|---|---|---|
+| Edge Function 編集 | `supabase/functions/line-webhook/index.ts` | お問合せ分岐をquickReplyに差替＋postback `inq:*` ハンドラ追加 |
+| データシード | `customer_message_templates` に kind=inquiry_* を8件 INSERT | `supabase--insert` 経由 |
+| DBマイグレーション | **不要** | テーブル/列追加なし |
+| 管理画面変更 | **任意（後回し可）** | `Inbox` の intent 表示に新7値の日本語ラベル対応（既に汎用表示なら無修正でも可） |
+
+---
+
+## Phase 2 以降のメモ（着手しない）
+
+- 顧客ランクをDB列化するか、`vip.ts` の現行ロジックを `segment-filter` に組み込んで「rank in [...]」条件を新設するか方針決定が必要。**推奨：後者**（DB側に `customer_rank_view` を作り、segment-filter から JOIN）。
+- 「一見 / 2回目未満 / ライト / 失客予備軍 / 失客済み」を加えた 7段階に再定義する案を Phase 2 着手時に提案。
+- メニュータグ正規化は `chart_treatments` への `menu_tags text[]` 追加＋ `menu_summary` からの自動分類トリガで対応予定。
+
+---
+
+ご承認いただければ、Phase 1 の実装（webhook修正＋テンプレシード）に着手します。
