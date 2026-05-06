@@ -142,7 +142,7 @@ export async function loginSalonboard(
 
   snap = await snapshot(page);
   const userCount = await page.locator('input[name="userId"]').count().catch(() => 0);
-  if (userCount === 0 && !looksLikeLogin(snap.url)) {
+  if (userCount === 0 && !looksLikeHome(snap.url, snap.title, snap.body)) {
     await gotoSafe(page, LOGIN_URL, "login");
     snap = await snapshot(page);
   }
