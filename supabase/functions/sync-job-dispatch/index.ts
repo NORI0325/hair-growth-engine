@@ -118,8 +118,21 @@ Deno.serve(async (req) => {
       let outboundPayload: any = job.request_payload;
       let preflightFail: { error_type: string; message: string } | null = null;
       const looksAppFormat = !!(job.request_payload && (job.request_payload.start_time || job.request_payload.customer_name));
-      if (job.target_channel === "salonboard" && job.job_type === "create_reservation" && looksAppFormat) {
-        const conv = buildSalonboardCreatePayload(job.request_payload);
+      // 店舗別の default_rsv_route_id を解決
+      let defaultRsvRouteId = SALONBOARD_DEFAULT_RSV_ROUTE_ID;
+      if (job.target_channel === "salonboard") {
+        let ciq = supabase.from("channel_integrations").select("default_rsv_route_id, sync_enabled, connection_status")
+          .eq("owner_id", job.owner_id).eq("channel", "salonboard");
+        ciq = job.location_id ? ciq.eq("location_id", job.location_id) : ciq.is("location_id", null);
+        const { data: ciRow } = await ciq.maybeSingle();
+        if (ciRow?.default_rsv_route_id) defaultRsvRouteId = ciRow.default_rsv_route_id;
+        if (ciRow && (!ciRow.sync_enabled || ciRow.connection_status !== "live")) {
+          preflightFail = { error_type: "not_live", message: "店舗のサロンボード本番同期がONではありません" };
+        }
+      }
+      if (!preflightFail && job.target_channel === "salonboard" && job.job_type === "create_reservation" && looksAppFormat) {
+        const p2 = { ...job.request_payload, rsv_route_id: job.request_payload.rsv_route_id || defaultRsvRouteId };
+        const conv = buildSalonboardCreatePayload(p2);
         if (conv.ok) {
           outboundPayload = conv.payload;
         } else {
