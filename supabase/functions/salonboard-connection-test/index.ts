@@ -85,30 +85,44 @@ Deno.serve(async (req) => {
     };
 
     // Step 1: 認証情報復号確認
+    // 優先順位: salonboard_credentials（ID/PW正本） → salonboard_sessions（フォールバック）
     const keyPresent = !!Deno.env.get("SALONBOARD_ENCRYPTION_KEY");
-    let q = supabase.from("salonboard_sessions").select("login_id_encrypted,password_encrypted").eq("owner_id", owner_id);
-    q = location_id ? q.eq("location_id", location_id) : q.is("location_id", null);
-    const { data: session } = await q.maybeSingle();
     let loginId: string | null = null, password: string | null = null;
     let credentialsFound = false;
     let encryptedFieldsPresent = false;
     let source: "salonboard_sessions" | "salonboard_credentials" | "none" = "none";
 
-    if (session) {
+    const { data: cred } = await supabase.from("salonboard_credentials")
+      .select("login_id_encrypted,password_encrypted").eq("tenant_id", owner_id).maybeSingle();
+    if (cred) {
       credentialsFound = true;
-      source = "salonboard_sessions";
-      encryptedFieldsPresent = !!(session.login_id_encrypted && session.password_encrypted);
-      loginId = await decryptText(session.login_id_encrypted);
-      password = await decryptText(session.password_encrypted);
+      source = "salonboard_credentials";
+      encryptedFieldsPresent = !!(cred.login_id_encrypted && cred.password_encrypted);
+      loginId = await decryptText(cred.login_id_encrypted);
+      password = await decryptText(cred.password_encrypted);
     } else {
-      const { data: legacy } = await supabase.from("salonboard_credentials")
-        .select("login_id_encrypted,password_encrypted").eq("tenant_id", owner_id).maybeSingle();
-      if (legacy) {
+      let q = supabase.from("salonboard_sessions").select("login_id_encrypted,password_encrypted").eq("owner_id", owner_id);
+      q = location_id ? q.eq("location_id", location_id) : q.is("location_id", null);
+      const { data: session } = await q.maybeSingle();
+      if (session) {
         credentialsFound = true;
-        source = "salonboard_credentials";
-        encryptedFieldsPresent = !!(legacy.login_id_encrypted && legacy.password_encrypted);
-        loginId = await decryptText(legacy.login_id_encrypted);
-        password = await decryptText(legacy.password_encrypted);
+        source = "salonboard_sessions";
+        encryptedFieldsPresent = !!(session.login_id_encrypted && session.password_encrypted);
+        loginId = await decryptText(session.login_id_encrypted);
+        password = await decryptText(session.password_encrypted);
+      }
+    }
+
+    // 古い salonboard_sessions が新キーで復号できない場合は削除しておく（fresh login で再保存される）
+    if (source === "salonboard_credentials" && keyPresent) {
+      let sQ = supabase.from("salonboard_sessions").select("id,storage_state_encrypted").eq("owner_id", owner_id);
+      sQ = location_id ? sQ.eq("location_id", location_id) : sQ.is("location_id", null);
+      const { data: stale } = await sQ.maybeSingle();
+      if (stale?.storage_state_encrypted) {
+        const ok = await decryptText(stale.storage_state_encrypted);
+        if (!ok) {
+          await supabase.from("salonboard_sessions").delete().eq("id", stale.id);
+        }
       }
     }
     const credsOk = !!(loginId && password);

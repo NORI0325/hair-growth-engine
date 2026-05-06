@@ -1,4 +1,6 @@
 // オーナー/マネージャーがサロンボードのID/PWを保存する。
+// ID/PW は salonboard_credentials（正本）に保存する。
+// salonboard_sessions は storage_state 用なので、ID/PW再保存時は古いセッションを無効化する。
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
 
@@ -53,24 +55,35 @@ Deno.serve(async (req) => {
     const loginEnc = await encryptText(String(login_id));
     const pwEnc = await encryptText(String(password));
 
-    let q = sb.from("salonboard_sessions").select("id").eq("owner_id", owner_id);
-    q = location_id ? q.eq("location_id", location_id) : q.is("location_id", null);
-    const { data: existing } = await q.maybeSingle();
-
-    const patch = {
-      owner_id, location_id: location_id || null,
-      login_id_encrypted: loginEnc, password_encrypted: pwEnc,
+    // 1) salonboard_credentials（ID/PW正本: tenant単位）にupsert
+    const { data: credExisting } = await sb.from("salonboard_credentials")
+      .select("id").eq("tenant_id", owner_id).maybeSingle();
+    const credPatch = {
+      tenant_id: owner_id,
+      login_id_encrypted: loginEnc,
+      password_encrypted: pwEnc,
       login_status: "unknown",
+      last_error: null,
     };
-    if (existing) await sb.from("salonboard_sessions").update(patch).eq("id", existing.id);
-    else await sb.from("salonboard_sessions").insert(patch);
+    if (credExisting) {
+      await sb.from("salonboard_credentials").update(credPatch).eq("id", credExisting.id);
+    } else {
+      await sb.from("salonboard_credentials").insert(credPatch);
+    }
 
-    // channel_integrations を connected に更新（無ければ作成）
+    // 2) 古い salonboard_sessions（storage_state 含む）は無効化のため削除
+    //    新キーで再ログインさせて新しい storage_state を保存させる。
+    let delQ = sb.from("salonboard_sessions").delete().eq("owner_id", owner_id);
+    delQ = location_id ? delQ.eq("location_id", location_id) : delQ.is("location_id", null);
+    await delQ;
+
+    // 3) channel_integrations を connected に更新（無ければ作成）
     let ciQ = sb.from("channel_integrations").select("id").eq("owner_id", owner_id).eq("channel", "salonboard");
     ciQ = location_id ? ciQ.eq("location_id", location_id) : ciQ.is("location_id", null);
     const { data: ciExisting } = await ciQ.maybeSingle();
     if (ciExisting) {
-      await sb.from("channel_integrations").update({ enabled: true }).eq("id", ciExisting.id);
+      await sb.from("channel_integrations").update({ enabled: true, connection_status: "connected", last_error: null })
+        .eq("id", ciExisting.id);
     } else {
       await sb.from("channel_integrations").insert({
         owner_id, location_id: location_id || null, channel: "salonboard",

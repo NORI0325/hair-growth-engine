@@ -1,9 +1,13 @@
 // Worker専用: 店舗ごとの認証情報・保存済みセッションを返す
 // Authorization: Bearer <EXTERNAL_WORKER_API_KEY>
+// 優先順位:
+//   A. salonboard_credentials から login_id/password を復号（正本）
+//   B. salonboard_sessions から storage_state を復号できれば付与
+//   C. salonboard_sessions の復号に失敗した場合は storage_state=null で続行
+//   D. login_id/password の復号に失敗した場合のみエラー
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
 
-// 簡易暗号化（AES-GCM, key=SALONBOARD_ENCRYPTION_KEY 32byte base64）
 async function getKey(): Promise<CryptoKey | null> {
   const raw = Deno.env.get("SALONBOARD_ENCRYPTION_KEY");
   if (!raw) return null;
@@ -17,7 +21,7 @@ async function getKey(): Promise<CryptoKey | null> {
 export async function decryptText(payload: string | null): Promise<string | null> {
   if (!payload) return null;
   const key = await getKey();
-  if (!key) return payload; // 鍵未設定 → 平文として扱う（暫定）
+  if (!key) return null;
   try {
     const buf = Uint8Array.from(atob(payload), (c) => c.charCodeAt(0));
     const iv = buf.slice(0, 12);
@@ -49,22 +53,28 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    let q = supabase.from("salonboard_sessions").select("*").eq("owner_id", owner_id);
-    q = location_id ? q.eq("location_id", location_id) : q.is("location_id", null);
-    const { data: session } = await q.maybeSingle();
+    // A) salonboard_credentials を最優先（ID/PWの正本）
+    let loginId: string | null = null, password: string | null = null, storageState: any = null;
+    const { data: cred } = await supabase.from("salonboard_credentials")
+      .select("login_id_encrypted,password_encrypted").eq("tenant_id", owner_id).maybeSingle();
+    if (cred) {
+      loginId = await decryptText(cred.login_id_encrypted);
+      password = await decryptText(cred.password_encrypted);
+    }
 
-    // Fallback: 旧 salonboard_credentials（tenant単位）
-    let loginId: string | null = null, password: string | null = null, storageState: string | null = null;
+    // B/C) salonboard_sessions から storage_state を取得（復号失敗は無視）
+    let sQ = supabase.from("salonboard_sessions")
+      .select("login_id_encrypted,password_encrypted,storage_state_encrypted")
+      .eq("owner_id", owner_id);
+    sQ = location_id ? sQ.eq("location_id", location_id) : sQ.is("location_id", null);
+    const { data: session } = await sQ.maybeSingle();
     if (session) {
-      loginId = await decryptText(session.login_id_encrypted);
-      password = await decryptText(session.password_encrypted);
-      storageState = await decryptText(session.storage_state_encrypted);
-    } else {
-      const { data: legacy } = await supabase.from("salonboard_credentials")
-        .select("*").eq("tenant_id", owner_id).maybeSingle();
-      if (legacy) {
-        loginId = await decryptText(legacy.login_id_encrypted);
-        password = await decryptText(legacy.password_encrypted);
+      // ID/PW がまだ未取得ならフォールバックで salonboard_sessions からも試す
+      if (!loginId) loginId = await decryptText(session.login_id_encrypted);
+      if (!password) password = await decryptText(session.password_encrypted);
+      const stateRaw = await decryptText(session.storage_state_encrypted);
+      if (stateRaw) {
+        try { storageState = JSON.parse(stateRaw); } catch { storageState = null; }
       }
     }
 
@@ -72,7 +82,7 @@ Deno.serve(async (req) => {
       success: true,
       owner_id, location_id: location_id || null,
       login_id: loginId, password,
-      storage_state: storageState ? JSON.parse(storageState) : null,
+      storage_state: storageState,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
     console.error("salonboard-session-fetch error", e);
