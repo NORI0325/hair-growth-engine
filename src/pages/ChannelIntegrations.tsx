@@ -275,6 +275,13 @@ export default function ChannelIntegrations() {
         </div>
       )}
 
+      {saveDiagnostic && (
+        <div className="mt-6 border border-border bg-secondary/20 p-3 text-xs">
+          <div className="font-serif mb-2">ログイン情報保存診断</div>
+          <pre className="text-[10px] text-muted-foreground bg-background/50 p-2 overflow-x-auto">{JSON.stringify(saveDiagnostic, null, 2)}</pre>
+        </div>
+      )}
+
       <div className="mt-10 p-5 bg-secondary/30 border border-border text-xs text-muted-foreground leading-relaxed">
         <div className="font-serif text-foreground mb-2">⚠️ 安全運用について</div>
         <ul className="list-disc list-inside space-y-1">
