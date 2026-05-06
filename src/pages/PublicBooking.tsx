@@ -106,28 +106,31 @@ const PublicBooking = () => {
         setSalonName(displayName);
         setFallbackMenus(pubMenus);
 
-        let menusQuery = supabase
-          .from("menu_items")
-          .select("id, name, duration_minutes, price")
-          .eq("owner_id", ownerId)
-          .eq("active", true)
-          .order("sort_order", { ascending: true });
-        let staffQuery = supabase
-          .from("staff")
-          .select("id", { count: "exact", head: true })
-          .eq("owner_id", ownerId)
-          .eq("active", true)
-          .eq("bookable", true);
         if (locationId) {
-          menusQuery = menusQuery.eq("location_id", locationId);
-          staffQuery = staffQuery.eq("location_id", locationId);
-        }
-        const { data: items } = await menusQuery;
-        setMenuItems(items || []);
+          const { data: items } = await supabase
+            .from("menu_items")
+            .select("id, name, duration_minutes, price")
+            .eq("owner_id", ownerId)
+            .eq("location_id", locationId)
+            .eq("active", true)
+            .order("sort_order", { ascending: true });
+          setMenuItems(items || []);
 
-        const { count } = await staffQuery;
-        setHasStaff((count || 0) > 0);
-        setMaxStaffCount(Math.max(1, count || 1));
+          const { count } = await supabase
+            .from("staff")
+            .select("id", { count: "exact", head: true })
+            .eq("owner_id", ownerId)
+            .eq("location_id", locationId)
+            .eq("active", true)
+            .eq("bookable", true);
+          setHasStaff((count || 0) > 0);
+          setMaxStaffCount(Math.max(1, count || 1));
+        } else {
+          // location_id 不明時は店舗共通(NULL)メニューや全店混在を避けるため、メニュー非表示
+          setMenuItems([]);
+          setHasStaff(false);
+          setMaxStaffCount(1);
+        }
       }
       setLoading(false);
     };
