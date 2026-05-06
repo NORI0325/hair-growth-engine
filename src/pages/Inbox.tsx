@@ -32,6 +32,8 @@ const INTENT_LABELS: Record<string, string> = {
   booking_request: "新規予約", reschedule: "日時変更", cancel: "キャンセル",
   question: "質問", complaint: "クレーム", thanks: "お礼",
   chitchat: "雑談", other: "その他",
+  booking_change: "予約変更", price: "料金確認", parking: "駐車場",
+  hours: "営業時間", staff_consult: "担当者相談", style_consult: "髪型相談",
 };
 
 const URGENCY_STYLES: Record<string, { label: string; className: string }> = {
