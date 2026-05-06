@@ -370,7 +370,7 @@ export default function SalonboardAutoMapping() {
                 )}
               </section>
 
-              <Button onClick={importMenus} disabled={importing} className="rounded-none">
+              <Button onClick={importMenus} disabled={importing || !loc} className="rounded-none">
                 <Upload className="w-4 h-4 mr-2" />一括取り込み・保存（初期は組み合わせメニューのみ）
               </Button>
             </>
