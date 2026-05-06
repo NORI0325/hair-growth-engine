@@ -392,6 +392,42 @@ Deno.serve(async (req) => {
               } catch (e) { console.warn("[line-webhook] hours fetch failed:", e); }
             }
 
+            // 駐車場：店舗設定から動的に生成
+            let parkingUnregistered = false;
+            if (cat.autoAnswer === "parking") {
+              try {
+                let pq = supabase.from("salon_parking_settings")
+                  .select("parking_status, parking_spaces, parking_description, parking_map_url, parking_landmark, parking_full_notice, parking_fee_note, parking_reply_template")
+                  .eq("owner_id", owner.id);
+                if (cust?.location_id) pq = pq.eq("location_id", cust.location_id);
+                else pq = pq.is("location_id", null);
+                const { data: ps } = await pq.maybeSingle();
+                const status = ps?.parking_status ?? "unknown";
+                const desc = ps?.parking_description?.trim() || "";
+                const mapLine = ps?.parking_map_url ? `\n\nGoogleマップ：\n${ps.parking_map_url}` : "";
+                if (ps?.parking_reply_template?.trim()) {
+                  replyBody = ps.parking_reply_template.trim();
+                  autoAnswered = true;
+                } else if (status === "available") {
+                  const spaces = ps?.parking_spaces ? `店舗前に${ps.parking_spaces}台分ございます。\n\n` : "";
+                  const landmark = ps?.parking_landmark ? `\n\n目印：\n${ps.parking_landmark}` : "";
+                  const full = ps?.parking_full_notice ? `\n\n満車の場合：\n${ps.parking_full_notice}` : "";
+                  replyBody = `駐車場のご案内です🚗\n\n${spaces}${desc}${landmark}${full}${mapLine}`.replace(/\n{3,}/g, "\n\n").trim();
+                  autoAnswered = true;
+                } else if (status === "partner") {
+                  const fee = ps?.parking_fee_note ? `\n\n駐車料金について：\n${ps.parking_fee_note}` : "";
+                  replyBody = `提携駐車場のご案内です🚗\n\n${desc}${fee}${mapLine}`.replace(/\n{3,}/g, "\n\n").trim();
+                  autoAnswered = true;
+                } else if (status === "none") {
+                  replyBody = `専用駐車場はございません🙇‍♀️\nお車でお越しの場合は、近隣のコインパーキングをご利用ください。${desc ? `\n\n${desc}` : ""}${mapLine}`.trim();
+                  autoAnswered = true;
+                } else {
+                  replyBody = `駐車場情報がまだ登録されていません🙇‍♀️\nお急ぎの場合は、このLINEに「駐車場について詳しく」と送ってください。スタッフが確認してご案内いたします。`;
+                  parkingUnregistered = true;
+                }
+              } catch (e) { console.warn("[line-webhook] parking fetch failed:", e); }
+            }
+
             // 受信ログ保存（AI分類はスキップ）
             await supabase.from("line_inbound_messages").insert({
               owner_id: owner.id,
