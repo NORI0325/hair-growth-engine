@@ -51,6 +51,7 @@ interface LocationContextValue {
   currentLocationId: string | null;
   currentLocation: Location | null;
   setCurrentLocationId: (id: string) => void;
+  selectLocation: (id: string) => void;
   locations: Location[];
   isLoading: boolean;
 }
@@ -92,7 +93,7 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <LocationContext.Provider
-      value={{ currentLocationId, currentLocation, setCurrentLocationId, locations, isLoading }}
+      value={{ currentLocationId, currentLocation, setCurrentLocationId, selectLocation: setCurrentLocationId, locations, isLoading }}
     >
       {children}
     </LocationContext.Provider>
@@ -107,6 +108,7 @@ export const useCurrentLocation = (): LocationContextValue => {
       currentLocationId: null,
       currentLocation: null,
       setCurrentLocationId: () => {},
+      selectLocation: () => {},
       locations: [],
       isLoading: false,
     };
