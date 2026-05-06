@@ -25,17 +25,16 @@ export const useLocations = () => {
 
   return useQuery({
     queryKey: ["locations", tenantId, user?.id],
-    // tenantId 取得を待たず、ユーザーがログインしていれば実行する。
-    // RLS 側で「自分が所属するテナント / location_members に紐づく店舗」を返してくれる。
-    enabled: !!user,
+    // public_slug 付き店舗が公開予約用に読めるため、tenantId 確定前には取得しない。
+    enabled: !!user && !!tenantId,
     queryFn: async (): Promise<Location[]> => {
-      let query = supabase
+      if (!tenantId) return [];
+      const query = supabase
         .from("locations")
         .select("id, tenant_id, name, public_slug, is_primary, created_at")
+        .eq("tenant_id", tenantId)
         .order("is_primary", { ascending: false })
         .order("created_at", { ascending: true });
-      // tenantId が分かっているなら絞り込む（複数テナント所属時のノイズ防止）
-      if (tenantId) query = query.eq("tenant_id", tenantId);
       const { data, error } = await query;
       if (error) throw error;
       return (data ?? []) as Location[];
@@ -51,6 +50,7 @@ interface LocationContextValue {
   currentLocationId: string | null;
   currentLocation: Location | null;
   setCurrentLocationId: (id: string) => void;
+  selectLocation: (id: string) => void;
   locations: Location[];
   isLoading: boolean;
 }
@@ -92,7 +92,7 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <LocationContext.Provider
-      value={{ currentLocationId, currentLocation, setCurrentLocationId, locations, isLoading }}
+      value={{ currentLocationId, currentLocation, setCurrentLocationId, selectLocation: setCurrentLocationId, locations, isLoading }}
     >
       {children}
     </LocationContext.Provider>
@@ -107,6 +107,7 @@ export const useCurrentLocation = (): LocationContextValue => {
       currentLocationId: null,
       currentLocation: null,
       setCurrentLocationId: () => {},
+      selectLocation: () => {},
       locations: [],
       isLoading: false,
     };

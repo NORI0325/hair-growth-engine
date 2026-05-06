@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { useLocations, type Location } from "@/hooks/useLocations";
+import { useCurrentLocation, useLocations, type Location } from "@/hooks/useLocations";
 import { useTenantId } from "@/hooks/useTenant";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -39,6 +39,7 @@ const getEnvironment = (): "sandbox" | "live" => {
 const Locations = () => {
   const tenantId = useTenantId();
   const { data: locations = [], isLoading } = useLocations();
+  const { setCurrentLocationId } = useCurrentLocation();
   const queryClient = useQueryClient();
   const [addOpen, setAddOpen] = useState(false);
   const [newName, setNewName] = useState("");
@@ -76,7 +77,9 @@ const Locations = () => {
       if (data?.error) throw new Error(ERROR_MESSAGES[data.error] ?? data.error);
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      const createdId = data?.location?.id;
+      if (createdId) setCurrentLocationId(createdId);
       toast.success("店舗を追加しました");
       setAddOpen(false);
       setNewName("");
