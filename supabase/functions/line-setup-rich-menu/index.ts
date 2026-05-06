@@ -161,7 +161,18 @@ Deno.serve(async (req) => {
     // デフォルト設定
     await lineFetch(`/user/all/richmenu/${richMenuId}`, token, { method: "POST" });
 
-    return new Response(JSON.stringify({ success: true, richMenuId, bookingUrl }), {
+    // richMenuId 保存（店舗別 or オーナー共通）
+    try {
+      if (locationId && creds.source === "location") {
+        await supabase.from("locations").update({ line_rich_menu_id: richMenuId } as any).eq("id", locationId);
+      } else {
+        await supabase.from("profiles").update({ line_rich_menu_id: richMenuId } as any).eq("id", user.id);
+      }
+    } catch (e) {
+      console.warn("rich_menu_id save failed:", e instanceof Error ? e.message : "unknown");
+    }
+
+    return new Response(JSON.stringify({ success: true, richMenuId, bookingUrl, scope: creds.source }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
