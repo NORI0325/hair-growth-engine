@@ -65,11 +65,17 @@ export default function SalonboardOnboarding() {
 
   const saveCreds = async () => {
     if (!loginId || !password) { toast.error("ID/PWを入力してください"); return; }
+    if (!confirm("このID/PWはSalonBoostではなく、サロンボード管理画面のログイン情報です。保存しますか？")) return;
     const res = await supabase.functions.invoke("salonboard-credentials-save", {
-      body: { owner_id: user!.id, location_id: locationId === "default" ? null : locationId, login_id: loginId, password },
+      body: {
+        owner_id: user!.id,
+        location_id: locationId === "default" ? null : locationId,
+        login_id: loginId,
+        password,
+      },
     });
     if (res.error) toast.error("保存失敗: " + res.error.message);
-    else { toast.success("認証情報を保存しました"); setPassword(""); load(); }
+    else { toast.success("認証情報を保存しました"); setLoginId(""); setPassword(""); load(); }
   };
 
   const saveRoute = async () => {
@@ -131,11 +137,55 @@ export default function SalonboardOnboarding() {
 
       <div className="space-y-4">
         <Step done={!!ci?.last_login_at || sessionOk} n={1} title="サロンボード認証情報の登録">
-          <div className="grid grid-cols-2 gap-3 mb-3">
-            <div><Label>ログインID</Label><Input value={loginId} onChange={(e) => setLoginId(e.target.value)} className="rounded-none" /></div>
-            <div><Label>パスワード</Label><Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="rounded-none" /></div>
-          </div>
-          <Button size="sm" onClick={saveCreds} className="rounded-none">保存</Button>
+          <p className="text-xs text-amber-800 bg-amber-50 border-l-2 border-amber-500 p-2 mb-3">
+            ⚠ ここに入力するのは <b>サロンボード管理画面のログインID/パスワード</b> です。SalonBoostのアカウント情報ではありません。
+          </p>
+          <form autoComplete="off" onSubmit={(e) => { e.preventDefault(); saveCreds(); }}>
+            {/* ブラウザの自動入力を吸収するダミー（実送信には使わない） */}
+            <input type="text" name="username" autoComplete="username" tabIndex={-1} aria-hidden="true" style={{ position: "absolute", left: "-9999px", width: 1, height: 1, opacity: 0 }} />
+            <input type="password" name="password" autoComplete="current-password" tabIndex={-1} aria-hidden="true" style={{ position: "absolute", left: "-9999px", width: 1, height: 1, opacity: 0 }} />
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div>
+                <Label htmlFor="salonboard_login_id">サロンボード ログインID</Label>
+                <Input
+                  id="salonboard_login_id"
+                  name="salonboard_login_id"
+                  type="text"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                  data-lpignore="true"
+                  data-1p-ignore="true"
+                  data-form-type="other"
+                  placeholder={ci?.last_login_at ? "保存済み（再入力で上書き）" : ""}
+                  value={loginId}
+                  onChange={(e) => setLoginId(e.target.value)}
+                  className="rounded-none"
+                />
+              </div>
+              <div>
+                <Label htmlFor="salonboard_password">サロンボード パスワード</Label>
+                <Input
+                  id="salonboard_password"
+                  name="salonboard_password"
+                  type="password"
+                  autoComplete="new-password"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                  data-lpignore="true"
+                  data-1p-ignore="true"
+                  data-form-type="other"
+                  placeholder={ci?.last_login_at ? "********（再入力で上書き）" : ""}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="rounded-none"
+                />
+              </div>
+            </div>
+            <Button size="sm" type="submit" className="rounded-none">保存</Button>
+          </form>
           {sessionOk && <div className="text-xs text-emerald-700 mt-2">セッション有効（最終ログイン: {session?.last_login_at ? new Date(session.last_login_at).toLocaleString("ja-JP") : "-"}）</div>}
           {session?.last_error && <div className="text-xs text-red-600 mt-2 flex items-center gap-1"><AlertTriangle className="w-3 h-3" />{session.last_error}</div>}
         </Step>
