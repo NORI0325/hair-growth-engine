@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
-import { sendLinePush } from "../_shared/line-push.ts";
+import { sendLinePush, getLineCredentials } from "../_shared/line-push.ts";
 
 // 公開：予約変更（新規/更新/キャンセル）時にオーナー＋お客様へ通知
 //  - オーナー: メール（owner_notification_email）
@@ -76,12 +76,14 @@ Deno.serve(async (req) => {
 
       const recips: any[] = Array.isArray(prof?.notification_recipients) ? prof!.notification_recipients : [];
       const results: string[] = [];
+      // owner共通LINE（cancel_needs_reviewはbookingが特定できないためlocation_idはnull）
+      const creds = await getLineCredentials(supabase, ownerId, null);
       for (const r of recips) {
         const channels = r.channels?.length ? r.channels : ["email"];
-        if (channels.includes("line") && r.line_user_id && prof?.line_channel_access_token) {
-          const lr = await sendLinePush(prof.line_channel_access_token, r.line_user_id, msg);
+        if (channels.includes("line") && r.line_user_id && creds) {
+          const lr = await sendLinePush(creds.accessToken, r.line_user_id, msg);
           await supabase.from("line_message_log").insert({
-            owner_id: ownerId, line_user_id: r.line_user_id,
+            owner_id: ownerId, location_id: null, line_user_id: r.line_user_id,
             job_type: "cancel_needs_review", message: msg,
             status: lr.ok ? "sent" : "failed", error: lr.ok ? null : lr.err,
           });
@@ -121,7 +123,7 @@ Deno.serve(async (req) => {
 
     const { data: booking } = await supabase
       .from("bookings")
-      .select("id, owner_id, booking_date, booking_time, menu, notes, customer_id")
+      .select("id, owner_id, location_id, booking_date, booking_time, menu, notes, customer_id")
       .eq("id", bookingId)
       .maybeSingle();
 
@@ -145,6 +147,8 @@ Deno.serve(async (req) => {
     ]);
 
     const salonName = profile?.salon_name ?? "サロン";
+    const bookingLocationId = (booking as any).location_id ?? null;
+    const creds = await getLineCredentials(supabase, booking.owner_id, bookingLocationId);
     const bookingDate = booking.booking_date;
     const bookingTime = String(booking.booking_time).slice(0, 5);
     const menu = booking.menu;
@@ -201,7 +205,7 @@ Deno.serve(async (req) => {
       }
 
       // LINE通知（オーナー/スタッフのLINE）
-      if (channels.includes("line") && r.line_user_id && profile?.line_channel_access_token) {
+      if (channels.includes("line") && r.line_user_id && creds) {
         const lineMsg =
           `🔔 ${eventLabel}\n\n` +
           `👤 ${customerName}様\n` +
@@ -213,10 +217,11 @@ Deno.serve(async (req) => {
             ? `\n📋 ご来店前に必ずカルテをご確認ください。\n`
             : "") +
           `\n— ${salonName}`;
-        const lr = await sendLinePush(profile.line_channel_access_token, r.line_user_id, lineMsg);
+        const lr = await sendLinePush(creds.accessToken, r.line_user_id, lineMsg);
         ownerLineResults.push(lr.ok ? `${r.line_user_id}: sent` : `${r.line_user_id}: error`);
         await supabase.from("line_message_log").insert({
           owner_id: booking.owner_id,
+          location_id: bookingLocationId,
           line_user_id: r.line_user_id,
           job_type: `owner_alert_${eventType}`,
           message: lineMsg,
@@ -230,18 +235,18 @@ Deno.serve(async (req) => {
     results.owner_line = ownerLineResults.length ? ownerLineResults : "skipped: no line recipient";
 
     // === ② お客様へ LINE プッシュ（連携済みなら）===
-    if (customer?.line_user_id && profile?.line_channel_access_token) {
+    if (customer?.line_user_id && creds) {
       const lineMsg =
         `🌸 ${customerName}様\n\n${eventLabel}。\n\n` +
         `📅 ${bookingDate}\n⏰ ${bookingTime}\n💇 ${menu}\n\n` +
         (eventType === "cancelled"
           ? `またのご利用を心よりお待ちしております。\n\n— ${salonName}`
           : `当日のご来店を心よりお待ちしております。\nご変更・キャンセルはトーク下部の「予約する」ボタンよりお願いいたします。\n\n— ${salonName}`);
-      const r = await sendLinePush(profile.line_channel_access_token, customer.line_user_id, lineMsg);
+      const r = await sendLinePush(creds.accessToken, customer.line_user_id, lineMsg);
       results.customer_line = r.ok ? "sent" : `error: ${r.err}`;
-      // ログ記録
       await supabase.from("line_message_log").insert({
         owner_id: booking.owner_id,
+        location_id: bookingLocationId,
         customer_id: booking.customer_id,
         line_user_id: customer.line_user_id,
         job_type: `booking_${eventType}`,

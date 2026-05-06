@@ -426,6 +426,7 @@ Deno.serve(async (req) => {
           const r = await sendLinePush(lineToken!, customer.line_user_id!, body);
           await supabase.from("line_message_log").insert({
             owner_id: job.owner_id,
+            location_id: (customer as any).location_id ?? null,
             customer_id: customer.id,
             job_type: job.job_type,
             template_key: tmplKey,

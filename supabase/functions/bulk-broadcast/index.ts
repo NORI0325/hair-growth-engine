@@ -78,7 +78,7 @@ Deno.serve(async (req) => {
     const salonName = (profile as any)?.salon_name || "サロン";
 
     const { data: targets } = await supabase.from("customers")
-      .select("id, full_name, email, phone, line_user_id, birthday, gender, last_visit_date, visit_count, total_spent")
+      .select("id, full_name, email, phone, line_user_id, birthday, gender, last_visit_date, visit_count, total_spent, location_id")
       .eq("owner_id", user.id)
       .eq("is_test", false)
       .in("id", customerIds);
@@ -163,7 +163,7 @@ Deno.serve(async (req) => {
           if (r.ok) { result.line.sent++; anySent = true; lastChannel = "line"; }
           else result.line.failed++;
           lineLogs.push({
-            owner_id: user.id, customer_id: c.id, job_type: "broadcast",
+            owner_id: user.id, location_id: c.location_id ?? null, customer_id: c.id, job_type: "broadcast",
             line_user_id: c.line_user_id, message: personalText,
             status: r.ok ? "sent" : "failed", error: r.ok ? null : r.err,
           });

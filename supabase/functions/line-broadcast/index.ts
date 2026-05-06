@@ -55,7 +55,7 @@ Deno.serve(async (req) => {
     }
 
     let q = supabase.from("customers")
-      .select("id, full_name, line_user_id, last_visit_date")
+      .select("id, full_name, line_user_id, last_visit_date, location_id")
       .eq("owner_id", user.id)
       .not("line_user_id", "is", null)
       .eq("is_test", false);
@@ -93,6 +93,7 @@ Deno.serve(async (req) => {
       if (r.ok) sent++; else failed++;
       logs.push({
         owner_id: user.id,
+        location_id: (c as any).location_id ?? null,
         customer_id: c.id,
         job_type: "broadcast",
         line_user_id: c.line_user_id,
