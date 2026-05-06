@@ -966,118 +966,276 @@ AI信頼度: ${parsed.confidence}/100
           continue;
         }
 
-        const { data: candidates } = await supabase
-          .from("customers")
-          .select("id, full_name, phone, line_user_id")
-          .eq("owner_id", owner.id)
-          .not("phone", "is", null)
-          .limit(500);
+        // 電話番号マスク（ログ用）
+        const phoneMasked = phone.length >= 11
+          ? `${phone.slice(0, 3)}-****-${phone.slice(-4)}`
+          : phone.length >= 10
+          ? `${phone.slice(0, 3)}-***-${phone.slice(-4)}`
+          : `***${phone.slice(-4)}`;
+        const rawEventId: string | undefined = ev?.webhookEventId || ev?.message?.id;
+        const salonName = owner.salon_name || "サロン";
 
-        const matches = (candidates || []).filter(c => normalizePhone(c.phone || "") === phone);
-        const matched = matches[0];
-
-        if (!matched) {
-          // 🆕 ゲスト顧客を自動作成（A案：機会損失ゼロ）
-          // displayName を取得して仮氏名に使う
-          let displayName: string | null = null;
+        // 登録ログヘルパー
+        const logRegistration = async (params: {
+          action: string;
+          success: boolean;
+          customer_id?: string | null;
+          location_id?: string | null;
+          error_code?: string | null;
+          error_message?: string | null;
+        }) => {
           try {
-            const pf = await fetch(`https://api.line.me/v2/bot/profile/${userId}`, {
-              headers: { Authorization: `Bearer ${accessToken}` },
+            await supabase.from("line_registration_logs").insert({
+              owner_id: owner.id,
+              location_id: params.location_id ?? null,
+              customer_id: params.customer_id ?? null,
+              line_user_id: userId,
+              phone_masked: phoneMasked,
+              action: params.action,
+              success: params.success,
+              error_code: params.error_code ?? null,
+              error_message: params.error_message ?? null,
+              raw_event_id: rawEventId ?? null,
             });
-            if (pf.ok) {
-              const j = await pf.json();
-              displayName = j?.displayName || null;
-            }
-          } catch { /* noop */ }
-
-          // 既に同一 line_user_id でゲスト作成済みなら再作成しない（再送対策）
-          const { data: existingGuest } = await supabase
-            .from("customers")
-            .select("id, full_name")
-            .eq("owner_id", owner.id)
-            .eq("line_user_id", userId)
-            .maybeSingle();
-
-          let guestId = existingGuest?.id as string | undefined;
-          let guestName = existingGuest?.full_name || displayName || "LINEお客様";
-
-          if (!guestId) {
-            const placeholderName = displayName ? `${displayName}様（LINE）` : "LINEお客様";
-            const { data: created, error: insErr } = await supabase
-              .from("customers")
-              .insert({
-                owner_id: owner.id,
-                location_id: null,
-                full_name: placeholderName,
-                phone: phone,
-                line_user_id: userId,
-                imported_from: "line_self",
-                is_test: false,
-              })
-              .select("id, full_name")
-              .maybeSingle();
-            if (insErr) {
-              console.error("[line-webhook] guest customer create failed:", insErr);
-              await replyLine(
-                accessToken,
-                replyToken,
-                `ご登録処理でエラーが発生しました🙏\nお手数ですがしばらくしてから再度お試しください。`
-              );
-              continue;
-            }
-            guestId = created?.id;
-            guestName = created?.full_name || placeholderName;
+          } catch (e) {
+            console.error("[line-webhook] log insert failed:", e);
           }
+        };
 
-          // pending_friends から削除
-          await supabase.from("line_pending_friends")
-            .delete().eq("owner_id", owner.id).eq("line_user_id", userId);
+        // ============= DB側で電話番号正規化マッチ =============
+        const { data: phoneMatches, error: rpcErr } = await supabase
+          .rpc("find_customer_by_normalized_phone", {
+            p_owner_id: owner.id,
+            p_phone: phone,
+          });
 
-          await replyLine(
-            accessToken,
-            replyToken,
-            `✅ 仮登録が完了しました🌸\n\n📞 ${phone}\n\nお手数ですが、お名前（フルネーム）をメッセージでお送りください。\n例：山田 花子\n\n次回ご来店時に正式登録させていただきます。\n\n— ${owner.salon_name || "サロン"}`
-          );
+        if (rpcErr) {
+          console.error("[line-webhook] phone rpc failed:", rpcErr);
+          await logRegistration({
+            action: "failed",
+            success: false,
+            error_code: rpcErr.code || "rpc_error",
+            error_message: rpcErr.message,
+          });
+          await replyLine(accessToken, replyToken,
+            `ご登録処理でエラーが発生しました。お手数ですが、しばらくしてから再度お試しください。`);
           continue;
         }
 
-        if (matches.length > 1) {
-          // 同一電話番号が複数顧客に紐付く（家族など）→ 自動連携せず手動レビュー
+        const matchList = (phoneMatches || []) as Array<{
+          id: string; full_name: string; phone: string;
+          line_user_id: string | null; location_id: string | null;
+        }>;
+
+        // ── 同一電話番号が複数顧客にヒット → 要スタッフ確認 ──
+        if (matchList.length > 1) {
           await supabase.from("line_pending_friends").upsert({
             owner_id: owner.id,
             line_user_id: userId,
-            last_message: `[duplicate phone: ${matches.length} matches]`,
+            last_message: `[duplicate phone: ${matchList.length} matches]`,
           }, { onConflict: "owner_id,line_user_id" });
+          await logRegistration({
+            action: "needs_review",
+            success: false,
+            error_code: "duplicate_phone",
+            error_message: `${matchList.length} customers share this phone`,
+          });
           await replyLine(accessToken, replyToken,
-            `同じお電話番号のお客様が複数登録されています。お手数ですがお名前もお送りください。担当者が確認のうえ連携いたします🙇‍♀️`);
+            `確認が必要なため、担当者が確認のうえご連絡いたします。`);
           continue;
         }
 
-        if (matched.line_user_id && matched.line_user_id !== userId) {
-          await replyLine(
-            accessToken,
-            replyToken,
-            `この電話番号は既に別のLINEアカウントと連携されています。\nお店までお問い合わせください🙇‍♀️`
-          );
+        const matched = matchList[0];
+
+        // ── 既存顧客あり ──
+        if (matched) {
+          // 既に同じLINE userIdが紐付いている → 成功扱い（重複登録なし）
+          if (matched.line_user_id === userId) {
+            await supabase.from("line_pending_friends")
+              .delete().eq("owner_id", owner.id).eq("line_user_id", userId);
+            await logRegistration({
+              action: "already_linked",
+              success: true,
+              customer_id: matched.id,
+              location_id: matched.location_id,
+            });
+            await replyLine(accessToken, replyToken,
+              `ご登録情報を確認しました。今後はこちらのLINEからご予約・お問い合わせいただけます。\n\n— ${salonName}`);
+            continue;
+          }
+
+          // 別のLINEアカウントが既に紐付いている → 要スタッフ確認（自動更新しない）
+          if (matched.line_user_id && matched.line_user_id !== userId) {
+            await supabase.from("line_pending_friends").upsert({
+              owner_id: owner.id,
+              line_user_id: userId,
+              last_message: `[phone collides w/ other line_user]`,
+            }, { onConflict: "owner_id,line_user_id" });
+            await logRegistration({
+              action: "needs_review",
+              success: false,
+              customer_id: matched.id,
+              location_id: matched.location_id,
+              error_code: "line_user_conflict",
+              error_message: "phone matches a customer already linked to another LINE user",
+            });
+            await replyLine(accessToken, replyToken,
+              `確認が必要なため、担当者が確認のうえご連絡いたします。`);
+            continue;
+          }
+
+          // line_user_id 未設定 → 紐付け
+          const { error: updErr } = await supabase
+            .from("customers")
+            .update({ line_user_id: userId, line_unfollowed_at: null })
+            .eq("id", matched.id);
+
+          if (updErr) {
+            await logRegistration({
+              action: "failed",
+              success: false,
+              customer_id: matched.id,
+              location_id: matched.location_id,
+              error_code: updErr.code || "update_failed",
+              error_message: updErr.message,
+            });
+            await replyLine(accessToken, replyToken,
+              `ご登録処理でエラーが発生しました。お手数ですが、しばらくしてから再度お試しください。`);
+            continue;
+          }
+
+          await supabase.from("line_pending_friends")
+            .delete().eq("owner_id", owner.id).eq("line_user_id", userId);
+          await logRegistration({
+            action: "link_existing_customer",
+            success: true,
+            customer_id: matched.id,
+            location_id: matched.location_id,
+          });
+          await replyLine(accessToken, replyToken,
+            `${matched.full_name}様、ご登録情報を確認しました。\n今後はこちらのLINEからご予約・お問い合わせいただけます。\n\n— ${salonName}`);
           continue;
         }
 
-        await supabase
+        // ── 既存顧客なし → 新規ゲスト顧客作成 ──
+        // 既に同一 line_user_id で作成済みなら再作成しない
+        const { data: existingByLine } = await supabase
           .from("customers")
-          .update({ line_user_id: userId, line_unfollowed_at: null })
-          .eq("id", matched.id);
-
-        await supabase
-          .from("line_pending_friends")
-          .delete()
+          .select("id, full_name, location_id")
           .eq("owner_id", owner.id)
-          .eq("line_user_id", userId);
+          .eq("line_user_id", userId)
+          .maybeSingle();
 
-        await replyLine(
-          accessToken,
-          replyToken,
-          `✅ ${matched.full_name}様、連携が完了しました!\n\n次回のご予約案内・特典クーポンをこちらのトークでお届けします🌸\n\n${owner.salon_name || "サロン"}`
-        );
+        if (existingByLine?.id) {
+          await logRegistration({
+            action: "already_linked",
+            success: true,
+            customer_id: existingByLine.id,
+            location_id: existingByLine.location_id,
+          });
+          await replyLine(accessToken, replyToken,
+            `ご登録情報を確認しました。今後はこちらのLINEからご予約・お問い合わせいただけます。\n\n— ${salonName}`);
+          continue;
+        }
+
+        let displayName: string | null = null;
+        try {
+          const pf = await fetch(`https://api.line.me/v2/bot/profile/${userId}`, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+          if (pf.ok) {
+            const j = await pf.json();
+            displayName = j?.displayName || null;
+          }
+        } catch { /* noop */ }
+
+        // デフォルト店舗を解決
+        let defaultLocationId: string | null = null;
+        try {
+          const { data: loc } = await supabase
+            .rpc("default_location_for_owner", { p_owner_id: owner.id });
+          defaultLocationId = (typeof loc === "string" ? loc : null) || null;
+        } catch (e) {
+          console.warn("[line-webhook] default_location resolve failed:", e);
+        }
+
+        const placeholderName = displayName ? `${displayName}様（LINE）` : "LINEお客様";
+        const { data: created, error: insErr } = await supabase
+          .from("customers")
+          .insert({
+            owner_id: owner.id,
+            location_id: defaultLocationId,
+            full_name: placeholderName,
+            phone: phone,
+            line_user_id: userId,
+            imported_from: "line_self",
+            is_test: false,
+          })
+          .select("id, full_name, location_id")
+          .maybeSingle();
+
+        if (insErr) {
+          // unique violation 23505 → 競合発生時は既存顧客検索→紐付けにフォールバック
+          if ((insErr as any).code === "23505") {
+            const { data: again } = await supabase
+              .rpc("find_customer_by_normalized_phone", {
+                p_owner_id: owner.id, p_phone: phone,
+              });
+            const fb = ((again || []) as any[])[0];
+            if (fb) {
+              if (fb.line_user_id && fb.line_user_id !== userId) {
+                await logRegistration({
+                  action: "needs_review",
+                  success: false,
+                  customer_id: fb.id,
+                  location_id: fb.location_id,
+                  error_code: "23505_then_line_conflict",
+                  error_message: insErr.message,
+                });
+                await replyLine(accessToken, replyToken,
+                  `確認が必要なため、担当者が確認のうえご連絡いたします。`);
+                continue;
+              }
+              await supabase.from("customers")
+                .update({ line_user_id: userId, line_unfollowed_at: null })
+                .eq("id", fb.id);
+              await supabase.from("line_pending_friends")
+                .delete().eq("owner_id", owner.id).eq("line_user_id", userId);
+              await logRegistration({
+                action: "link_existing_customer",
+                success: true,
+                customer_id: fb.id,
+                location_id: fb.location_id,
+                error_code: "23505_recovered",
+              });
+              await replyLine(accessToken, replyToken,
+                `${fb.full_name}様、ご登録情報を確認しました。\n今後はこちらのLINEからご予約・お問い合わせいただけます。\n\n— ${salonName}`);
+              continue;
+            }
+          }
+          console.error("[line-webhook] guest customer create failed:", insErr);
+          await logRegistration({
+            action: "failed",
+            success: false,
+            location_id: defaultLocationId,
+            error_code: (insErr as any).code || "insert_failed",
+            error_message: insErr.message,
+          });
+          await replyLine(accessToken, replyToken,
+            `ご登録処理でエラーが発生しました。お手数ですが、しばらくしてから再度お試しください。`);
+          continue;
+        }
+
+        await supabase.from("line_pending_friends")
+          .delete().eq("owner_id", owner.id).eq("line_user_id", userId);
+        await logRegistration({
+          action: "create_customer",
+          success: true,
+          customer_id: created?.id || null,
+          location_id: created?.location_id || defaultLocationId,
+        });
+        await replyLine(accessToken, replyToken,
+          `ご登録ありがとうございます。お電話番号を確認しました。\nお手数ですが、お名前（フルネーム）をメッセージでお送りください。\n例：山田 花子\n\n— ${salonName}`);
       }
 
       if (ev.type === "unfollow" && userId) {
