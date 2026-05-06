@@ -205,7 +205,7 @@ Deno.serve(async (req) => {
       }
 
       // LINE通知（オーナー/スタッフのLINE）
-      if (channels.includes("line") && r.line_user_id && profile?.line_channel_access_token) {
+      if (channels.includes("line") && r.line_user_id && creds) {
         const lineMsg =
           `🔔 ${eventLabel}\n\n` +
           `👤 ${customerName}様\n` +
@@ -217,10 +217,11 @@ Deno.serve(async (req) => {
             ? `\n📋 ご来店前に必ずカルテをご確認ください。\n`
             : "") +
           `\n— ${salonName}`;
-        const lr = await sendLinePush(profile.line_channel_access_token, r.line_user_id, lineMsg);
+        const lr = await sendLinePush(creds.accessToken, r.line_user_id, lineMsg);
         ownerLineResults.push(lr.ok ? `${r.line_user_id}: sent` : `${r.line_user_id}: error`);
         await supabase.from("line_message_log").insert({
           owner_id: booking.owner_id,
+          location_id: bookingLocationId,
           line_user_id: r.line_user_id,
           job_type: `owner_alert_${eventType}`,
           message: lineMsg,
