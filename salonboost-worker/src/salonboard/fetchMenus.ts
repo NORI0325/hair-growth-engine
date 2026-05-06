@@ -16,11 +16,22 @@ export interface FetchedMenu {
 }
 
 function extractPrice(label: string): number | null {
-  // 「→¥11000」「¥13200→¥11000」のように矢印後の値を優先
   const arrow = label.match(/(?:→|->)\s*[¥￥]?\s*([0-9,]+)/);
   if (arrow) return Number(arrow[1].replace(/,/g, ""));
   const m = label.match(/[¥￥]\s*([0-9,]+)/);
   if (m) return Number(m[1].replace(/,/g, ""));
+  return null;
+}
+
+// "1:30" → 90, "0:30" → 30, "90分" → 90
+function parseTermLabel(s: string): number | null {
+  const t = (s || "").trim();
+  const colon = t.match(/^(\d+):(\d{2})/);
+  if (colon) return Number(colon[1]) * 60 + Number(colon[2]);
+  const min = t.match(/(\d+)\s*分/);
+  if (min) return Number(min[1]);
+  const num = t.match(/^\d+$/);
+  if (num) return Number(t);
   return null;
 }
 
@@ -57,6 +68,46 @@ async function extractOptions(page: Page, selector: string) {
   );
 }
 
+async function readRsvTerm(page: Page): Promise<number | null> {
+  // 1. select[name="rsvTerm"]
+  for (const sel of ['select[name="rsvTerm"]', 'select#rsvTermId']) {
+    const loc = page.locator(sel);
+    if (await loc.count()) {
+      try {
+        const v = await loc.inputValue();
+        const n = Number(v);
+        if (Number.isFinite(n) && n > 0) return n;
+      } catch {}
+      // fallback: selected option text
+      try {
+        const txt = await loc.locator("option:checked").first().textContent();
+        const parsed = parseTermLabel(txt || "");
+        if (parsed) return parsed;
+      } catch {}
+    }
+  }
+  return null;
+}
+
+async function diagnoseRsvTerm(page: Page) {
+  const sel = page.locator('select[name="rsvTerm"], select#rsvTermId').first();
+  const exists = (await sel.count()) > 0;
+  let current: string | null = null;
+  let options: Array<{ value: string; label: string }> = [];
+  if (exists) {
+    try { current = await sel.inputValue(); } catch {}
+    try {
+      options = await sel.locator("option").evaluateAll((els) =>
+        els.map((el) => {
+          const o = el as HTMLOptionElement;
+          return { value: o.value, label: (o.textContent || "").trim() };
+        })
+      );
+    } catch {}
+  }
+  return { exists, current, options };
+}
+
 export async function fetchSalonboardMenus(page: Page): Promise<FetchedMenu[]> {
   const today = new Date();
   const j = new Date(today.getTime() + 9 * 60 * 60 * 1000);
@@ -74,15 +125,12 @@ export async function fetchSalonboardMenus(page: Page): Promise<FetchedMenu[]> {
     throw new WorkerError("session_expired", "redirected to login (fetchMenus)");
   }
 
-  // 何かしらの select が現れるのを待つ（最低限 setmenuId or menuCategoryCdList or netCouponId）
   try {
     await page.waitForSelector(
       'select[name="setmenuId"], select[name="menuCategoryCdList"], select[name="netCouponId"]',
       { timeout: 30000 }
     );
-  } catch {
-    // 後段の診断に任せる
-  }
+  } catch {}
 
   const [setmenuOpts, categoryOpts, couponOpts] = await Promise.all([
     extractOptions(page, 'select[name="setmenuId"]'),
@@ -92,8 +140,39 @@ export async function fetchSalonboardMenus(page: Page): Promise<FetchedMenu[]> {
 
   const result: FetchedMenu[] = [];
 
+  // setmenu: 1件ずつ選択して rsvTerm を取得
+  const setmenuSel = page.locator('select[name="setmenuId"]');
+  const hasSetmenu = (await setmenuSel.count()) > 0;
+  let baselineTerm: number | null = null;
+  if (hasSetmenu) {
+    try { await setmenuSel.selectOption(""); } catch {}
+    await page.waitForTimeout(400);
+    baselineTerm = await readRsvTerm(page);
+  }
+
   for (const o of setmenuOpts) {
     if (!o.value) continue;
+    let rsvTerm: number | null = null;
+    if (hasSetmenu) {
+      try {
+        await setmenuSel.selectOption(o.value);
+        // JSが rsvTerm を更新するのを待つ：値が変わるか、最大1500ms
+        const start = Date.now();
+        let last: number | null = null;
+        while (Date.now() - start < 1500) {
+          await page.waitForTimeout(150);
+          last = await readRsvTerm(page);
+          if (last !== null && last !== baselineTerm) break;
+        }
+        rsvTerm = last;
+        if (rsvTerm === null) {
+          const diag = await diagnoseRsvTerm(page);
+          logger.warn({ setmenuId: o.value, diag }, "rsvTerm not detected for setmenu");
+        }
+      } catch (e) {
+        logger.warn({ setmenuId: o.value, e: (e as Error).message }, "selectOption failed");
+      }
+    }
     result.push({
       external_menu_id: o.value,
       setmenu_id: o.value,
@@ -101,12 +180,15 @@ export async function fetchSalonboardMenus(page: Page): Promise<FetchedMenu[]> {
       menu_category_cd: null,
       net_coupon_id: null,
       menu_name: o.label || o.value,
-      rsv_term: null,
+      rsv_term: rsvTerm,
       price: extractPrice(o.label),
       active: !o.disabled,
       source_type: "setmenu",
     });
   }
+
+  // 選択をリセット
+  if (hasSetmenu) { try { await setmenuSel.selectOption(""); } catch {} }
 
   for (const o of categoryOpts) {
     if (!o.value) continue;
@@ -149,10 +231,12 @@ export async function fetchSalonboardMenus(page: Page): Promise<FetchedMenu[]> {
     );
   }
 
+  const setmenuWithTerm = result.filter((r) => r.source_type === "setmenu" && r.rsv_term !== null).length;
   logger.info(
     {
       count: result.length,
       setmenu: setmenuOpts.length,
+      setmenu_with_term: setmenuWithTerm,
       category: categoryOpts.length,
       coupon: couponOpts.length,
     },

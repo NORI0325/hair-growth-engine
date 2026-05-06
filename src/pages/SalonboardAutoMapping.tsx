@@ -261,13 +261,19 @@ export default function SalonboardAutoMapping() {
                     {m.menu_category_cd && <>cat: {m.menu_category_cd} </>}
                     {m.net_coupon_id && <>coupon: {m.net_coupon_id} </>}
                     {m.price && <>/ ¥{m.price.toLocaleString()} </>}
-                    <span className="ml-1">所要分:
+                    <span className="ml-1">所要時間:
                       <input
                         type="number" min={0} step={5}
                         className="ml-1 w-16 border px-1 py-0.5 rounded-none bg-background"
                         value={menuRsvTerm[m.external_menu_id] ?? (m.rsv_term ?? "")}
                         onChange={(e) => setMenuRsvTerm({ ...menuRsvTerm, [m.external_menu_id]: e.target.value === "" ? "" : Number(e.target.value) })}
                       />
+                      <span className="ml-1">分</span>
+                      {m.rsv_term != null ? (
+                        <Badge variant="outline" className="rounded-none ml-2 text-[10px] border-emerald-500 text-emerald-600">自動取得済み</Badge>
+                      ) : (
+                        <Badge variant="outline" className="rounded-none ml-2 text-[10px] border-amber-500 text-amber-600">未取得 / 手入力してください</Badge>
+                      )}
                     </span>
                   </div>
                 </div>
