@@ -84,6 +84,7 @@ export default function ManualBookingDialog({ onCreated, trigger }: Props) {
   };
 
   const submit = async () => {
+    if (!locationId) { toast.error("店舗を選択してください"); return; }
     if (!customerId) { toast.error("顧客を選択してください"); return; }
     if (selectedMenus.length === 0) { toast.error("メニューを選択してください"); return; }
     setSubmitting(true);
@@ -96,7 +97,7 @@ export default function ManualBookingDialog({ onCreated, trigger }: Props) {
           booking_time: time,
           menus: selectedMenus,
           notes: notes || null,
-          location_id: locationId || null,
+          location_id: locationId,
         },
       });
       if (error) throw error;
@@ -223,7 +224,7 @@ export default function ManualBookingDialog({ onCreated, trigger }: Props) {
           <Button variant="ghost" className="rounded-none" onClick={() => setOpen(false)} disabled={submitting}>
             キャンセル
           </Button>
-          <Button className="rounded-none" onClick={submit} disabled={submitting}>
+          <Button className="rounded-none" onClick={submit} disabled={submitting || !locationId}>
             {submitting ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" />同期中...</> : "予約を作成"}
           </Button>
         </DialogFooter>
