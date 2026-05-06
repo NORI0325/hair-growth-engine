@@ -58,19 +58,36 @@ Deno.serve(async (req) => {
       });
     }
 
+    let bodyJson: any = {};
+    try { bodyJson = await req.json(); } catch (_) {}
+    const locationId: string | null = bodyJson?.location_id || null;
+
     const { data: profile } = await supabase
       .from("profiles")
-      .select("salon_name, public_slug, line_channel_access_token, google_review_url")
+      .select("salon_name, public_slug, google_review_url")
       .eq("id", user.id)
       .maybeSingle();
 
-    const token = profile?.line_channel_access_token;
-    if (!token) {
+    let location: any = null;
+    if (locationId) {
+      const { data: loc } = await supabase
+        .from("locations")
+        .select("id, name, public_slug")
+        .eq("id", locationId)
+        .maybeSingle();
+      location = loc;
+    }
+
+    const creds = await getLineCredentials(supabase, user.id, locationId);
+    if (!creds) {
       return new Response(JSON.stringify({ error: "no_token", message: "先にチャネルアクセストークンを設定してください" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    if (!profile?.public_slug) {
+    const token = creds.accessToken;
+
+    const slug = location?.public_slug || profile?.public_slug;
+    if (!slug) {
       return new Response(JSON.stringify({ error: "no_slug", message: "サロンの公開URLが未設定です" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
