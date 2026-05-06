@@ -54,21 +54,24 @@ export default function ChannelIntegrations() {
   const [credLoginId, setCredLoginId] = useState("");
   const [credPassword, setCredPassword] = useState("");
   const [savingCreds, setSavingCreds] = useState(false);
+  const [saveDiagnostic, setSaveDiagnostic] = useState<any | null>(null);
 
   const saveCreds = async () => {
     if (!user) return;
     if (!credLoginId || !credPassword) { toast.error("ID/PWを入力してください"); return; }
     setSavingCreds(true);
+    setSaveDiagnostic(null);
     try {
       const { data, error } = await supabase.functions.invoke("salonboard-credentials-save", {
         body: { owner_id: user.id, location_id: null, login_id: credLoginId, password: credPassword },
       });
+      if ((data as any)?.diagnostic) setSaveDiagnostic((data as any).diagnostic);
       if (error) {
         toast.error("保存失敗: " + error.message);
       } else if ((data as any)?.error) {
         toast.error("保存失敗: " + (data as any).error);
       } else {
-        toast.success("ID/PWを保存しました");
+        toast.success((data as any)?.diagnostic?.self_decrypt_ok ? "ID/PWを保存しました（self-decrypt OK）" : "ID/PWを保存しました");
         setCredsOpen(false); setCredLoginId(""); setCredPassword("");
         load();
       }
