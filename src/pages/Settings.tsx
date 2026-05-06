@@ -20,6 +20,7 @@ import SalonHoursEditor from "@/components/SalonHoursEditor";
 import ParkingSettingsEditor from "@/components/ParkingSettingsEditor";
 import ReactivationStagesEditor, { type ReactivationStage } from "@/components/ReactivationStagesEditor";
 import NotificationRecipientsBadge from "@/components/NotificationRecipientsBadge";
+import LocationLineSettingsEditor from "@/components/LocationLineSettingsEditor";
 
 const WEBHOOK_URL = "https://miyedioemkzhetphjzzg.supabase.co/functions/v1/line-webhook";
 
