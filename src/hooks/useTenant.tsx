@@ -27,11 +27,25 @@ export const useTenant = () => {
         .select("tenant_id, role, accepted_at")
         .eq("user_id", user.id)
         .not("accepted_at", "is", null)
-        .order("role", { ascending: true })
-        .limit(1)
-        .maybeSingle();
+        .order("accepted_at", { ascending: false });
       if (error) throw error;
-      return data as TenantMembership | null;
+      const memberships = (data ?? []) as TenantMembership[];
+      if (memberships.length === 0) return null;
+
+      const storedLocationId = typeof window !== "undefined"
+        ? localStorage.getItem("salon-boost:current-location-id")
+        : null;
+      if (storedLocationId) {
+        const { data: location } = await supabase
+          .from("locations")
+          .select("tenant_id")
+          .eq("id", storedLocationId)
+          .maybeSingle();
+        const matched = memberships.find((m) => m.tenant_id === location?.tenant_id);
+        if (matched) return matched;
+      }
+
+      return memberships[0];
     },
   });
 };
