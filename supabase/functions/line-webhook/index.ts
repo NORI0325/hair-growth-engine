@@ -357,6 +357,7 @@ Deno.serve(async (req) => {
 
             // テンプレート上書きがあれば優先
             let replyBody = cat.reply;
+            let autoAnswered = false;
             try {
               const { data: tpl } = await supabase
                 .from("customer_message_templates")
@@ -370,6 +371,27 @@ Deno.serve(async (req) => {
               if (tpl?.body && tpl.body.trim().length > 0) replyBody = tpl.body;
             } catch (e) { console.warn("[line-webhook] inquiry tpl fetch failed:", e); }
 
+            // 営業時間：DBから即時回答
+            if (cat.autoAnswer === "hours") {
+              try {
+                let hq = supabase.from("salon_hours")
+                  .select("weekday, open_time, close_time, closed")
+                  .eq("owner_id", owner.id);
+                if (cust?.location_id) hq = hq.eq("location_id", cust.location_id);
+                else hq = hq.is("location_id", null);
+                const { data: rows } = await hq.order("weekday");
+                if (rows && rows.length > 0) {
+                  const wk = ["日", "月", "火", "水", "木", "金", "土"];
+                  const lines = rows.map((r: any) => {
+                    const t = r.closed ? "定休日" : `${String(r.open_time).slice(0,5)}〜${String(r.close_time).slice(0,5)}`;
+                    return `${wk[r.weekday]}：${t}`;
+                  });
+                  replyBody = `営業時間はこちらです🌸\n\n${lines.join("\n")}\n\nご予約はトーク下部の「予約する」からお進みください。`;
+                  autoAnswered = true;
+                }
+              } catch (e) { console.warn("[line-webhook] hours fetch failed:", e); }
+            }
+
             // 受信ログ保存（AI分類はスキップ）
             await supabase.from("line_inbound_messages").insert({
               owner_id: owner.id,
@@ -381,9 +403,10 @@ Deno.serve(async (req) => {
               intent: cat.intent,
               urgency: cat.urgency,
               summary: `お問い合わせ: ${cat.label}`,
-              suggested_action: cat.urgency === "high" ? "至急ご対応ください" : "営業時間内に確認",
+              suggested_action: autoAnswered ? "自動回答済み" : (cat.urgency === "high" ? "至急ご対応ください" : "営業時間内に確認"),
               ai_processed: true,
-              handled: false,
+              handled: autoAnswered,
+              handled_at: autoAnswered ? new Date().toISOString() : null,
             });
 
             // 一次返信
