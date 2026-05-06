@@ -134,6 +134,10 @@ export default function SalonboardAutoMapping() {
   };
 
   const importMenus = async () => {
+    if (!loc) {
+      toast.error("店舗情報が取得できないため、メニューを取り込めません。店舗を選択してください。");
+      return;
+    }
     const items = menuOpts
       .filter((m) => !mappedMenuExt.has(m.external_menu_id))
       .map((m) => {
