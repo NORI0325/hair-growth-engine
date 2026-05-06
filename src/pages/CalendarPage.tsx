@@ -114,6 +114,16 @@ const CalendarPage = () => {
     load();
   };
 
+  const cancelBooking = async (id: string) => {
+    if (!confirm("この予約をキャンセル扱いにします。よろしいですか？\n（あとで「キャンセルを取り消す」から復元できます）")) return;
+    await updateStatus(id, "cancelled");
+  };
+
+  const restoreBooking = async (id: string) => {
+    if (!confirm("この予約のキャンセルを取り消し、「確定」に戻します。よろしいですか？")) return;
+    await updateStatus(id, "confirmed");
+  };
+
   return (
     <AppLayout>
       <PageHeader
@@ -186,9 +196,19 @@ const CalendarPage = () => {
                   <Button size="sm" className="rounded-none" onClick={() => updateStatus(selected.id, "confirmed")}>確定にする</Button>
                 )}
                 {(selected.status === "pending" || selected.status === "confirmed") && (
-                  <Button size="sm" variant="outline" className="rounded-none" onClick={() => updateStatus(selected.id, "cancelled")}>キャンセル</Button>
+                  <Button size="sm" className="rounded-none" onClick={() => updateStatus(selected.id, "completed")}>来店済にする</Button>
                 )}
+                {(selected.status === "pending" || selected.status === "confirmed") && (
+                  <Button size="sm" variant="destructive" className="rounded-none" onClick={() => cancelBooking(selected.id)}>予約をキャンセル</Button>
+                )}
+                {selected.status === "cancelled" && (
+                  <Button size="sm" className="rounded-none" onClick={() => restoreBooking(selected.id)}>キャンセルを取り消す</Button>
+                )}
+                <Button size="sm" variant="outline" className="rounded-none ml-auto" onClick={() => setSelected(null)}>閉じる</Button>
               </div>
+              {selected.status === "cancelled" && (
+                <p className="text-[11px] text-muted-foreground">※「キャンセルを取り消す」を押すと予約が「確定」状態に戻ります。</p>
+              )}
             </div>
           )}
         </DialogContent>
