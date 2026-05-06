@@ -948,7 +948,8 @@ Deno.serve(async (req) => {
                 await replyLine(accessToken, replyToken, replyMsg);
                 await logLineReply(
                   supabase, owner.id, linkedCustomer.id, userId,
-                  "reservation_pending", replyMsg, "sent",
+                  "reservation_pending", replyMsg, "sent", undefined,
+                  await resolveLocationId((linkedCustomer as any)?.location_id ?? null),
                 );
 
                 // 🆕 スタッフへLINE通知（notification_recipientsに登録された全員へPush）
