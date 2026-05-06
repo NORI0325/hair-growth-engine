@@ -4,7 +4,7 @@
 // - reject: 却下 → LINE返信
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
-import { sendLinePush } from "../_shared/line-push.ts";
+import { sendLinePush, getLineCredentials } from "../_shared/line-push.ts";
 
 interface Body {
   request_id: string;
@@ -104,11 +104,18 @@ Deno.serve(async (req) => {
   // オーナー設定取得
   const { data: owner } = await supabase
     .from("profiles")
-    .select("salon_name, line_channel_access_token")
+    .select("salon_name")
     .eq("id", rr.owner_id)
     .maybeSingle();
   const salonName = owner?.salon_name || "サロン";
-  const accessToken = owner?.line_channel_access_token;
+  // location_id 解決
+  let locationId: string | null = (rr as any).location_id || null;
+  if (!locationId && rr.customer_id) {
+    const { data: cu } = await supabase.from("customers").select("location_id").eq("id", rr.customer_id).maybeSingle();
+    locationId = (cu as any)?.location_id || null;
+  }
+  const creds = await getLineCredentials(supabase, rr.owner_id, locationId);
+  const accessToken = creds?.accessToken;
 
   // ============================================================
   // ACTION: approve（承認）
@@ -126,6 +133,7 @@ Deno.serve(async (req) => {
       .from("bookings")
       .insert({
         owner_id: rr.owner_id,
+        location_id: locationId,
         customer_id: rr.customer_id,
         booking_date: body.confirmed_date,
         booking_time: body.confirmed_time,
@@ -204,6 +212,7 @@ ${body.confirmed_staff_id ? "担当: 指定あり" : ""}
       const r = await sendLinePush(accessToken, rr.line_user_id, replyMsg);
       await supabase.from("line_message_log").insert({
         owner_id: rr.owner_id,
+        location_id: locationId,
         customer_id: rr.customer_id,
         line_user_id: rr.line_user_id,
         job_type: "reservation_approved",
@@ -244,6 +253,7 @@ ${body.proposal_message}
       const r = await sendLinePush(accessToken, rr.line_user_id, replyMsg);
       await supabase.from("line_message_log").insert({
         owner_id: rr.owner_id,
+        location_id: locationId,
         customer_id: rr.customer_id,
         line_user_id: rr.line_user_id,
         job_type: "reservation_proposal",
@@ -313,6 +323,7 @@ ${body.proposal_message}
       const r = await sendLinePush(accessToken, rr.line_user_id, replyMsg);
       await supabase.from("line_message_log").insert({
         owner_id: rr.owner_id,
+        location_id: locationId,
         customer_id: rr.customer_id,
         line_user_id: rr.line_user_id,
         job_type: "reservation_rejected",

@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
+import { getLineCredentials } from "../_shared/line-push.ts";
 
 // オリジン取得（公開URL or Lovable preview）
 const getAppOrigin = (req: Request): string => {
@@ -101,7 +102,8 @@ Deno.serve(async (req) => {
     }
 
     // セグメントに該当する顧客を取得
-    let q = supabase.from("customers").select("id, full_name, email, phone, last_visit_date, line_user_id").eq("owner_id", user.id);
+    let q = supabase.from("customers").select("id, full_name, email, phone, last_visit_date, line_user_id, location_id").eq("owner_id", user.id);
+    if ((campaign as any).location_id) q = q.eq("location_id", (campaign as any).location_id);
 
     const today = new Date();
     if (campaign.target_segment === "dormant") {
@@ -125,13 +127,12 @@ Deno.serve(async (req) => {
     // ステータス更新
     await supabase.from("campaigns").update({ status: "sending", total_recipients: customers.length }).eq("id", campaign_id);
 
-    // サロンのLINEトークン取得
+    // ownerProfile（salon_name用）
     const { data: ownerProfile } = await supabase
       .from("profiles")
-      .select("line_channel_access_token")
+      .select("salon_name")
       .eq("id", user.id)
       .maybeSingle();
-    const lineToken = ownerProfile?.line_channel_access_token;
 
     // 各顧客にbooking_tokenを取得して配信
     const { data: tokens } = await supabase
@@ -193,12 +194,27 @@ Deno.serve(async (req) => {
         await new Promise(r => setTimeout(r, 100));
       }
 
-      // LINE Push（顧客にLINE ID登録 + サロンにトークン登録があれば）
-      if (lineToken && c.line_user_id) {
-        const lineBody = renderTemplate(campaign.sms_body || campaign.email_body || "", vars);
-        const r = await sendLine(lineToken, c.line_user_id, lineBody);
-        if (!r.ok) send.sms_error = (send.sms_error ? send.sms_error + " | " : "") + r.error;
-        await new Promise(r => setTimeout(r, 50));
+      // LINE Push（顧客にLINE ID登録があり、店舗別または共通トークンがあれば）
+      if (c.line_user_id) {
+        const custLocId = (c as any).location_id || (campaign as any).location_id || null;
+        const creds = await getLineCredentials(supabase, user.id, custLocId);
+        if (creds) {
+          const lineBody = renderTemplate(campaign.sms_body || campaign.email_body || "", vars);
+          const r = await sendLine(creds.accessToken, c.line_user_id, lineBody);
+          await supabase.from("line_message_log").insert({
+            owner_id: user.id,
+            location_id: custLocId,
+            customer_id: c.id,
+            line_user_id: c.line_user_id,
+            job_type: "campaign",
+            template_key: `campaign:${campaign_id}`,
+            message: lineBody,
+            status: r.ok ? "sent" : "failed",
+            error: r.ok ? null : r.error,
+          });
+          if (!r.ok) send.sms_error = (send.sms_error ? send.sms_error + " | " : "") + r.error;
+          await new Promise(r => setTimeout(r, 50));
+        }
       }
 
       sends.push(send);

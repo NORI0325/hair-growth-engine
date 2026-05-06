@@ -2,6 +2,7 @@
 // オーナー認証必須。設定画面の「リッチメニュー設定」ボタンから呼び出される。
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
+import { getLineCredentials } from "../_shared/line-push.ts";
 
 const LINE_API = "https://api.line.me/v2/bot";
 const LINE_DATA_API = "https://api-data.line.me/v2/bot";
@@ -57,26 +58,43 @@ Deno.serve(async (req) => {
       });
     }
 
+    let bodyJson: any = {};
+    try { bodyJson = await req.json(); } catch (_) {}
+    const locationId: string | null = bodyJson?.location_id || null;
+
     const { data: profile } = await supabase
       .from("profiles")
-      .select("salon_name, public_slug, line_channel_access_token, google_review_url")
+      .select("salon_name, public_slug, google_review_url")
       .eq("id", user.id)
       .maybeSingle();
 
-    const token = profile?.line_channel_access_token;
-    if (!token) {
+    let location: any = null;
+    if (locationId) {
+      const { data: loc } = await supabase
+        .from("locations")
+        .select("id, name, public_slug")
+        .eq("id", locationId)
+        .maybeSingle();
+      location = loc;
+    }
+
+    const creds = await getLineCredentials(supabase, user.id, locationId);
+    if (!creds) {
       return new Response(JSON.stringify({ error: "no_token", message: "先にチャネルアクセストークンを設定してください" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    if (!profile?.public_slug) {
+    const token = creds.accessToken;
+
+    const slug = location?.public_slug || profile?.public_slug;
+    if (!slug) {
       return new Response(JSON.stringify({ error: "no_slug", message: "サロンの公開URLが未設定です" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const APP_ORIGIN = Deno.env.get("APP_ORIGIN") || "https://saronboost.com";
-    const bookingUrl = `${APP_ORIGIN}/salon/${profile.public_slug}`;
+    const bookingUrl = `${APP_ORIGIN}/salon/${slug}`;
 
     // 既存メニュー全削除
     try {
@@ -92,7 +110,7 @@ Deno.serve(async (req) => {
     const menuPayload = {
       size: { width: 2500, height: 843 },
       selected: true,
-      name: `${profile.salon_name || "サロン"} メニュー`,
+      name: `${location?.name || profile?.salon_name || "サロン"} メニュー`,
       chatBarText: "メニュー",
       areas: [
         {
@@ -143,7 +161,18 @@ Deno.serve(async (req) => {
     // デフォルト設定
     await lineFetch(`/user/all/richmenu/${richMenuId}`, token, { method: "POST" });
 
-    return new Response(JSON.stringify({ success: true, richMenuId, bookingUrl }), {
+    // richMenuId 保存（店舗別 or オーナー共通）
+    try {
+      if (locationId && creds.source === "location") {
+        await supabase.from("locations").update({ line_rich_menu_id: richMenuId } as any).eq("id", locationId);
+      } else {
+        await supabase.from("profiles").update({ line_rich_menu_id: richMenuId } as any).eq("id", user.id);
+      }
+    } catch (e) {
+      console.warn("rich_menu_id save failed:", e instanceof Error ? e.message : "unknown");
+    }
+
+    return new Response(JSON.stringify({ success: true, richMenuId, bookingUrl, scope: creds.source }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {

@@ -1,7 +1,7 @@
 // ワンタイムトークンによる予約承認・別日提案・却下の実行
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
-import { sendLinePush } from "../_shared/line-push.ts";
+import { sendLinePush, getLineCredentials } from "../_shared/line-push.ts";
 import { verifyActionToken, hashToken } from "../_shared/reservation-token.ts";
 
 interface Body {
@@ -102,11 +102,18 @@ Deno.serve(async (req) => {
 
   const { data: owner } = await supabase
     .from("profiles")
-    .select("salon_name, line_channel_access_token")
+    .select("salon_name")
     .eq("id", rr.owner_id)
     .maybeSingle();
   const salonName = owner?.salon_name || "サロン";
-  const accessToken = owner?.line_channel_access_token;
+  // location_id 解決：reservation_requests → customers → null
+  let locationId: string | null = (rr as any).location_id || null;
+  if (!locationId && rr.customer_id) {
+    const { data: cu } = await supabase.from("customers").select("location_id").eq("id", rr.customer_id).maybeSingle();
+    locationId = (cu as any)?.location_id || null;
+  }
+  const creds = await getLineCredentials(supabase, rr.owner_id, locationId);
+  const accessToken = creds?.accessToken;
   const customerName = rr.display_name || "お客様";
 
   const action = tokenRow.action as "approve" | "propose" | "reject";
@@ -125,6 +132,7 @@ Deno.serve(async (req) => {
       .from("bookings")
       .insert({
         owner_id: rr.owner_id,
+        location_id: locationId,
         customer_id: rr.customer_id,
         booking_date: body.confirmed_date,
         booking_time: body.confirmed_time,
@@ -163,7 +171,7 @@ Deno.serve(async (req) => {
       const replyMsg = `${customerName}様\n\nご予約が確定いたしました🌸\n\n📅 ${jpDate(body.confirmed_date)} ${body.confirmed_time}\n💇 ${menu}\n\nご来店を心よりお待ちしております。${extra}\n\n— ${salonName}`;
       const r = await sendLinePush(accessToken, rr.line_user_id, replyMsg);
       await supabase.from("line_message_log").insert({
-        owner_id: rr.owner_id, customer_id: rr.customer_id, line_user_id: rr.line_user_id,
+        owner_id: rr.owner_id, location_id: locationId, customer_id: rr.customer_id, line_user_id: rr.line_user_id,
         job_type: "reservation_approved", message: replyMsg,
         status: r.ok ? "sent" : "failed", error: r.ok ? null : r.err,
       });
@@ -183,7 +191,7 @@ Deno.serve(async (req) => {
       const replyMsg = `${customerName}様\n\nご予約のご相談ありがとうございます🌸\n\n${body.proposal_message}\n\nご都合いかがでしょうか？このトークでお返事をお待ちしております。\n\n— ${salonName}`;
       const r = await sendLinePush(accessToken, rr.line_user_id, replyMsg);
       await supabase.from("line_message_log").insert({
-        owner_id: rr.owner_id, customer_id: rr.customer_id, line_user_id: rr.line_user_id,
+        owner_id: rr.owner_id, location_id: locationId, customer_id: rr.customer_id, line_user_id: rr.line_user_id,
         job_type: "reservation_proposal", message: replyMsg,
         status: r.ok ? "sent" : "failed", error: r.ok ? null : r.err,
       });
@@ -205,7 +213,7 @@ Deno.serve(async (req) => {
       const replyMsg = body.reject_message || `${customerName}様\n\nご予約のお問い合わせありがとうございます。\n\n申し訳ございません、ご希望の日時はあいにくお席が満席となっております。\n別日でのご相談を承りますので、よろしければ改めてご希望をお送りください。\n\n— ${salonName}`;
       const r = await sendLinePush(accessToken, rr.line_user_id, replyMsg);
       await supabase.from("line_message_log").insert({
-        owner_id: rr.owner_id, customer_id: rr.customer_id, line_user_id: rr.line_user_id,
+        owner_id: rr.owner_id, location_id: locationId, customer_id: rr.customer_id, line_user_id: rr.line_user_id,
         job_type: "reservation_rejected", message: replyMsg,
         status: r.ok ? "sent" : "failed", error: r.ok ? null : r.err,
       });

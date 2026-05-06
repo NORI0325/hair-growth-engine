@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
-import { sendLinePush } from "../_shared/line-push.ts";
+import { sendLinePush, getLineCredentials } from "../_shared/line-push.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
     // 予約取得＆所有者チェック
     const { data: booking } = await supabase
       .from("bookings")
-      .select("id, owner_id, customer_id, booking_date, booking_time, menu, status")
+      .select("id, owner_id, customer_id, location_id, booking_date, booking_time, menu, status")
       .eq("id", booking_id).maybeSingle();
     if (!booking || booking.customer_id !== tokenRow.customer_id) {
       return new Response(JSON.stringify({ error: "not_found" }), {
@@ -46,7 +46,7 @@ Deno.serve(async (req) => {
     // サロン設定（キャンセル許可・期限）
     const { data: profile } = await supabase
       .from("profiles")
-      .select("salon_name, allow_customer_cancel, cancel_deadline_hours, line_channel_access_token, owner_notification_email")
+      .select("salon_name, allow_customer_cancel, cancel_deadline_hours, owner_notification_email")
       .eq("id", booking.owner_id).maybeSingle();
     if (!profile?.allow_customer_cancel) {
       return new Response(JSON.stringify({ error: "cancel_disabled", message: "オンラインキャンセルはご利用いただけません。サロンへ直接ご連絡ください。" }), {
@@ -75,14 +75,28 @@ Deno.serve(async (req) => {
 
     // 顧客＆通知
     const { data: customer } = await supabase
-      .from("customers").select("full_name, line_user_id").eq("id", booking.customer_id).maybeSingle();
+      .from("customers").select("full_name, line_user_id, location_id").eq("id", booking.customer_id).maybeSingle();
     const salonName = profile.salon_name || "サロン";
+    const locationId = booking.location_id || (customer as any)?.location_id || null;
 
     // 顧客向けLINE通知
     try {
-      if (customer?.line_user_id && profile.line_channel_access_token) {
-        const text = `❌ ご予約のキャンセルを承りました\n\n${customer.full_name}様\n\n📅 ${booking.booking_date}\n🕐 ${booking.booking_time.slice(0,5)}\n💇 ${booking.menu}\n\nまたのご来店を心よりお待ちしております。\n${salonName}`;
-        await sendLinePush(profile.line_channel_access_token, customer.line_user_id, text);
+      if (customer?.line_user_id) {
+        const creds = await getLineCredentials(supabase, booking.owner_id, locationId);
+        if (creds) {
+          const text = `❌ ご予約のキャンセルを承りました\n\n${customer.full_name}様\n\n📅 ${booking.booking_date}\n🕐 ${booking.booking_time.slice(0,5)}\n💇 ${booking.menu}\n\nまたのご来店を心よりお待ちしております。\n${salonName}`;
+          const r = await sendLinePush(creds.accessToken, customer.line_user_id, text);
+          await supabase.from("line_message_log").insert({
+            owner_id: booking.owner_id,
+            location_id: locationId,
+            customer_id: booking.customer_id,
+            line_user_id: customer.line_user_id,
+            job_type: "booking_cancelled",
+            message: text,
+            status: r.ok ? "sent" : "failed",
+            error: r.ok ? null : r.err,
+          });
+        }
       }
     } catch (e) { console.error("LINE cancel notify error:", e); }
 

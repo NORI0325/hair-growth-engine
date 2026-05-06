@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
-import { sendLinePush } from "../_shared/line-push.ts";
+import { sendLinePush, getLineCredentials } from "../_shared/line-push.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -319,19 +319,33 @@ Deno.serve(async (req) => {
     try {
       const { data: cust } = await supabase
         .from("customers")
-        .select("full_name, line_user_id")
+        .select("full_name, line_user_id, location_id")
         .eq("id", customer.id)
         .maybeSingle();
+      const locationId = (cust as any)?.location_id || null;
+      const creds = cust?.line_user_id
+        ? await getLineCredentials(supabase, customer.owner_id, locationId)
+        : null;
       const { data: prof } = await supabase
         .from("profiles")
-        .select("salon_name, line_channel_access_token")
+        .select("salon_name")
         .eq("id", customer.owner_id)
         .maybeSingle();
-      if (cust?.line_user_id && prof?.line_channel_access_token) {
+      if (cust?.line_user_id && creds) {
         const APP_ORIGIN = Deno.env.get("APP_ORIGIN") || "https://hair-growth-engine.lovable.app";
         const myBookingsLink = `${APP_ORIGIN}/my-bookings/${token}`;
-        const text = `🌸 ご予約ありがとうございます\n\n${cust.full_name}様\n${prof.salon_name || "サロン"}でのご予約が確定しました。\n\n📅 ${date}\n🕐 ${time}\n💇 ${menu}\n\nお会いできるのを楽しみにお待ちしております。\n\nご予約の確認・キャンセルはこちら：\n→ ${myBookingsLink}`;
-        await sendLinePush(prof.line_channel_access_token, cust.line_user_id, text);
+        const text = `🌸 ご予約ありがとうございます\n\n${cust.full_name}様\n${prof?.salon_name || "サロン"}でのご予約が確定しました。\n\n📅 ${date}\n🕐 ${time}\n💇 ${menu}\n\nお会いできるのを楽しみにお待ちしております。\n\nご予約の確認・キャンセルはこちら：\n→ ${myBookingsLink}`;
+        const r = await sendLinePush(creds.accessToken, cust.line_user_id, text);
+        await supabase.from("line_message_log").insert({
+          owner_id: customer.owner_id,
+          location_id: locationId,
+          customer_id: customer.id,
+          line_user_id: cust.line_user_id,
+          job_type: "booking_created",
+          message: text,
+          status: r.ok ? "sent" : "failed",
+          error: r.ok ? null : r.err,
+        });
       }
     } catch (e) {
       console.error("LINE notification error (non-fatal):", e);
