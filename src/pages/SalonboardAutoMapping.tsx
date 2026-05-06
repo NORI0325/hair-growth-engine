@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
+import { useCurrentLocationId } from "@/hooks/useLocations";
 import { Loader2, Download, Upload } from "lucide-react";
 
 type StaffOpt = {
@@ -24,7 +25,8 @@ type ExistingMenu = { id: string; name: string };
 export default function SalonboardAutoMapping() {
   const { user } = useAuth();
   const { locationId } = useParams();
-  const loc = locationId && locationId !== "default" ? locationId : null;
+  const currentLocationId = useCurrentLocationId();
+  const loc = locationId && locationId !== "default" ? locationId : currentLocationId;
 
   const [staffOpts, setStaffOpts] = useState<StaffOpt[]>([]);
   const [menuOpts, setMenuOpts] = useState<MenuOpt[]>([]);
@@ -70,16 +72,16 @@ export default function SalonboardAutoMapping() {
     const { data: m } = await mQ;
     setMenuOpts((m || []) as any);
 
-    const { data: es } = await supabase.from("staff").select("id,name").eq("owner_id", user.id).eq("active", true).order("name");
+    const { data: es } = await supabase.from("staff").select("id,name").eq("owner_id", user.id).eq("location_id", loc).eq("active", true).order("name");
     setExistingStaff((es || []) as any);
-    const { data: em } = await supabase.from("menu_items").select("id,name").eq("owner_id", user.id).eq("active", true).order("name");
+    const { data: em } = await supabase.from("menu_items").select("id,name").eq("owner_id", user.id).eq("location_id", loc).eq("active", true).order("name");
     setExistingMenus((em || []) as any);
 
     const { data: scm } = await supabase.from("staff_channel_mappings").select("external_id")
-      .eq("owner_id", user.id).eq("channel", "salonboard").eq("enabled", true);
+      .eq("owner_id", user.id).eq("location_id", loc).eq("channel", "salonboard").eq("enabled", true);
     setMappedStaffExt(new Set((scm || []).map((r: any) => String(r.external_id))));
     const { data: mcm } = await supabase.from("menu_channel_mappings").select("external_setmenu_id, external_id, menu_category_cd, net_coupon_id")
-      .eq("owner_id", user.id).eq("channel", "salonboard").eq("enabled", true);
+      .eq("owner_id", user.id).eq("location_id", loc).eq("channel", "salonboard").eq("enabled", true);
     setMappedMenuExt(new Set((mcm || []).flatMap((r: any) => [r.external_setmenu_id, r.external_id, r.menu_category_cd, r.net_coupon_id]).filter(Boolean).map(String)));
   };
 
