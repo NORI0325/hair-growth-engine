@@ -133,6 +133,7 @@ Deno.serve(async (req) => {
       .from("bookings")
       .insert({
         owner_id: rr.owner_id,
+        location_id: locationId,
         customer_id: rr.customer_id,
         booking_date: body.confirmed_date,
         booking_time: body.confirmed_time,
