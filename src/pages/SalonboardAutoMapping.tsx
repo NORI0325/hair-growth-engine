@@ -60,6 +60,11 @@ export default function SalonboardAutoMapping() {
 
   const load = async () => {
     if (!user) return;
+    if (!loc) {
+      setStaffOpts([]); setMenuOpts([]); setExistingStaff([]); setExistingMenus([]);
+      setMappedStaffExt(new Set()); setMappedMenuExt(new Set());
+      return;
+    }
     let sQ = supabase.from("channel_staff_options" as any).select("*")
       .eq("owner_id", user.id).eq("channel", "salonboard").order("display_name");
     sQ = loc ? sQ.eq("location_id", loc) : sQ.is("location_id", null);
@@ -88,6 +93,7 @@ export default function SalonboardAutoMapping() {
   useEffect(() => { load(); }, [user, locationId]);
 
   const fetchStaff = async () => {
+    if (!loc) { toast.error("店舗情報が取得できないため、スタッフを取得できません。店舗を選択してください。"); return; }
     setFetching("staff");
     const res = await supabase.functions.invoke("salonboard-fetch-staff", { body: { owner_id: user!.id, location_id: loc } });
     setFetching("");
@@ -99,6 +105,7 @@ export default function SalonboardAutoMapping() {
     load();
   };
   const fetchMenus = async () => {
+    if (!loc) { toast.error("店舗情報が取得できないため、メニューを取得できません。店舗を選択してください。"); return; }
     setFetching("menus");
     const res = await supabase.functions.invoke("salonboard-fetch-menus", { body: { owner_id: user!.id, location_id: loc } });
     setFetching("");
@@ -184,7 +191,7 @@ export default function SalonboardAutoMapping() {
       <Card className="rounded-none p-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-serif text-xl">スタッフ</h2>
-          <Button onClick={fetchStaff} disabled={fetching === "staff"} className="rounded-none" variant="outline" size="sm">
+          <Button onClick={fetchStaff} disabled={fetching === "staff" || !loc} className="rounded-none" variant="outline" size="sm">
             {fetching === "staff" ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
             サロンボードから取得
           </Button>
@@ -235,7 +242,7 @@ export default function SalonboardAutoMapping() {
       <Card className="rounded-none p-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-serif text-xl">メニュー</h2>
-          <Button onClick={fetchMenus} disabled={fetching === "menus"} className="rounded-none" variant="outline" size="sm">
+          <Button onClick={fetchMenus} disabled={fetching === "menus" || !loc} className="rounded-none" variant="outline" size="sm">
             {fetching === "menus" ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
             サロンボードから取得
           </Button>
