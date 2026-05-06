@@ -114,6 +114,16 @@ const CalendarPage = () => {
     load();
   };
 
+  const cancelBooking = async (id: string) => {
+    if (!confirm("この予約をキャンセル扱いにします。よろしいですか？\n（あとで「キャンセルを取り消す」から復元できます）")) return;
+    await updateStatus(id, "cancelled");
+  };
+
+  const restoreBooking = async (id: string) => {
+    if (!confirm("この予約のキャンセルを取り消し、「確定」に戻します。よろしいですか？")) return;
+    await updateStatus(id, "confirmed");
+  };
+
   return (
     <AppLayout>
       <PageHeader
