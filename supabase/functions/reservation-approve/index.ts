@@ -4,7 +4,7 @@
 // - reject: 却下 → LINE返信
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
-import { sendLinePush } from "../_shared/line-push.ts";
+import { sendLinePush, getLineCredentials } from "../_shared/line-push.ts";
 
 interface Body {
   request_id: string;
