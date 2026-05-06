@@ -37,6 +37,24 @@ export default function SalonboardAutoMapping() {
   const [mappedStaffExt, setMappedStaffExt] = useState<Set<string>>(new Set());
   const [mappedMenuExt, setMappedMenuExt] = useState<Set<string>>(new Set());
   const [menuRsvTerm, setMenuRsvTerm] = useState<Record<string, number | "">>({});
+  const [showCoupon, setShowCoupon] = useState(false);
+  const [showCategory, setShowCategory] = useState(false);
+
+  // クーポンの注意ラベル検出
+  const COUPON_WARN_PATTERNS = [
+    "平日限定", "時間限定", "学割", "こちらからの予約不可",
+    "スタイリスト指定", "新規限定", "再来限定", "土日不可", "ネット予約不可",
+  ];
+  const detectCouponWarnings = (label: string): string[] =>
+    COUPON_WARN_PATTERNS.filter((p) => label.includes(p));
+
+  // source_type の判定（古いデータは setmenu 扱い）
+  const getSrcType = (m: MenuOpt): "setmenu" | "coupon" | "category" => {
+    if (m.source_type === "coupon" || m.source_type === "category" || m.source_type === "setmenu") return m.source_type;
+    if (m.net_coupon_id) return "coupon";
+    if (m.menu_category_cd && !m.setmenu_id) return "category";
+    return "setmenu";
+  };
 
   const load = async () => {
     if (!user) return;
