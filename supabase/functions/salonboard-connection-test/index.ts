@@ -127,8 +127,20 @@ Deno.serve(async (req) => {
       kind: "decrypt_credentials",
       ok: credsOk,
       error: errorCode,
-      diagnostic: { credentials_found: credentialsFound, owner_id, location_id: location_id || null,
-        encrypted_fields_present: encryptedFieldsPresent, key_present: keyPresent, source },
+      diagnostic: {
+        credentials_found: credentialsFound,
+        owner_id,
+        location_id: location_id || null,
+        encrypted_fields_present: encryptedFieldsPresent,
+        ...keyDiagnostic,
+        source,
+        loaded_record_id: loadedRecordId,
+        loaded_updated_at: loadedUpdatedAt,
+        encrypted_login_id_present: encryptedFieldsPresent,
+        encrypted_password_present: encryptedFieldsPresent,
+        decrypt_login_ok: !!loginId,
+        decrypt_password_ok: !!password,
+      },
     });
 
     if (!credsOk) {
