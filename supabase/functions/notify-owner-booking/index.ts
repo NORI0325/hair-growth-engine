@@ -147,6 +147,8 @@ Deno.serve(async (req) => {
     ]);
 
     const salonName = profile?.salon_name ?? "サロン";
+    const bookingLocationId = (booking as any).location_id ?? null;
+    const creds = await getLineCredentials(supabase, booking.owner_id, bookingLocationId);
     const bookingDate = booking.booking_date;
     const bookingTime = String(booking.booking_time).slice(0, 5);
     const menu = booking.menu;
