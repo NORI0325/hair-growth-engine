@@ -102,11 +102,18 @@ Deno.serve(async (req) => {
 
   const { data: owner } = await supabase
     .from("profiles")
-    .select("salon_name, line_channel_access_token")
+    .select("salon_name")
     .eq("id", rr.owner_id)
     .maybeSingle();
   const salonName = owner?.salon_name || "サロン";
-  const accessToken = owner?.line_channel_access_token;
+  // location_id 解決：reservation_requests → customers → null
+  let locationId: string | null = (rr as any).location_id || null;
+  if (!locationId && rr.customer_id) {
+    const { data: cu } = await supabase.from("customers").select("location_id").eq("id", rr.customer_id).maybeSingle();
+    locationId = (cu as any)?.location_id || null;
+  }
+  const creds = await getLineCredentials(supabase, rr.owner_id, locationId);
+  const accessToken = creds?.accessToken;
   const customerName = rr.display_name || "お客様";
 
   const action = tokenRow.action as "approve" | "propose" | "reject";
