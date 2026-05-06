@@ -114,9 +114,16 @@ export default function ChannelIntegrations() {
                     </div>
                     {r.last_error && <div className="mt-2 text-xs text-red-600 bg-red-50 px-2 py-1">{r.last_error}</div>}
                   </div>
-                  <Button variant="outline" size="sm" className="rounded-none" onClick={() => retry(c.key)}>
-                    <RefreshCw className="w-3 h-3 mr-1" />再同期
-                  </Button>
+                  <div className="flex flex-col gap-2">
+                    {c.key === "salonboard" && (
+                      <Button variant="default" size="sm" className="rounded-none" onClick={() => (window.location.href = "/onboarding/salonboard")}>
+                        セットアップ
+                      </Button>
+                    )}
+                    <Button variant="outline" size="sm" className="rounded-none" onClick={() => retry(c.key)}>
+                      <RefreshCw className="w-3 h-3 mr-1" />再同期
+                    </Button>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-6 pt-2 border-t border-border">
