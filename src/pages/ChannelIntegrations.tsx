@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { RefreshCw, AlertTriangle, CheckCircle2, Clock, PlugZap, Loader2 } from "lucide-react";
+import { RefreshCw, AlertTriangle, CheckCircle2, Clock, PlugZap, Loader2, KeyRound } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useAuth } from "@/hooks/useAuth";
 
 const CHANNELS = [
@@ -49,6 +50,34 @@ export default function ChannelIntegrations() {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; steps: any[] } | null>(null);
   const [logs, setLogs] = useState<WorkerLog[]>([]);
+  const [credsOpen, setCredsOpen] = useState(false);
+  const [credLoginId, setCredLoginId] = useState("");
+  const [credPassword, setCredPassword] = useState("");
+  const [savingCreds, setSavingCreds] = useState(false);
+
+  const saveCreds = async () => {
+    if (!user) return;
+    if (!credLoginId || !credPassword) { toast.error("ID/PWを入力してください"); return; }
+    setSavingCreds(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("salonboard-credentials-save", {
+        body: { owner_id: user.id, location_id: null, login_id: credLoginId, password: credPassword },
+      });
+      if (error) {
+        toast.error("保存失敗: " + error.message);
+      } else if ((data as any)?.error) {
+        toast.error("保存失敗: " + (data as any).error);
+      } else {
+        toast.success("ID/PWを保存しました");
+        setCredsOpen(false); setCredLoginId(""); setCredPassword("");
+        load();
+      }
+    } catch (e: any) {
+      toast.error("保存失敗: " + (e?.message || String(e)));
+    } finally {
+      setSavingCreds(false);
+    }
+  };
 
   const load = async () => {
     if (!user) return;
@@ -162,8 +191,11 @@ export default function ChannelIntegrations() {
                   <div className="flex flex-col gap-2">
                     {c.key === "salonboard" && (
                       <>
-                        <Button variant="default" size="sm" className="rounded-none" onClick={() => (window.location.href = "/onboarding/salonboard")}>
-                          セットアップ
+                        <Button variant="default" size="sm" className="rounded-none" onClick={() => setCredsOpen(true)}>
+                          <KeyRound className="w-3 h-3 mr-1" />ログイン情報設定
+                        </Button>
+                        <Button variant="outline" size="sm" className="rounded-none" onClick={() => (window.location.href = "/onboarding/salonboard")}>
+                          詳細セットアップ
                         </Button>
                         <Button variant="outline" size="sm" className="rounded-none" disabled={testing} onClick={runConnectionTest}>
                           {testing ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <PlugZap className="w-3 h-3 mr-1" />}
@@ -181,12 +213,17 @@ export default function ChannelIntegrations() {
                   <div className="border border-border p-3 text-xs space-y-1 bg-secondary/20">
                     <div className="font-serif mb-1">疎通テスト結果</div>
                     {testResult.steps.map((s: any, i: number) => (
-                      <div key={i} className="flex items-center gap-2">
-                        {s.ok ? <CheckCircle2 className="w-3 h-3 text-emerald-600" /> : <AlertTriangle className="w-3 h-3 text-red-600" />}
-                        <span className="font-mono">{s.kind}</span>
-                        {s.status && <span className="text-muted-foreground">HTTP {s.status}</span>}
-                        {s.latency_ms != null && <span className="text-muted-foreground">{s.latency_ms}ms</span>}
-                        {s.error && <span className="text-red-600">{s.error}</span>}
+                      <div key={i} className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          {s.ok ? <CheckCircle2 className="w-3 h-3 text-emerald-600" /> : <AlertTriangle className="w-3 h-3 text-red-600" />}
+                          <span className="font-mono">{s.kind}</span>
+                          {s.status && <span className="text-muted-foreground">HTTP {s.status}</span>}
+                          {s.latency_ms != null && <span className="text-muted-foreground">{s.latency_ms}ms</span>}
+                          {s.error && <span className="text-red-600">{s.error}</span>}
+                        </div>
+                        {s.diagnostic && (
+                          <pre className="ml-5 text-[10px] text-muted-foreground bg-background/50 p-2 overflow-x-auto">{JSON.stringify(s.diagnostic, null, 2)}</pre>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -244,6 +281,35 @@ export default function ChannelIntegrations() {
           <li>同期失敗は「要確認キュー」で確認できます</li>
         </ul>
       </div>
+
+      <Dialog open={credsOpen} onOpenChange={setCredsOpen}>
+        <DialogContent className="rounded-none">
+          <DialogHeader>
+            <DialogTitle className="font-serif">サロンボード ログイン情報</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              現在の暗号化キーで保存し直します。以前のキーで保存した情報は復号できないため、必ず再入力してください。
+            </p>
+            <div>
+              <Label className="text-xs">ログインID</Label>
+              <Input value={credLoginId} onChange={(e) => setCredLoginId(e.target.value)}
+                autoComplete="off" className="rounded-none" />
+            </div>
+            <div>
+              <Label className="text-xs">パスワード</Label>
+              <Input type="password" value={credPassword} onChange={(e) => setCredPassword(e.target.value)}
+                autoComplete="new-password" className="rounded-none" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" className="rounded-none" onClick={() => setCredsOpen(false)}>キャンセル</Button>
+            <Button className="rounded-none" disabled={savingCreds} onClick={saveCreds}>
+              {savingCreds && <Loader2 className="w-3 h-3 mr-1 animate-spin" />}保存
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

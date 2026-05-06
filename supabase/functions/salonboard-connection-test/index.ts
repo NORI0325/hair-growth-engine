@@ -85,27 +85,58 @@ Deno.serve(async (req) => {
     };
 
     // Step 1: 認証情報復号確認
+    const keyPresent = !!Deno.env.get("SALONBOARD_ENCRYPTION_KEY");
     let q = supabase.from("salonboard_sessions").select("login_id_encrypted,password_encrypted").eq("owner_id", owner_id);
     q = location_id ? q.eq("location_id", location_id) : q.is("location_id", null);
     const { data: session } = await q.maybeSingle();
     let loginId: string | null = null, password: string | null = null;
+    let credentialsFound = false;
+    let encryptedFieldsPresent = false;
+    let source: "salonboard_sessions" | "salonboard_credentials" | "none" = "none";
+
     if (session) {
+      credentialsFound = true;
+      source = "salonboard_sessions";
+      encryptedFieldsPresent = !!(session.login_id_encrypted && session.password_encrypted);
       loginId = await decryptText(session.login_id_encrypted);
       password = await decryptText(session.password_encrypted);
     } else {
       const { data: legacy } = await supabase.from("salonboard_credentials")
         .select("login_id_encrypted,password_encrypted").eq("tenant_id", owner_id).maybeSingle();
       if (legacy) {
+        credentialsFound = true;
+        source = "salonboard_credentials";
+        encryptedFieldsPresent = !!(legacy.login_id_encrypted && legacy.password_encrypted);
         loginId = await decryptText(legacy.login_id_encrypted);
         password = await decryptText(legacy.password_encrypted);
       }
     }
     const credsOk = !!(loginId && password);
-    steps.push({ kind: "decrypt_credentials", ok: credsOk, error: credsOk ? undefined : "credentials_decrypt_failed" });
+    let errorCode: string | undefined;
+    if (!credsOk) {
+      if (!credentialsFound) errorCode = "credentials_not_saved";
+      else if (!keyPresent) errorCode = "encryption_key_missing";
+      else if (!encryptedFieldsPresent) errorCode = "encrypted_fields_empty";
+      else errorCode = "decrypt_failed_key_mismatch";
+    }
+
+    steps.push({
+      kind: "decrypt_credentials",
+      ok: credsOk,
+      error: errorCode,
+      diagnostic: { credentials_found: credentialsFound, owner_id, location_id: location_id || null,
+        encrypted_fields_present: encryptedFieldsPresent, key_present: keyPresent, source },
+    });
+
     if (!credsOk) {
       await updateIntegration({
-        connection_status: "error",
-        last_error: "credentials_decrypt_failed: ID/PWを保存し直してください",
+        connection_status: errorCode === "credentials_not_saved" ? "disconnected" : "error",
+        last_error: `${errorCode}: ${
+          errorCode === "credentials_not_saved" ? "ID/PWが未保存です。チャンネル連携画面の「ログイン情報設定」から保存してください。" :
+          errorCode === "encryption_key_missing" ? "サーバー側の暗号化キーが未設定です。" :
+          errorCode === "decrypt_failed_key_mismatch" ? "暗号化キーが変わっている可能性があります。ID/PWを再保存してください。" :
+          "ID/PWを再保存してください。"
+        }`,
       });
       return json({ ok: false, steps });
     }
