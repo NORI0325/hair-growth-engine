@@ -38,6 +38,7 @@ const Booking = () => {
   const [customer, setCustomer] = useState<any>(null);
   const [salonName, setSalonName] = useState("");
   const [salonSlug, setSalonSlug] = useState<string | null>(null);
+  const [locationResolved, setLocationResolved] = useState<boolean>(false);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
 
