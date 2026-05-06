@@ -7,6 +7,8 @@ import { loginSalonboard } from "./salonboard/login.js";
 import { createReservation } from "./salonboard/createReservation.js";
 import { updateReservation } from "./salonboard/updateReservation.js";
 import { cancelReservation } from "./salonboard/cancelReservation.js";
+import { fetchSalonboardStaff } from "./salonboard/fetchStaff.js";
+import { fetchSalonboardMenus } from "./salonboard/fetchMenus.js";
 import { WorkerError } from "./errorMapper.js";
 import { postCallback } from "./callback.js";
 import { fetchSession, saveSession } from "./sessionStore.js";
@@ -56,6 +58,55 @@ app.post("/api/sync-job", bearerAuth, async (req, res) => {
       logger.error({ err: e }, "job failed");
       res.json({ success: false, error_type: "unknown_error", message: e instanceof Error ? e.message : String(e) });
     }
+  }
+});
+
+// ===== 初期設定用：サロンボード側スタッフ・メニュー一覧取得 =====
+const FetchSchema = z.object({
+  store_id: z.string().min(1),
+  location_id: z.string().nullable().optional(),
+});
+
+async function withSalonboardSession<T>(
+  storeId: string, locationId: string | null,
+  run: (page: import("playwright").Page) => Promise<T>,
+): Promise<T> {
+  const creds = await fetchSession(storeId, locationId).catch((e) => {
+    throw new WorkerError("login_failed", `session fetch failed: ${e instanceof Error ? e.message : String(e)}`);
+  });
+  return await withContext({ storageState: creds.storage_state }, async (ctx) => {
+    const { page, freshLogin } = await loginSalonboard(ctx, { login_id: creds.login_id, password: creds.password });
+    if (freshLogin) {
+      try {
+        const state = await ctx.storageState();
+        await saveSession(storeId, locationId, state, "ok");
+      } catch (e) { logger.warn({ e }, "saveSession failed"); }
+    }
+    return await run(page);
+  });
+}
+
+app.post("/api/salonboard/fetch-staff", bearerAuth, async (req, res) => {
+  const parsed = FetchSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ success: false, error_type: "unknown_error", message: "invalid_body" });
+  try {
+    const staff = await withSalonboardSession(parsed.data.store_id, parsed.data.location_id ?? null, fetchSalonboardStaff);
+    res.json({ success: true, staff });
+  } catch (e) {
+    if (e instanceof WorkerError) res.json({ success: false, error_type: e.errorType, message: e.message });
+    else { logger.error({ err: e }, "fetch-staff failed"); res.json({ success: false, error_type: "unknown_error", message: e instanceof Error ? e.message : String(e) }); }
+  }
+});
+
+app.post("/api/salonboard/fetch-menus", bearerAuth, async (req, res) => {
+  const parsed = FetchSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ success: false, error_type: "unknown_error", message: "invalid_body" });
+  try {
+    const menus = await withSalonboardSession(parsed.data.store_id, parsed.data.location_id ?? null, fetchSalonboardMenus);
+    res.json({ success: true, menus });
+  } catch (e) {
+    if (e instanceof WorkerError) res.json({ success: false, error_type: e.errorType, message: e.message });
+    else { logger.error({ err: e }, "fetch-menus failed"); res.json({ success: false, error_type: "unknown_error", message: e instanceof Error ? e.message : String(e) }); }
   }
 });
 

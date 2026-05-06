@@ -141,13 +141,19 @@ export default function SalonboardOnboarding() {
         </Step>
 
         <Step done={staffMap > 0} n={2} title={`スタッフ連携（${staffMap}名 マッピング済み）`}>
-          <p className="text-sm text-muted-foreground mb-3">スタッフ管理画面から、サロンボード側のスタイリストIDを各スタッフに紐付けてください。</p>
-          <Button size="sm" variant="outline" className="rounded-none" onClick={() => nav("/staff")}>スタッフ画面へ</Button>
+          <p className="text-sm text-muted-foreground mb-3">サロンボードからスタッフ一覧を自動取得し、一括取り込みできます。</p>
+          <div className="flex gap-2">
+            <Button size="sm" className="rounded-none" onClick={() => nav(`/onboarding/salonboard/${locationId || "default"}/auto-mapping`)}>サロンボードから自動取得</Button>
+            <Button size="sm" variant="outline" className="rounded-none" onClick={() => nav("/staff")}>スタッフ画面へ</Button>
+          </div>
         </Step>
 
         <Step done={menuMap > 0} n={3} title={`メニュー連携（${menuMap}件 マッピング済み）`}>
-          <p className="text-sm text-muted-foreground mb-3">メニュー画面から、サロンボードの setmenuId / rsvTerm を各メニューに紐付けてください。</p>
-          <Button size="sm" variant="outline" className="rounded-none" onClick={() => nav("/menu-items")}>メニュー画面へ</Button>
+          <p className="text-sm text-muted-foreground mb-3">サロンボードからメニュー一覧を自動取得し、一括取り込みできます。</p>
+          <div className="flex gap-2">
+            <Button size="sm" className="rounded-none" onClick={() => nav(`/onboarding/salonboard/${locationId || "default"}/auto-mapping`)}>サロンボードから自動取得</Button>
+            <Button size="sm" variant="outline" className="rounded-none" onClick={() => nav("/menu-items")}>メニュー画面へ</Button>
+          </div>
         </Step>
 
         <Step done={!!ci?.default_rsv_route_id} n={4} title="予約経路ID（rsvRouteId）">

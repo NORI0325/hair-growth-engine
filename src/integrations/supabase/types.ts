@@ -545,6 +545,108 @@ export type Database = {
         }
         Relationships: []
       }
+      channel_menu_options: {
+        Row: {
+          active: boolean
+          channel: string
+          created_at: string
+          external_menu_id: string
+          fetched_at: string
+          id: string
+          location_id: string | null
+          menu_category_cd: string | null
+          menu_id: string | null
+          menu_name: string
+          owner_id: string
+          price: number | null
+          raw_payload: Json | null
+          rsv_term: number | null
+          setmenu_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          channel?: string
+          created_at?: string
+          external_menu_id: string
+          fetched_at?: string
+          id?: string
+          location_id?: string | null
+          menu_category_cd?: string | null
+          menu_id?: string | null
+          menu_name: string
+          owner_id: string
+          price?: number | null
+          raw_payload?: Json | null
+          rsv_term?: number | null
+          setmenu_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          channel?: string
+          created_at?: string
+          external_menu_id?: string
+          fetched_at?: string
+          id?: string
+          location_id?: string | null
+          menu_category_cd?: string | null
+          menu_id?: string | null
+          menu_name?: string
+          owner_id?: string
+          price?: number | null
+          raw_payload?: Json | null
+          rsv_term?: number | null
+          setmenu_id?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      channel_staff_options: {
+        Row: {
+          active: boolean
+          channel: string
+          created_at: string
+          display_name: string
+          external_staff_id: string
+          fetched_at: string
+          id: string
+          is_no_designation: boolean
+          location_id: string | null
+          owner_id: string
+          raw_payload: Json | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          channel?: string
+          created_at?: string
+          display_name: string
+          external_staff_id: string
+          fetched_at?: string
+          id?: string
+          is_no_designation?: boolean
+          location_id?: string | null
+          owner_id: string
+          raw_payload?: Json | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          channel?: string
+          created_at?: string
+          display_name?: string
+          external_staff_id?: string
+          fetched_at?: string
+          id?: string
+          is_no_designation?: boolean
+          location_id?: string | null
+          owner_id?: string
+          raw_payload?: Json | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       chart_treatments: {
         Row: {
           after_photo_url: string | null
@@ -1725,6 +1827,7 @@ export type Database = {
           external_setmenu_id: string | null
           id: string
           location_id: string | null
+          menu_category_cd: string | null
           menu_id: string
           owner_id: string
           rsv_term: number | null
@@ -1739,6 +1842,7 @@ export type Database = {
           external_setmenu_id?: string | null
           id?: string
           location_id?: string | null
+          menu_category_cd?: string | null
           menu_id: string
           owner_id: string
           rsv_term?: number | null
@@ -1753,6 +1857,7 @@ export type Database = {
           external_setmenu_id?: string | null
           id?: string
           location_id?: string | null
+          menu_category_cd?: string | null
           menu_id?: string
           owner_id?: string
           rsv_term?: number | null
@@ -2720,6 +2825,7 @@ export type Database = {
           external_id: string | null
           external_name: string | null
           id: string
+          is_no_designation: boolean
           location_id: string | null
           owner_id: string
           staff_id: string
@@ -2732,6 +2838,7 @@ export type Database = {
           external_id?: string | null
           external_name?: string | null
           id?: string
+          is_no_designation?: boolean
           location_id?: string | null
           owner_id: string
           staff_id: string
@@ -2744,6 +2851,7 @@ export type Database = {
           external_id?: string | null
           external_name?: string | null
           id?: string
+          is_no_designation?: boolean
           location_id?: string | null
           owner_id?: string
           staff_id?: string
