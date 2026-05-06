@@ -216,8 +216,25 @@ export default function ChannelIntegrations() {
         </div>
       )}
 
-      <div className="mt-10 p-5 bg-secondary/30 border border-border text-xs text-muted-foreground leading-relaxed">
-        <div className="font-serif text-foreground mb-2">⚠️ 安全運用について</div>
+      {logs.length > 0 && (
+        <div className="mt-10">
+          <div className="text-[10px] tracking-luxury text-gold mb-2">WORKER REQUEST LOGS</div>
+          <h2 className="font-serif text-lg mb-3">直近のワーカー送信ログ</h2>
+          <div className="border border-border divide-y divide-border text-xs">
+            {logs.map((l) => (
+              <div key={l.id} className="px-3 py-2 flex items-center gap-3 flex-wrap">
+                {l.success ? <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" /> : <AlertTriangle className="w-3 h-3 text-red-600 shrink-0" />}
+                <span className="font-mono">{l.kind}</span>
+                <span className="text-muted-foreground">HTTP {l.response_status ?? "-"}</span>
+                <span className="text-muted-foreground">{l.latency_ms ?? "-"}ms</span>
+                <span className="text-muted-foreground ml-auto">{new Date(l.created_at).toLocaleString("ja-JP")}</span>
+                {l.error_message && <div className="w-full text-red-600 mt-1">{l.error_message}</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
         <ul className="list-disc list-inside space-y-1">
           <li>本機能は店舗様が正当に管理権限を持つ自社アカウントのみを対象としています</li>
           <li>外部サービス側の規約に反する操作・画像認証回避は実装していません</li>
