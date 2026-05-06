@@ -213,12 +213,17 @@ export default function ChannelIntegrations() {
                   <div className="border border-border p-3 text-xs space-y-1 bg-secondary/20">
                     <div className="font-serif mb-1">疎通テスト結果</div>
                     {testResult.steps.map((s: any, i: number) => (
-                      <div key={i} className="flex items-center gap-2">
-                        {s.ok ? <CheckCircle2 className="w-3 h-3 text-emerald-600" /> : <AlertTriangle className="w-3 h-3 text-red-600" />}
-                        <span className="font-mono">{s.kind}</span>
-                        {s.status && <span className="text-muted-foreground">HTTP {s.status}</span>}
-                        {s.latency_ms != null && <span className="text-muted-foreground">{s.latency_ms}ms</span>}
-                        {s.error && <span className="text-red-600">{s.error}</span>}
+                      <div key={i} className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          {s.ok ? <CheckCircle2 className="w-3 h-3 text-emerald-600" /> : <AlertTriangle className="w-3 h-3 text-red-600" />}
+                          <span className="font-mono">{s.kind}</span>
+                          {s.status && <span className="text-muted-foreground">HTTP {s.status}</span>}
+                          {s.latency_ms != null && <span className="text-muted-foreground">{s.latency_ms}ms</span>}
+                          {s.error && <span className="text-red-600">{s.error}</span>}
+                        </div>
+                        {s.diagnostic && (
+                          <pre className="ml-5 text-[10px] text-muted-foreground bg-background/50 p-2 overflow-x-auto">{JSON.stringify(s.diagnostic, null, 2)}</pre>
+                        )}
                       </div>
                     ))}
                   </div>
