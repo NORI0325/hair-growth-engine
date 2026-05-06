@@ -464,13 +464,18 @@ Deno.serve(async (req) => {
               if (tpl?.body && tpl.body.trim().length > 0) replyBody = tpl.body;
             } catch (e) { console.warn("[line-webhook] inquiry tpl fetch failed:", e); }
 
+            // 駐車場/営業時間/店舗別テンプレ用の location_id を解決
+            //   優先: webhook署名で確定した location > 顧客.location_id
+            //   不明なら null（owner共通設定にfallbackし、無ければ未設定案内）
+            const inquiryLocationId = await resolveLocationId(cust?.location_id ?? null);
+
             // 営業時間：DBから即時回答
             if (cat.autoAnswer === "hours") {
               try {
                 let hq = supabase.from("salon_hours")
                   .select("weekday, open_time, close_time, closed")
                   .eq("owner_id", owner.id);
-                if (cust?.location_id) hq = hq.eq("location_id", cust.location_id);
+                if (inquiryLocationId) hq = hq.eq("location_id", inquiryLocationId);
                 else hq = hq.is("location_id", null);
                 const { data: rows } = await hq.order("weekday");
                 if (rows && rows.length > 0) {
@@ -492,7 +497,7 @@ Deno.serve(async (req) => {
                 let pq = supabase.from("salon_parking_settings")
                   .select("parking_status, parking_spaces, parking_description, parking_map_url, parking_landmark, parking_full_notice, parking_fee_note, parking_reply_template")
                   .eq("owner_id", owner.id);
-                if (cust?.location_id) pq = pq.eq("location_id", cust.location_id);
+                if (inquiryLocationId) pq = pq.eq("location_id", inquiryLocationId);
                 else pq = pq.is("location_id", null);
                 const { data: ps } = await pq.maybeSingle();
                 const status = ps?.parking_status ?? "unknown";
@@ -529,7 +534,7 @@ Deno.serve(async (req) => {
               : (autoAnswered ? "自動回答済み" : (cat.urgency === "high" ? "至急ご対応ください" : "営業時間内に確認"));
             await supabase.from("line_inbound_messages").insert({
               owner_id: owner.id,
-              location_id: cust?.location_id ?? null,
+              location_id: inquiryLocationId,
               customer_id: cust?.id ?? null,
               line_user_id: userId,
               display_name: cust?.full_name || null,
