@@ -1135,7 +1135,7 @@ AI信頼度: ${parsed.confidence}/100
             await logLineReply(
               supabase, owner.id, linkedCustomer.id, userId,
               "linked_auto_reply", `[planned ${kind}]`,
-              "sent",
+              "sent", undefined, inboundLocationId,
             );
 
             const customerName = linkedCustomer.full_name || "お客様";
