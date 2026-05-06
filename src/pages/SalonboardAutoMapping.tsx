@@ -36,6 +36,7 @@ export default function SalonboardAutoMapping() {
   const [importing, setImporting] = useState(false);
   const [mappedStaffExt, setMappedStaffExt] = useState<Set<string>>(new Set());
   const [mappedMenuExt, setMappedMenuExt] = useState<Set<string>>(new Set());
+  const [menuRsvTerm, setMenuRsvTerm] = useState<Record<string, number | "">>({});
 
   const load = async () => {
     if (!user) return;
