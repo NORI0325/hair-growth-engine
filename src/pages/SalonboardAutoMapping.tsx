@@ -224,11 +224,25 @@ export default function SalonboardAutoMapping() {
                 return (
                   <div key={m.id} className="grid grid-cols-[1fr_120px_1fr_120px] gap-3 items-center text-sm border-b py-2">
                     <div>
-                      <div className="font-medium">{m.menu_name}</div>
+                      <div className="font-medium flex items-center gap-2">
+                        {m.menu_name}
+                        {m.source_type === "setmenu" && <Badge variant="outline" className="rounded-none text-[10px]">セット</Badge>}
+                        {m.source_type === "category" && <Badge variant="outline" className="rounded-none text-[10px]">カテゴリ</Badge>}
+                        {m.source_type === "coupon" && <Badge variant="outline" className="rounded-none text-[10px]">クーポン</Badge>}
+                      </div>
                       <div className="text-xs text-muted-foreground">
                         {m.setmenu_id && <>setmenuId: {m.setmenu_id} </>}
-                        {m.rsv_term && <>/ {m.rsv_term}分 </>}
-                        {m.price && <>/ ¥{m.price.toLocaleString()}</>}
+                        {m.menu_category_cd && <>cat: {m.menu_category_cd} </>}
+                        {m.net_coupon_id && <>coupon: {m.net_coupon_id} </>}
+                        {m.price && <>/ ¥{m.price.toLocaleString()} </>}
+                        <span className="ml-1">所要分:
+                          <input
+                            type="number" min={0} step={5}
+                            className="ml-1 w-16 border px-1 py-0.5 rounded-none bg-background"
+                            value={menuRsvTerm[m.external_menu_id] ?? (m.rsv_term ?? "")}
+                            onChange={(e) => setMenuRsvTerm({ ...menuRsvTerm, [m.external_menu_id]: e.target.value === "" ? "" : Number(e.target.value) })}
+                          />
+                        </span>
                       </div>
                     </div>
                     <div>{mapped ? <Badge className="rounded-none bg-emerald-600">紐付済</Badge> : <Badge className="rounded-none" variant="outline">未紐付</Badge>}</div>
