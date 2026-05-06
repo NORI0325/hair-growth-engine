@@ -102,7 +102,8 @@ Deno.serve(async (req) => {
     }
 
     // セグメントに該当する顧客を取得
-    let q = supabase.from("customers").select("id, full_name, email, phone, last_visit_date, line_user_id").eq("owner_id", user.id);
+    let q = supabase.from("customers").select("id, full_name, email, phone, last_visit_date, line_user_id, location_id").eq("owner_id", user.id);
+    if ((campaign as any).location_id) q = q.eq("location_id", (campaign as any).location_id);
 
     const today = new Date();
     if (campaign.target_segment === "dormant") {
