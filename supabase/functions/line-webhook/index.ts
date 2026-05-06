@@ -13,17 +13,18 @@ import { signActionToken, hashToken, publicAppOrigin } from "../_shared/reservat
 
 // 問い合わせクイックリプライ分類
 type InquiryIntent = "booking_change" | "cancel" | "price" | "parking" | "hours" | "staff_consult" | "style_consult" | "other";
-const INQUIRY_CATEGORIES: { intent: InquiryIntent; label: string; urgency: "high" | "normal"; notify: boolean; reply: string; templateKind: string }[] = [
+type InquiryUrgency = "high" | "normal" | "low";
+const INQUIRY_CATEGORIES: { intent: InquiryIntent; label: string; urgency: InquiryUrgency; notify: boolean; reply: string; templateKind: string; autoAnswer?: "hours" | "parking" }[] = [
   { intent: "booking_change", label: "予約変更", urgency: "high", notify: true, templateKind: "inquiry_booking_change",
     reply: "ご予約変更ですね🙇‍♀️\n変更したい日時をお送りください。スタッフが確認のうえご連絡いたします。" },
   { intent: "cancel", label: "キャンセル", urgency: "high", notify: true, templateKind: "inquiry_cancel",
     reply: "キャンセルのご連絡ですね🙇‍♀️\nご予約日時をお送りください。確認のうえご連絡いたします。" },
   { intent: "price", label: "料金確認", urgency: "normal", notify: false, templateKind: "inquiry_price",
     reply: "料金についてのご質問ですね。気になるメニュー名をお送りください🙇‍♀️" },
-  { intent: "parking", label: "駐車場", urgency: "normal", notify: false, templateKind: "inquiry_parking",
-    reply: "駐車場についてご案内します。少々お待ちください🙇‍♀️" },
-  { intent: "hours", label: "営業時間", urgency: "normal", notify: false, templateKind: "inquiry_hours",
-    reply: "営業時間についてご案内します。少々お待ちください🙇‍♀️" },
+  { intent: "parking", label: "駐車場", urgency: "low", notify: false, templateKind: "inquiry_parking", autoAnswer: "parking",
+    reply: "駐車場情報がまだ登録されていません。お手数ですが、ご来店時にスタッフまでお声がけください🙇‍♀️" },
+  { intent: "hours", label: "営業時間", urgency: "low", notify: false, templateKind: "inquiry_hours", autoAnswer: "hours",
+    reply: "営業時間情報がまだ登録されていません。\nご予約可能な時間は「予約する」ボタンからご確認いただけます🙇‍♀️" },
   { intent: "staff_consult", label: "担当者相談", urgency: "high", notify: true, templateKind: "inquiry_staff_consult",
     reply: "担当者についてのご相談ですね。ご希望やお悩みをお送りください🙇‍♀️" },
   { intent: "style_consult", label: "髪型相談", urgency: "normal", notify: true, templateKind: "inquiry_style_consult",
