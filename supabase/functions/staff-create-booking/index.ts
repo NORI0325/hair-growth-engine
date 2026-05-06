@@ -123,12 +123,17 @@ Deno.serve(async (req) => {
       });
     }
 
-    // 連携チェック
-    const { data: integrations } = await supabase
-      .from("channel_integrations").select("channel")
+    // 連携チェック (location_id を含む)
+    let ciQ = supabase.from("channel_integrations")
+      .select("channel, location_id, default_rsv_route_id, connection_status, allow_unmapped_booking")
       .eq("owner_id", customer.owner_id).eq("enabled", true).eq("sync_enabled", true);
+    const { data: integrations } = await ciQ;
 
-    if (!integrations || integrations.length === 0) {
+    const liveIntegrations = (integrations || []).filter((ci: any) =>
+      ci.channel !== "own_web" && ci.connection_status === "live"
+      && (ci.location_id == null || ci.location_id === (location_id || null)));
+
+    if (!liveIntegrations || liveIntegrations.length === 0) {
       // 同期対象なし → 即 confirmed
       await supabase.from("bookings").update({ status: "confirmed", sync_status: "not_required" }).eq("id", booking.id);
       return new Response(JSON.stringify({
@@ -143,25 +148,31 @@ Deno.serve(async (req) => {
       ? await supabase.from("staff").select("name").eq("id", staff_id).maybeSingle() : { data: null };
 
     const jobsToInsert: any[] = [];
-    for (const ci of integrations) {
-      if (ci.channel === "own_web") continue;
+    for (const ci of liveIntegrations) {
       let extStaffName: string | null = null, extStaffId: string | null = null;
       if (staff_id) {
         const { data: scm } = await supabase.from("staff_channel_mappings")
-          .select("external_name, external_id")
+          .select("external_name, external_id, enabled")
           .eq("staff_id", staff_id).eq("channel", ci.channel).maybeSingle();
-        extStaffName = scm?.external_name ?? null;
-        extStaffId = scm?.external_id ?? null;
+        if (scm?.enabled !== false) {
+          extStaffName = scm?.external_name ?? null;
+          extStaffId = scm?.external_id ?? null;
+        }
       }
-      let extMenuName: string | null = null, extMenuId: string | null = null;
+      let extMenuName: string | null = null, extMenuId: string | null = null, rsvTerm: number | null = null;
       if (menuRows.length > 0) {
         const { data: mcm } = await supabase.from("menu_channel_mappings")
-          .select("external_name, external_id").eq("menu_id", menuRows[0].id).eq("channel", ci.channel).maybeSingle();
-        extMenuName = mcm?.external_name ?? null;
-        extMenuId = mcm?.external_id ?? null;
+          .select("external_name, external_id, external_setmenu_id, rsv_term, enabled")
+          .eq("menu_id", menuRows[0].id).eq("channel", ci.channel).maybeSingle();
+        if (mcm?.enabled !== false) {
+          extMenuName = mcm?.external_name ?? null;
+          extMenuId = mcm?.external_setmenu_id || mcm?.external_id || null;
+          rsvTerm = mcm?.rsv_term ?? null;
+        }
       }
       jobsToInsert.push({
         owner_id: customer.owner_id,
+        location_id: location_id || null,
         reservation_id: booking.id,
         target_channel: ci.channel,
         job_type: "create_reservation",
@@ -178,10 +189,18 @@ Deno.serve(async (req) => {
           menu_name: menuSummary,
           external_menu_name: extMenuName,
           external_menu_id: extMenuId,
+          rsv_term: rsvTerm,
+          rsv_route_id: ci.default_rsv_route_id || "K000000001",
           notes: notes ? String(notes).slice(0, 500) : null,
           source_channel: "manual",
         },
       });
+    }
+    if (jobsToInsert.length === 0) {
+      await supabase.from("bookings").update({ status: "confirmed", sync_status: "not_required" }).eq("id", booking.id);
+      return new Response(JSON.stringify({
+        success: true, booking_id: booking.id, sync_status: "not_required", status: "confirmed",
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
     await supabase.from("sync_jobs").insert(jobsToInsert);
     await supabase.from("bookings").update({ sync_status: "pending" }).eq("id", booking.id);
