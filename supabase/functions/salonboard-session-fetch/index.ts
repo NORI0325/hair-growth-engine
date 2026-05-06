@@ -3,9 +3,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
 
-// 簡易暗号化（AES-GCM, key=SALONBOARD_ENC_KEY 32byte base64）
+// 簡易暗号化（AES-GCM, key=SALONBOARD_ENCRYPTION_KEY 32byte base64）
 async function getKey(): Promise<CryptoKey | null> {
-  const raw = Deno.env.get("SALONBOARD_ENC_KEY");
+  const raw = Deno.env.get("SALONBOARD_ENCRYPTION_KEY");
   if (!raw) return null;
   try {
     const bytes = Uint8Array.from(atob(raw), (c) => c.charCodeAt(0));
