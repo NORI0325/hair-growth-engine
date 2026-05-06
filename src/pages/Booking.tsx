@@ -66,6 +66,7 @@ const Booking = () => {
 
         // location_id 必須：店舗が確定できない場合は混在事故防止のためメニュー非表示
         if (data.owner_id && data.location_id) {
+          setLocationResolved(true);
           const menusQuery = supabase
             .from("menu_items")
             .select("id, name, duration_minutes, price, image_url")
