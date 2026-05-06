@@ -37,6 +37,24 @@ export default function SalonboardAutoMapping() {
   const [mappedStaffExt, setMappedStaffExt] = useState<Set<string>>(new Set());
   const [mappedMenuExt, setMappedMenuExt] = useState<Set<string>>(new Set());
   const [menuRsvTerm, setMenuRsvTerm] = useState<Record<string, number | "">>({});
+  const [showCoupon, setShowCoupon] = useState(false);
+  const [showCategory, setShowCategory] = useState(false);
+
+  // クーポンの注意ラベル検出
+  const COUPON_WARN_PATTERNS = [
+    "平日限定", "時間限定", "学割", "こちらからの予約不可",
+    "スタイリスト指定", "新規限定", "再来限定", "土日不可", "ネット予約不可",
+  ];
+  const detectCouponWarnings = (label: string): string[] =>
+    COUPON_WARN_PATTERNS.filter((p) => label.includes(p));
+
+  // source_type の判定（古いデータは setmenu 扱い）
+  const getSrcType = (m: MenuOpt): "setmenu" | "coupon" | "category" => {
+    if (m.source_type === "coupon" || m.source_type === "category" || m.source_type === "setmenu") return m.source_type;
+    if (m.net_coupon_id) return "coupon";
+    if (m.menu_category_cd && !m.setmenu_id) return "category";
+    return "setmenu";
+  };
 
   const load = async () => {
     if (!user) return;
@@ -119,7 +137,10 @@ export default function SalonboardAutoMapping() {
     const items = menuOpts
       .filter((m) => !mappedMenuExt.has(m.external_menu_id))
       .map((m) => {
-        const a = menuActions[m.external_menu_id] || { action: "create" };
+        const src = getSrcType(m);
+        // 初期は setmenu のみ create、coupon/category はユーザーが明示しない限り skip
+        const defaultAction = src === "setmenu" ? "create" : "skip";
+        const a = menuActions[m.external_menu_id] || { action: defaultAction };
         const editedTerm = menuRsvTerm[m.external_menu_id];
         const rsv_term = editedTerm === "" || editedTerm === undefined ? m.rsv_term : Number(editedTerm);
         return {
@@ -127,7 +148,7 @@ export default function SalonboardAutoMapping() {
           setmenu_id: m.setmenu_id, menu_id: m.menu_id,
           menu_category_cd: m.menu_category_cd,
           net_coupon_id: m.net_coupon_id ?? null,
-          source_type: m.source_type ?? null,
+          source_type: src,
           menu_name: m.menu_name,
           rsv_term, price: m.price,
           action: a.action, target_menu_id: a.target || null,
@@ -215,62 +236,131 @@ export default function SalonboardAutoMapping() {
         </div>
         {menuOpts.length === 0 ? (
           <div className="text-sm text-muted-foreground py-6 text-center">未取得です。「サロンボードから取得」を押してください。</div>
-        ) : (
-          <>
-            <div className="space-y-2 mb-4">
-              {menuOpts.map((m) => {
-                const mapped = mappedMenuExt.has(m.external_menu_id);
-                const a = menuActions[m.external_menu_id] || { action: "create" };
-                return (
-                  <div key={m.id} className="grid grid-cols-[1fr_120px_1fr_120px] gap-3 items-center text-sm border-b py-2">
-                    <div>
-                      <div className="font-medium flex items-center gap-2">
-                        {m.menu_name}
-                        {m.source_type === "setmenu" && <Badge variant="outline" className="rounded-none text-[10px]">セット</Badge>}
-                        {m.source_type === "category" && <Badge variant="outline" className="rounded-none text-[10px]">カテゴリ</Badge>}
-                        {m.source_type === "coupon" && <Badge variant="outline" className="rounded-none text-[10px]">クーポン</Badge>}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {m.setmenu_id && <>setmenuId: {m.setmenu_id} </>}
-                        {m.menu_category_cd && <>cat: {m.menu_category_cd} </>}
-                        {m.net_coupon_id && <>coupon: {m.net_coupon_id} </>}
-                        {m.price && <>/ ¥{m.price.toLocaleString()} </>}
-                        <span className="ml-1">所要分:
-                          <input
-                            type="number" min={0} step={5}
-                            className="ml-1 w-16 border px-1 py-0.5 rounded-none bg-background"
-                            value={menuRsvTerm[m.external_menu_id] ?? (m.rsv_term ?? "")}
-                            onChange={(e) => setMenuRsvTerm({ ...menuRsvTerm, [m.external_menu_id]: e.target.value === "" ? "" : Number(e.target.value) })}
-                          />
-                        </span>
-                      </div>
-                    </div>
-                    <div>{mapped ? <Badge className="rounded-none bg-emerald-600">紐付済</Badge> : <Badge className="rounded-none" variant="outline">未紐付</Badge>}</div>
-                    <div>
-                      {!mapped && (
-                        <select className="w-full border px-2 py-1 rounded-none text-sm bg-background"
-                          value={a.action === "link" ? `link:${a.target}` : a.action}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            if (v.startsWith("link:")) setMenuActions({ ...menuActions, [m.external_menu_id]: { action: "link", target: v.slice(5) } });
-                            else setMenuActions({ ...menuActions, [m.external_menu_id]: { action: v } });
-                          }}>
-                          <option value="create">新規作成</option>
-                          <option value="skip">スキップ</option>
-                          {existingMenus.map((em) => <option key={em.id} value={`link:${em.id}`}>既存と紐付け: {em.name}</option>)}
-                        </select>
-                      )}
-                    </div>
-                    <div className="text-xs text-muted-foreground text-right">{new Date(m.fetched_at).toLocaleString("ja-JP")}</div>
+        ) : (() => {
+          const groups = { setmenu: [] as MenuOpt[], coupon: [] as MenuOpt[], category: [] as MenuOpt[] };
+          for (const m of menuOpts) groups[getSrcType(m)].push(m);
+
+          const renderRow = (m: MenuOpt, src: "setmenu" | "coupon" | "category") => {
+            const mapped = mappedMenuExt.has(m.external_menu_id);
+            const defaultAction = src === "setmenu" ? "create" : "skip";
+            const a = menuActions[m.external_menu_id] || { action: defaultAction };
+            const warns = src === "coupon" ? detectCouponWarnings(m.menu_name) : [];
+            return (
+              <div key={m.id} className="grid grid-cols-[1fr_120px_1fr_120px] gap-3 items-center text-sm border-b py-2">
+                <div>
+                  <div className="font-medium flex items-center gap-2 flex-wrap">
+                    {m.menu_name}
+                    {warns.length > 0 && (
+                      <Badge variant="outline" className="rounded-none text-[10px] border-amber-500 text-amber-600">
+                        要注意: {warns.join("/")}
+                      </Badge>
+                    )}
                   </div>
-                );
-              })}
-            </div>
-            <Button onClick={importMenus} disabled={importing} className="rounded-none">
-              <Upload className="w-4 h-4 mr-2" />一括取り込み・保存
-            </Button>
-          </>
-        )}
+                  <div className="text-xs text-muted-foreground">
+                    {m.setmenu_id && <>setmenuId: {m.setmenu_id} </>}
+                    {m.menu_category_cd && <>cat: {m.menu_category_cd} </>}
+                    {m.net_coupon_id && <>coupon: {m.net_coupon_id} </>}
+                    {m.price && <>/ ¥{m.price.toLocaleString()} </>}
+                    <span className="ml-1">所要分:
+                      <input
+                        type="number" min={0} step={5}
+                        className="ml-1 w-16 border px-1 py-0.5 rounded-none bg-background"
+                        value={menuRsvTerm[m.external_menu_id] ?? (m.rsv_term ?? "")}
+                        onChange={(e) => setMenuRsvTerm({ ...menuRsvTerm, [m.external_menu_id]: e.target.value === "" ? "" : Number(e.target.value) })}
+                      />
+                    </span>
+                  </div>
+                </div>
+                <div>{mapped ? <Badge className="rounded-none bg-emerald-600">紐付済</Badge> : <Badge className="rounded-none" variant="outline">未紐付</Badge>}</div>
+                <div>
+                  {!mapped && (
+                    <select className="w-full border px-2 py-1 rounded-none text-sm bg-background"
+                      value={a.action === "link" ? `link:${a.target}` : a.action}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v.startsWith("link:")) setMenuActions({ ...menuActions, [m.external_menu_id]: { action: "link", target: v.slice(5) } });
+                        else setMenuActions({ ...menuActions, [m.external_menu_id]: { action: v } });
+                      }}>
+                      <option value="create">新規作成</option>
+                      <option value="skip">スキップ</option>
+                      {existingMenus.map((em) => <option key={em.id} value={`link:${em.id}`}>既存と紐付け: {em.name}</option>)}
+                    </select>
+                  )}
+                </div>
+                <div className="text-xs text-muted-foreground text-right">{new Date(m.fetched_at).toLocaleString("ja-JP")}</div>
+              </div>
+            );
+          };
+
+          return (
+            <>
+              <div className="flex gap-4 text-xs mb-4 text-muted-foreground">
+                <span>組み合わせメニュー: <b className="text-foreground">{groups.setmenu.length}</b>件</span>
+                <span>クーポン: <b className="text-foreground">{groups.coupon.length}</b>件</span>
+                <span>カテゴリ: <b className="text-foreground">{groups.category.length}</b>件</span>
+              </div>
+
+              <section className="mb-6">
+                <div className="text-[10px] tracking-luxury text-gold mb-1">RESERVATION SYNC</div>
+                <h3 className="font-serif text-lg mb-1">予約同期用メニュー（組み合わせメニュー）</h3>
+                <p className="text-xs text-muted-foreground mb-3">予約同期の本命です。初期状態で取り込み対象になります。</p>
+                {groups.setmenu.length === 0 ? (
+                  <div className="text-xs text-muted-foreground py-3">該当データなし</div>
+                ) : (
+                  <div className="space-y-2">{groups.setmenu.map((m) => renderRow(m, "setmenu"))}</div>
+                )}
+              </section>
+
+              <section className="mb-6">
+                <div className="flex items-center justify-between mb-1">
+                  <div>
+                    <div className="text-[10px] tracking-luxury text-muted-foreground mb-1">HOTPEPPER COUPON</div>
+                    <h3 className="font-serif text-lg">ホットペッパークーポン</h3>
+                  </div>
+                  <Button variant="outline" size="sm" className="rounded-none" onClick={() => setShowCoupon((v) => !v)}>
+                    {showCoupon ? "折りたたむ" : "表示する"}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground mb-3">
+                  条件付きクーポンが多いため、初期状態では同期対象外です。自社アプリでも使うものだけ「新規作成」を選んでください。
+                </p>
+                {showCoupon && (
+                  groups.coupon.length === 0 ? (
+                    <div className="text-xs text-muted-foreground py-3">該当データなし</div>
+                  ) : (
+                    <div className="space-y-2">{groups.coupon.map((m) => renderRow(m, "coupon"))}</div>
+                  )
+                )}
+              </section>
+
+              <section className="mb-6">
+                <div className="flex items-center justify-between mb-1">
+                  <div>
+                    <div className="text-[10px] tracking-luxury text-muted-foreground mb-1">CATEGORY</div>
+                    <h3 className="font-serif text-lg">カテゴリ</h3>
+                  </div>
+                  <Button variant="outline" size="sm" className="rounded-none" onClick={() => setShowCategory((v) => !v)}>
+                    {showCategory ? "折りたたむ" : "表示する"}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground mb-3">
+                  カテゴリ単体では予約同期に使いません。初期状態では同期対象外です。
+                </p>
+                {showCategory && (
+                  groups.category.length === 0 ? (
+                    <div className="text-xs text-muted-foreground py-3">該当データなし</div>
+                  ) : (
+                    <div className="space-y-2">{groups.category.map((m) => renderRow(m, "category"))}</div>
+                  )
+                )}
+              </section>
+
+              <Button onClick={importMenus} disabled={importing} className="rounded-none">
+                <Upload className="w-4 h-4 mr-2" />一括取り込み・保存（初期は組み合わせメニューのみ）
+              </Button>
+            </>
+          );
+        })()}
       </Card>
     </div>
   );
