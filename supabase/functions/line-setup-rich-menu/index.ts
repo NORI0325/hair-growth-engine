@@ -110,7 +110,7 @@ Deno.serve(async (req) => {
     const menuPayload = {
       size: { width: 2500, height: 843 },
       selected: true,
-      name: `${profile.salon_name || "サロン"} メニュー`,
+      name: `${location?.name || profile?.salon_name || "サロン"} メニュー`,
       chatBarText: "メニュー",
       areas: [
         {
