@@ -281,6 +281,35 @@ export default function ChannelIntegrations() {
           <li>同期失敗は「要確認キュー」で確認できます</li>
         </ul>
       </div>
+
+      <Dialog open={credsOpen} onOpenChange={setCredsOpen}>
+        <DialogContent className="rounded-none">
+          <DialogHeader>
+            <DialogTitle className="font-serif">サロンボード ログイン情報</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              現在の暗号化キーで保存し直します。以前のキーで保存した情報は復号できないため、必ず再入力してください。
+            </p>
+            <div>
+              <Label className="text-xs">ログインID</Label>
+              <Input value={credLoginId} onChange={(e) => setCredLoginId(e.target.value)}
+                autoComplete="off" className="rounded-none" />
+            </div>
+            <div>
+              <Label className="text-xs">パスワード</Label>
+              <Input type="password" value={credPassword} onChange={(e) => setCredPassword(e.target.value)}
+                autoComplete="new-password" className="rounded-none" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" className="rounded-none" onClick={() => setCredsOpen(false)}>キャンセル</Button>
+            <Button className="rounded-none" disabled={savingCreds} onClick={saveCreds}>
+              {savingCreds && <Loader2 className="w-3 h-3 mr-1 animate-spin" />}保存
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
