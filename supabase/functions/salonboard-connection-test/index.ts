@@ -44,7 +44,7 @@ Deno.serve(async (req) => {
       return json({ ok: false, error: "worker_env_missing" }, 500);
     }
 
-    const steps: Array<{ kind: string; ok: boolean; status?: number; latency_ms?: number; error?: string; body?: unknown }> = [];
+    const steps: Array<{ kind: string; ok: boolean; status?: number; latency_ms?: number; error?: string; body?: unknown; diagnostic?: unknown }> = [];
 
     const updateIntegration = async (patch: Record<string, unknown>) => {
       let q = supabase.from("channel_integrations").update(patch)
@@ -64,30 +64,41 @@ Deno.serve(async (req) => {
 
     // Step 1: 認証情報復号確認
     // 優先順位: salonboard_credentials（ID/PW正本） → salonboard_sessions（フォールバック）
-    const keyPresent = !!Deno.env.get("SALONBOARD_ENCRYPTION_KEY");
+    const keyDiagnostic = getSalonboardKeyDiagnostic();
+    const keyPresent = keyDiagnostic.key_present;
     let loginId: string | null = null, password: string | null = null;
     let credentialsFound = false;
     let encryptedFieldsPresent = false;
     let source: "salonboard_sessions" | "salonboard_credentials" | "none" = "none";
+    let loadedRecordId: string | null = null;
+    let loadedUpdatedAt: string | null = null;
 
     const { data: cred } = await supabase.from("salonboard_credentials")
-      .select("login_id_encrypted,password_encrypted").eq("tenant_id", owner_id).maybeSingle();
+      .select("id,updated_at,created_at,login_id_encrypted,password_encrypted")
+      .eq("tenant_id", owner_id)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
     if (cred) {
       credentialsFound = true;
       source = "salonboard_credentials";
+      loadedRecordId = cred.id;
+      loadedUpdatedAt = cred.updated_at || cred.created_at || null;
       encryptedFieldsPresent = !!(cred.login_id_encrypted && cred.password_encrypted);
-      loginId = await decryptText(cred.login_id_encrypted);
-      password = await decryptText(cred.password_encrypted);
+      loginId = await decryptSalonboardText(cred.login_id_encrypted);
+      password = await decryptSalonboardText(cred.password_encrypted);
     } else {
-      let q = supabase.from("salonboard_sessions").select("login_id_encrypted,password_encrypted").eq("owner_id", owner_id);
+      let q = supabase.from("salonboard_sessions").select("id,updated_at,created_at,login_id_encrypted,password_encrypted").eq("owner_id", owner_id);
       q = location_id ? q.eq("location_id", location_id) : q.is("location_id", null);
-      const { data: session } = await q.maybeSingle();
+      const { data: session } = await q.order("updated_at", { ascending: false }).limit(1).maybeSingle();
       if (session) {
         credentialsFound = true;
         source = "salonboard_sessions";
+        loadedRecordId = session.id;
+        loadedUpdatedAt = session.updated_at || session.created_at || null;
         encryptedFieldsPresent = !!(session.login_id_encrypted && session.password_encrypted);
-        loginId = await decryptText(session.login_id_encrypted);
-        password = await decryptText(session.password_encrypted);
+        loginId = await decryptSalonboardText(session.login_id_encrypted);
+        password = await decryptSalonboardText(session.password_encrypted);
       }
     }
 
@@ -97,7 +108,7 @@ Deno.serve(async (req) => {
       sQ = location_id ? sQ.eq("location_id", location_id) : sQ.is("location_id", null);
       const { data: stale } = await sQ.maybeSingle();
       if (stale?.storage_state_encrypted) {
-        const ok = await decryptText(stale.storage_state_encrypted);
+        const ok = await decryptSalonboardText(stale.storage_state_encrypted);
         if (!ok) {
           await supabase.from("salonboard_sessions").delete().eq("id", stale.id);
         }
