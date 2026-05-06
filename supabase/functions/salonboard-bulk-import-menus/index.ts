@@ -44,6 +44,12 @@ Deno.serve(async (req) => {
     for (const it of items) {
       if (it.action === "skip") { results.push({ external_menu_id: it.external_menu_id, status: "skipped" }); continue; }
 
+      // category 単体（menu_id なし）は予約同期に使えないため取り込み不可
+      if (it.source_type === "category" && !it.menu_id) {
+        results.push({ external_menu_id: it.external_menu_id, status: "skipped", reason: "category_without_menu_id" });
+        continue;
+      }
+
       let menuId: string | null = it.target_menu_id ?? null;
       if (it.action === "create") {
         const { data: created, error: cErr } = await supabase.from("menu_items").insert({
