@@ -122,6 +122,8 @@ const App = () => (
             <Route path="/sync-review" element={<ProtectedRoute><SyncReview /></ProtectedRoute>} />
             <Route path="/onboarding/salonboard" element={<ProtectedRoute><SalonboardOnboarding /></ProtectedRoute>} />
             <Route path="/onboarding/salonboard/:locationId" element={<ProtectedRoute><SalonboardOnboarding /></ProtectedRoute>} />
+            <Route path="/onboarding/salonboard/:locationId/auto-mapping" element={<ProtectedRoute><SalonboardAutoMapping /></ProtectedRoute>} />
+            <Route path="/onboarding/salonboard-auto-mapping" element={<ProtectedRoute><SalonboardAutoMapping /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
           </LocationProvider>
