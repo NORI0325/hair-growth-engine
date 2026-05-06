@@ -414,16 +414,8 @@ const Booking = () => {
                 })}
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-px bg-border">
-                {FALLBACK_MENUS.map(m => {
-                  const active = selectedMenus.includes(m);
-                  return (
-                    <button key={m} type="button" onClick={() => toggleMenu(m)}
-                      className={`py-3 text-sm font-serif transition-all ${active ? "bg-primary text-primary-foreground" : "bg-card hover:bg-secondary"}`}>
-                      {m}
-                    </button>
-                  );
-                })}
+              <div className="text-xs text-muted-foreground border border-border p-4 bg-secondary/30">
+                メニューが登録されていません。お手数ですが、店舗へお問い合わせください。
               </div>
             )}
 
