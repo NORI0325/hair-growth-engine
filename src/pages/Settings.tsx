@@ -336,6 +336,10 @@ const Settings = () => {
               <SalonHoursEditor />
             </section>
 
+            <section className="pt-6 border-t border-border">
+              <ParkingSettingsEditor />
+            </section>
+
             <section className="space-y-5 pt-6 border-t border-border">
               <SectionTitle icon={Clock} title="予約受付ルール"
                 desc="当日予約・直前予約・先の予約をお客様にどこまで許可するかを設定します。日本のサロン平均は3〜24時間前です。" />
