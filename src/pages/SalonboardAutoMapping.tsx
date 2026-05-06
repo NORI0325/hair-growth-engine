@@ -238,6 +238,11 @@ export default function SalonboardAutoMapping() {
             サロンボードから取得
           </Button>
         </div>
+        {!loc && (
+          <div className="text-xs border border-amber-500/40 bg-amber-50 text-amber-900 px-3 py-2 mb-4">
+            店舗情報が取得できないため、メニューを取り込めません。店舗を選択してください。
+          </div>
+        )}
         {menuOpts.length === 0 ? (
           <div className="text-sm text-muted-foreground py-6 text-center">未取得です。「サロンボードから取得」を押してください。</div>
         ) : (() => {
