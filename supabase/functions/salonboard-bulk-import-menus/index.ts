@@ -8,6 +8,8 @@ interface ImportItem {
   setmenu_id?: string | null;
   menu_id?: string | null;
   menu_category_cd?: string | null;
+  net_coupon_id?: string | null;
+  source_type?: string | null;
   menu_name: string;
   rsv_term?: number | null;
   price?: number | null;
@@ -57,9 +59,10 @@ Deno.serve(async (req) => {
       const { error: mErr } = await supabase.from("menu_channel_mappings").upsert({
         owner_id, location_id, menu_id: menuId, channel: "salonboard",
         external_id: it.menu_id || it.external_menu_id,
-        external_setmenu_id: it.setmenu_id || it.external_menu_id,
+        external_setmenu_id: it.setmenu_id || null,
         external_name: it.menu_name,
         menu_category_cd: it.menu_category_cd || null,
+        net_coupon_id: it.net_coupon_id || null,
         rsv_term: it.rsv_term ?? null,
         enabled: true,
       }, { onConflict: "menu_id,channel" });

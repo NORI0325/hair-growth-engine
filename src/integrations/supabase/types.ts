@@ -557,11 +557,13 @@ export type Database = {
           menu_category_cd: string | null
           menu_id: string | null
           menu_name: string
+          net_coupon_id: string | null
           owner_id: string
           price: number | null
           raw_payload: Json | null
           rsv_term: number | null
           setmenu_id: string | null
+          source_type: string | null
           updated_at: string
         }
         Insert: {
@@ -575,11 +577,13 @@ export type Database = {
           menu_category_cd?: string | null
           menu_id?: string | null
           menu_name: string
+          net_coupon_id?: string | null
           owner_id: string
           price?: number | null
           raw_payload?: Json | null
           rsv_term?: number | null
           setmenu_id?: string | null
+          source_type?: string | null
           updated_at?: string
         }
         Update: {
@@ -593,11 +597,13 @@ export type Database = {
           menu_category_cd?: string | null
           menu_id?: string | null
           menu_name?: string
+          net_coupon_id?: string | null
           owner_id?: string
           price?: number | null
           raw_payload?: Json | null
           rsv_term?: number | null
           setmenu_id?: string | null
+          source_type?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -1829,6 +1835,7 @@ export type Database = {
           location_id: string | null
           menu_category_cd: string | null
           menu_id: string
+          net_coupon_id: string | null
           owner_id: string
           rsv_term: number | null
           updated_at: string
@@ -1844,6 +1851,7 @@ export type Database = {
           location_id?: string | null
           menu_category_cd?: string | null
           menu_id: string
+          net_coupon_id?: string | null
           owner_id: string
           rsv_term?: number | null
           updated_at?: string
@@ -1859,6 +1867,7 @@ export type Database = {
           location_id?: string | null
           menu_category_cd?: string | null
           menu_id?: string
+          net_coupon_id?: string | null
           owner_id?: string
           rsv_term?: number | null
           updated_at?: string

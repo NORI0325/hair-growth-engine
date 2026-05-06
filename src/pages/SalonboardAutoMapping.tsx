@@ -14,7 +14,8 @@ type StaffOpt = {
 };
 type MenuOpt = {
   id: string; external_menu_id: string; setmenu_id: string | null; menu_id: string | null;
-  menu_category_cd: string | null; menu_name: string; rsv_term: number | null; price: number | null;
+  menu_category_cd: string | null; net_coupon_id?: string | null; source_type?: string | null;
+  menu_name: string; rsv_term: number | null; price: number | null;
   active: boolean; fetched_at: string;
 };
 type ExistingStaff = { id: string; name: string };
@@ -35,6 +36,7 @@ export default function SalonboardAutoMapping() {
   const [importing, setImporting] = useState(false);
   const [mappedStaffExt, setMappedStaffExt] = useState<Set<string>>(new Set());
   const [mappedMenuExt, setMappedMenuExt] = useState<Set<string>>(new Set());
+  const [menuRsvTerm, setMenuRsvTerm] = useState<Record<string, number | "">>({});
 
   const load = async () => {
     if (!user) return;
@@ -58,9 +60,9 @@ export default function SalonboardAutoMapping() {
     const { data: scm } = await supabase.from("staff_channel_mappings").select("external_id")
       .eq("owner_id", user.id).eq("channel", "salonboard").eq("enabled", true);
     setMappedStaffExt(new Set((scm || []).map((r: any) => String(r.external_id))));
-    const { data: mcm } = await supabase.from("menu_channel_mappings").select("external_setmenu_id, external_id")
+    const { data: mcm } = await supabase.from("menu_channel_mappings").select("external_setmenu_id, external_id, menu_category_cd, net_coupon_id")
       .eq("owner_id", user.id).eq("channel", "salonboard").eq("enabled", true);
-    setMappedMenuExt(new Set((mcm || []).flatMap((r: any) => [r.external_setmenu_id, r.external_id]).filter(Boolean).map(String)));
+    setMappedMenuExt(new Set((mcm || []).flatMap((r: any) => [r.external_setmenu_id, r.external_id, r.menu_category_cd, r.net_coupon_id]).filter(Boolean).map(String)));
   };
 
   useEffect(() => { load(); }, [user, locationId]);
@@ -118,11 +120,16 @@ export default function SalonboardAutoMapping() {
       .filter((m) => !mappedMenuExt.has(m.external_menu_id))
       .map((m) => {
         const a = menuActions[m.external_menu_id] || { action: "create" };
+        const editedTerm = menuRsvTerm[m.external_menu_id];
+        const rsv_term = editedTerm === "" || editedTerm === undefined ? m.rsv_term : Number(editedTerm);
         return {
           external_menu_id: m.external_menu_id,
           setmenu_id: m.setmenu_id, menu_id: m.menu_id,
-          menu_category_cd: m.menu_category_cd, menu_name: m.menu_name,
-          rsv_term: m.rsv_term, price: m.price,
+          menu_category_cd: m.menu_category_cd,
+          net_coupon_id: m.net_coupon_id ?? null,
+          source_type: m.source_type ?? null,
+          menu_name: m.menu_name,
+          rsv_term, price: m.price,
           action: a.action, target_menu_id: a.target || null,
         };
       });
@@ -217,11 +224,25 @@ export default function SalonboardAutoMapping() {
                 return (
                   <div key={m.id} className="grid grid-cols-[1fr_120px_1fr_120px] gap-3 items-center text-sm border-b py-2">
                     <div>
-                      <div className="font-medium">{m.menu_name}</div>
+                      <div className="font-medium flex items-center gap-2">
+                        {m.menu_name}
+                        {m.source_type === "setmenu" && <Badge variant="outline" className="rounded-none text-[10px]">セット</Badge>}
+                        {m.source_type === "category" && <Badge variant="outline" className="rounded-none text-[10px]">カテゴリ</Badge>}
+                        {m.source_type === "coupon" && <Badge variant="outline" className="rounded-none text-[10px]">クーポン</Badge>}
+                      </div>
                       <div className="text-xs text-muted-foreground">
                         {m.setmenu_id && <>setmenuId: {m.setmenu_id} </>}
-                        {m.rsv_term && <>/ {m.rsv_term}分 </>}
-                        {m.price && <>/ ¥{m.price.toLocaleString()}</>}
+                        {m.menu_category_cd && <>cat: {m.menu_category_cd} </>}
+                        {m.net_coupon_id && <>coupon: {m.net_coupon_id} </>}
+                        {m.price && <>/ ¥{m.price.toLocaleString()} </>}
+                        <span className="ml-1">所要分:
+                          <input
+                            type="number" min={0} step={5}
+                            className="ml-1 w-16 border px-1 py-0.5 rounded-none bg-background"
+                            value={menuRsvTerm[m.external_menu_id] ?? (m.rsv_term ?? "")}
+                            onChange={(e) => setMenuRsvTerm({ ...menuRsvTerm, [m.external_menu_id]: e.target.value === "" ? "" : Number(e.target.value) })}
+                          />
+                        </span>
                       </div>
                     </div>
                     <div>{mapped ? <Badge className="rounded-none bg-emerald-600">紐付済</Badge> : <Badge className="rounded-none" variant="outline">未紐付</Badge>}</div>
