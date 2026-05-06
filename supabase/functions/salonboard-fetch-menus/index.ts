@@ -70,6 +70,8 @@ Deno.serve(async (req) => {
       setmenu_id: m.setmenu_id ? String(m.setmenu_id) : null,
       menu_id: m.menu_id ? String(m.menu_id) : null,
       menu_category_cd: m.menu_category_cd ? String(m.menu_category_cd) : null,
+      net_coupon_id: m.net_coupon_id ? String(m.net_coupon_id) : null,
+      source_type: m.source_type ? String(m.source_type) : null,
       menu_name: String(m.menu_name || m.external_menu_id),
       rsv_term: typeof m.rsv_term === "number" ? m.rsv_term : null,
       price: typeof m.price === "number" ? m.price : null,
