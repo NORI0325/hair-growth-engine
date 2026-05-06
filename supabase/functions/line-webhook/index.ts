@@ -249,9 +249,11 @@ async function logLineReply(
   message: string,
   status: "sent" | "failed" = "sent",
   error?: string,
+  locationId?: string | null,
 ) {
   await supabase.from("line_message_log").insert({
     owner_id: ownerId,
+    location_id: locationId ?? null,
     customer_id: customerId,
     line_user_id: lineUserId,
     job_type: jobType,
