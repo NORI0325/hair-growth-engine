@@ -38,13 +38,14 @@ const getEnvironment = (): "sandbox" | "live" => {
 
 const Locations = () => {
   const tenantId = useTenantId();
-  const { data: locations = [], isLoading } = useLocations();
-  const { setCurrentLocationId } = useCurrentLocation();
+  const { setCurrentLocationId, upsertLocation, locations: currentLocations } = useCurrentLocation();
+  const { data: queriedLocations = [], isLoading } = useLocations();
   const queryClient = useQueryClient();
   const [addOpen, setAddOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<Location | null>(null);
 
+  const locations = currentLocations.length > 0 ? currentLocations : queriedLocations;
   const additionalCount = Math.max(0, locations.length - 1);
   const monthlyTotal = 9800 + additionalCount * 7800;
 
@@ -78,11 +79,21 @@ const Locations = () => {
       return data;
     },
     onSuccess: (data) => {
-      const createdId = data?.location?.id;
-      if (createdId) setCurrentLocationId(createdId);
-      toast.success(data?.already_exists ? "既存の店舗を表示しました" : "店舗を追加しました");
+      const returnedLocation = data?.location as Location | undefined;
+      const createdId = returnedLocation?.id;
+      if (returnedLocation?.id && returnedLocation?.tenant_id && returnedLocation?.name) {
+        upsertLocation(returnedLocation);
+      } else if (createdId) {
+        setCurrentLocationId(createdId);
+      }
+      toast.success(data?.restored_existing || data?.already_exists ? "既存の店舗を表示しました" : "店舗を追加しました");
       setAddOpen(false);
       setNewName("");
+      queryClient.setQueriesData<Location[]>({ queryKey: ["locations"] }, (old = []) => {
+        if (!returnedLocation?.id || !returnedLocation?.tenant_id || !returnedLocation?.name) return old;
+        const withoutDuplicate = old.filter((loc) => loc.id !== returnedLocation.id);
+        return [returnedLocation, ...withoutDuplicate].sort((a, b) => Number(b.is_primary) - Number(a.is_primary));
+      });
       queryClient.invalidateQueries({ queryKey: ["locations"] });
       queryClient.invalidateQueries({ queryKey: ["subscription"] });
     },
