@@ -215,7 +215,7 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <LocationContext.Provider
-      value={{ currentLocationId, currentLocation, setCurrentLocationId, selectLocation: setCurrentLocationId, locations, isLoading }}
+      value={{ currentLocationId, currentLocation, setCurrentLocationId, selectLocation: setCurrentLocationId, upsertLocation, locations, isLoading }}
     >
       {children}
     </LocationContext.Provider>
