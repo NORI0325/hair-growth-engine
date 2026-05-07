@@ -133,7 +133,7 @@ export default function ChannelIntegrations() {
   const saveIntegration = async (channel: string, patch: Partial<Integration>) => {
     if (!user) return;
     const cur = rows[channel];
-    const next = { ...cur, ...patch };
+    const next = { ...cur, ...patch, enabled: patch.sync_enabled === true ? true : (patch.enabled ?? cur?.enabled ?? false) };
     setRows({ ...rows, [channel]: next });
     const payload = {
       enabled: next.enabled,
