@@ -93,14 +93,20 @@ export const useLocations = () => {
       // 認証ユーザー自身の所属店舗だけを返すDB関数で復元する。
       const { data: memberLocations, error: rpcError } = await (supabase as any)
         .rpc("get_my_member_locations");
-      if (rpcError) throw rpcError;
+      if (rpcError) {
+        console.warn("[locations] fallback rpc failed", {
+          authUserId: user?.id ?? null,
+          tenantId,
+          message: rpcError.message,
+        });
+      }
 
-      const restored = ((memberLocations ?? []) as Array<{
+      const restored = (rpcError ? [] : ((memberLocations ?? []) as Array<{
         id: string;
         tenant_id: string;
         name: string;
         is_primary: boolean;
-      }>)
+      }>))
         .filter((l) => l.tenant_id === tenantId)
         .map((l) => normalizeLocation({
           id: l.id,
@@ -161,11 +167,24 @@ const LocationContext = createContext<LocationContextValue | undefined>(undefine
 
 export const LocationProvider = ({ children }: { children: ReactNode }) => {
   const queryClient = useQueryClient();
-  const { data: locations = [], isLoading } = useLocations();
+  const { data: queriedLocations = [], isLoading } = useLocations();
+  const [optimisticLocations, setOptimisticLocations] = useState<Location[]>([]);
   const [currentLocationId, setCurrentLocationIdState] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
     return localStorage.getItem(STORAGE_KEY);
   });
+
+  const locations = useMemo(() => {
+    const merged = [...optimisticLocations, ...queriedLocations];
+    const seen = new Set<string>();
+    return merged
+      .filter((location) => {
+        if (seen.has(location.id)) return false;
+        seen.add(location.id);
+        return true;
+      })
+      .sort((a, b) => Number(b.is_primary) - Number(a.is_primary));
+  }, [optimisticLocations, queriedLocations]);
 
   // 初回ロード or 現在のIDが利用可能店舗にない場合、DBで取得できた店舗をlocalStorageより優先して復元
   useEffect(() => {
@@ -201,6 +220,7 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
   const upsertLocation = (location: Location) => {
     const normalized = normalizeLocation(location);
     writeRestoredLocation(normalized);
+    setOptimisticLocations((old) => [normalized, ...old.filter((l) => l.id !== normalized.id)]);
     queryClient.setQueriesData<Location[]>({ queryKey: ["locations"] }, (old = []) => {
       const withoutDuplicate = old.filter((l) => l.id !== normalized.id);
       return [normalized, ...withoutDuplicate].sort((a, b) => Number(b.is_primary) - Number(a.is_primary));
