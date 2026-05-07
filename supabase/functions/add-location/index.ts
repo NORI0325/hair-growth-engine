@@ -160,6 +160,12 @@ Deno.serve(async (req) => {
       .single();
     if (error) throw error;
 
+    await supabase.from("location_members").upsert({
+      location_id: location.id,
+      user_id: user.id,
+      role: member.role,
+    }, { onConflict: "location_id,user_id" });
+
     // tenant の location_quota を更新
     await supabase.from("tenants").update({ location_quota: newCount }).eq("id", tenant_id);
 
