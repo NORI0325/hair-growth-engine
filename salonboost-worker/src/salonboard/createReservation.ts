@@ -6,11 +6,11 @@ export interface CreateReservationInput {
   // YYYYMMDD
   date: string;
   // HHMM (e.g. "1500")
-  time: string;
-  stylistId: string;          // "0000000000" = 指名なし
-  rsvTerm: string;            // 分単位 (e.g. "90")
-  rsvRouteId?: string;        // 予約経路
-  setmenuId?: string;
+  time: string | number;
+  stylistId: string | number;          // "0000000000" = 指名なし
+  rsvTerm: string | number;            // 分単位 (e.g. "90")
+  rsvRouteId?: string | number;        // 予約経路
+  setmenuId?: string | number;
   menuCategoryCdList?: string[];
   menuIdList?: string[];
   netCouponId?: string;
