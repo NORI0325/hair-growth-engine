@@ -121,6 +121,14 @@ const CalendarPage = () => {
     await updateStatus(id, "cancelled");
   };
 
+  const deleteBooking = async (id: string) => {
+    const { error } = await supabase.from("bookings").delete().eq("id", id);
+    if (error) { toast.error("削除失敗: " + error.message); return; }
+    toast.success("予約データを完全に削除しました");
+    setSelected(null);
+    load();
+  };
+
   const restoreBooking = async (id: string) => {
     if (!confirm("この予約のキャンセルを取り消し、「確定」に戻します。よろしいですか？")) return;
     await updateStatus(id, "confirmed");
