@@ -38,13 +38,14 @@ const getEnvironment = (): "sandbox" | "live" => {
 
 const Locations = () => {
   const tenantId = useTenantId();
-  const { data: locations = [], isLoading } = useLocations();
-  const { setCurrentLocationId, upsertLocation } = useCurrentLocation();
+  const { setCurrentLocationId, upsertLocation, locations: currentLocations } = useCurrentLocation();
+  const { data: queriedLocations = [], isLoading } = useLocations();
   const queryClient = useQueryClient();
   const [addOpen, setAddOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<Location | null>(null);
 
+  const locations = currentLocations.length > 0 ? currentLocations : queriedLocations;
   const additionalCount = Math.max(0, locations.length - 1);
   const monthlyTotal = 9800 + additionalCount * 7800;
 
