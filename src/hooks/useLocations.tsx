@@ -51,6 +51,41 @@ const writeRestoredLocation = (location: Location) => {
   localStorage.setItem(RESTORED_LOCATION_KEY, JSON.stringify(normalizeLocation(location)));
 };
 
+const sortLocations = (locations: Location[]) =>
+  [...locations].sort((a, b) => {
+    const primaryDiff = Number(b.is_primary) - Number(a.is_primary);
+    if (primaryDiff !== 0) return primaryDiff;
+    return (a.created_at || a.name).localeCompare(b.created_at || b.name);
+  });
+
+const mergeLocations = (...groups: Location[][]): Location[] => {
+  const byId = new Map<string, Location>();
+  groups.flat().forEach((location) => {
+    const normalized = normalizeLocation(location);
+    const existing = byId.get(normalized.id);
+    byId.set(normalized.id, existing ? { ...existing, ...normalized } : normalized);
+  });
+  return sortLocations(Array.from(byId.values()));
+};
+
+const recoverLocationsFromBackend = async (tenantId: string): Promise<Location[]> => {
+  const { data, error } = await supabase.functions.invoke("recover-locations", {
+    body: { tenant_id: tenantId },
+  });
+
+  if (error || data?.error) {
+    console.warn("[locations] backend recovery failed", {
+      tenantId,
+      message: data?.error ?? error?.message,
+    });
+    return [];
+  }
+
+  return ((data?.locations ?? []) as Location[])
+    .filter((location) => location?.tenant_id === tenantId)
+    .map(normalizeLocation);
+};
+
 /**
  * 現在ログイン中のユーザーがアクセスできる店舗一覧。
  * オーナー/マネージャーは tenant 内の全店舗、スタッフは location_members に紐づく店舗。
@@ -71,23 +106,15 @@ export const useLocations = () => {
         .eq("tenant_id", tenantId)
         .order("is_primary", { ascending: false })
         .order("created_at", { ascending: true });
-      if (error) throw error;
-
-      const directLocations = ((data ?? []) as Location[]).map(normalizeLocation);
-      const primaryLocationId = directLocations.find((l) => l.is_primary)?.id ?? directLocations[0]?.id ?? null;
-      if (directLocations.length > 0) {
-        console.info("[locations] fetch diagnostics", {
+      if (error) {
+        console.warn("[locations] direct fetch failed", {
           authUserId: user?.id ?? null,
           tenantId,
-          companyId: null,
-          primaryLocationId,
-          fetchedLocationsCount: directLocations.length,
-          fallbackLocationsCount: 0,
-          finalLocationsCount: directLocations.length,
-          selectedCurrentLocationId: typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null,
+          message: error.message,
         });
-        return directLocations;
       }
+
+      const directLocations = error ? [] : ((data ?? []) as Location[]).map(normalizeLocation);
 
       // RLS/所属紐付けの一時的なズレで通常取得が空になるケースに備え、
       // 認証ユーザー自身の所属店舗だけを返すDB関数で復元する。
@@ -118,11 +145,15 @@ export const useLocations = () => {
         }));
 
       const restoredFromAddLocation = readRestoredLocation(tenantId);
-      const finalLocations = restored.length > 0
-        ? restored
-        : restoredFromAddLocation
-          ? [restoredFromAddLocation]
-          : [];
+      const mergedBeforeRecovery = mergeLocations(
+        directLocations,
+        restored,
+        restoredFromAddLocation ? [restoredFromAddLocation] : []
+      );
+      const recovered = mergedBeforeRecovery.length === 0 || !mergedBeforeRecovery.some((l) => l.is_primary)
+        ? await recoverLocationsFromBackend(tenantId)
+        : [];
+      const finalLocations = mergeLocations(mergedBeforeRecovery, recovered);
 
       console.info("[locations] fetch diagnostics", {
         authUserId: user?.id ?? null,
@@ -131,8 +162,10 @@ export const useLocations = () => {
         primaryLocationId: finalLocations.find((l) => l.is_primary)?.id ?? finalLocations[0]?.id ?? null,
         fetchedLocationsCount: directLocations.length,
         fallbackLocationsCount: restored.length,
+        backendRecoveredCount: recovered.length,
         finalLocationsCount: finalLocations.length,
         selectedCurrentLocationId: typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null,
+        availableLocations: finalLocations.map((l) => ({ id: l.id, name: l.name, isPrimary: l.is_primary })),
       });
 
       if (finalLocations.length === 0) {
