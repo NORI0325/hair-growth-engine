@@ -142,27 +142,22 @@ export default function ChannelIntegrations() {
       updated_at: new Date().toISOString(),
     };
 
-    const rowId = cur?.id;
     let error: any = null;
-    let updated = false;
+    let findQuery = supabase
+      .from("channel_integrations")
+      .select("id,connection_status")
+      .eq("owner_id", user.id)
+      .eq("channel", channel);
+    findQuery = currentLocationId ? findQuery.eq("location_id", currentLocationId) : findQuery.is("location_id", null);
+    const findRes = await findQuery.maybeSingle();
+    error = findRes.error;
 
-    if (rowId) {
-      const res = await supabase.from("channel_integrations").update(payload).eq("id", rowId);
-      error = res.error;
-      updated = !res.error;
-    } else {
-      let query = supabase
-        .from("channel_integrations")
-        .update(payload)
-        .eq("owner_id", user.id)
-        .eq("channel", channel);
-      query = currentLocationId ? query.eq("location_id", currentLocationId) : query.is("location_id", null);
-      const res = await query.select("id").maybeSingle();
-      error = res.error;
-      updated = !res.error && !!res.data?.id;
+    if (!error && findRes.data?.id) {
+      const updateRes = await supabase.from("channel_integrations").update(payload).eq("id", findRes.data.id);
+      error = updateRes.error;
     }
 
-    if (!error && !updated) {
+    if (!error && !findRes.data?.id) {
       const insertRes = await supabase.from("channel_integrations").insert({
         owner_id: user.id,
         location_id: currentLocationId,
@@ -177,7 +172,13 @@ export default function ChannelIntegrations() {
         setRows((latest) => ({ ...latest, [channel]: insertRes.data as Integration }));
       }
     }
-    if (error) toast.error("保存に失敗しました: " + error.message);
+    if (error) {
+      toast.error("保存に失敗しました: " + error.message);
+      load();
+      return;
+    }
+    toast.success("保存しました");
+    load();
   };
 
   const retry = async (channel: string) => {
