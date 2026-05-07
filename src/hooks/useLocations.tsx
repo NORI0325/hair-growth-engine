@@ -1,4 +1,4 @@
-import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, ReactNode, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -66,6 +66,11 @@ const mergeLocations = (...groups: Location[][]): Location[] => {
     byId.set(normalized.id, existing ? { ...existing, ...normalized } : normalized);
   });
   return sortLocations(Array.from(byId.values()));
+};
+
+const chooseDefaultLocation = (locations: Location[]): Location | null => {
+  const arunePrimary = locations.find((l) => l.is_primary && l.name.trim().toLowerCase() === "arune hair");
+  return arunePrimary ?? locations.find((l) => l.is_primary) ?? locations[0] ?? null;
 };
 
 const recoverLocationsFromBackend = async (tenantId: string): Promise<Location[]> => {
@@ -150,16 +155,15 @@ export const useLocations = () => {
         restored,
         restoredFromAddLocation ? [restoredFromAddLocation] : []
       );
-      const recovered = mergedBeforeRecovery.length === 0 || !mergedBeforeRecovery.some((l) => l.is_primary)
-        ? await recoverLocationsFromBackend(tenantId)
-        : [];
+      const recovered = await recoverLocationsFromBackend(tenantId);
       const finalLocations = mergeLocations(mergedBeforeRecovery, recovered);
+      const primaryLocation = chooseDefaultLocation(finalLocations);
 
       console.info("[locations] fetch diagnostics", {
         authUserId: user?.id ?? null,
         tenantId,
         companyId: null,
-        primaryLocationId: finalLocations.find((l) => l.is_primary)?.id ?? finalLocations[0]?.id ?? null,
+        primaryLocationId: primaryLocation?.id ?? null,
         fetchedLocationsCount: directLocations.length,
         fallbackLocationsCount: restored.length,
         backendRecoveredCount: recovered.length,
@@ -202,6 +206,7 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
   const queryClient = useQueryClient();
   const { data: queriedLocations = [], isLoading } = useLocations();
   const [optimisticLocations, setOptimisticLocations] = useState<Location[]>([]);
+  const hasRestoredInitialLocation = useRef(false);
   const [currentLocationId, setCurrentLocationIdState] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
     return localStorage.getItem(STORAGE_KEY);
@@ -211,17 +216,29 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
     return mergeLocations(optimisticLocations, queriedLocations);
   }, [optimisticLocations, queriedLocations]);
 
-  // 初回ロード or 現在のIDが利用可能店舗にない場合、DBで取得できた店舗をlocalStorageより優先して復元
+  const defaultLocation = useMemo(() => chooseDefaultLocation(locations), [locations]);
+  const selectedLocation = useMemo(
+    () => locations.find((l) => l.id === currentLocationId) ?? null,
+    [locations, currentLocationId]
+  );
+  const effectiveCurrentLocationId = locations.length > 0 && (!hasRestoredInitialLocation.current || !selectedLocation)
+    ? defaultLocation?.id ?? currentLocationId
+    : currentLocationId;
+
+  // 初回ロード or 現在のIDが利用可能店舗にない場合、DBで取得できたprimary店舗をlocalStorageより優先して復元
   useEffect(() => {
     if (locations.length === 0) return;
     const stillValid = currentLocationId && locations.some((l) => l.id === currentLocationId);
-    if (!stillValid) {
-      const primary = locations.find((l) => l.is_primary) ?? locations[0];
+    const primary = defaultLocation;
+    const shouldPreferPrimary = !hasRestoredInitialLocation.current;
+    if (primary && (!stillValid || (shouldPreferPrimary && currentLocationId !== primary.id))) {
+      hasRestoredInitialLocation.current = true;
       console.info("[locations] currentLocationId restore", {
         before: currentLocationId,
         after: primary.id,
         localStorageCurrentLocationId: typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null,
         selectedLocationName: primary.name,
+        reason: stillValid ? "initial_primary_preferred_over_local_storage" : "missing_or_empty_local_storage",
         availableLocations: locations.map((l) => ({ id: l.id, name: l.name, isPrimary: l.is_primary })),
       });
       setCurrentLocationIdState(primary.id);
@@ -229,12 +246,14 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
       // フォールバック発動時も依存クエリを再フェッチさせる
       queryClient.invalidateQueries();
     }
-  }, [locations, currentLocationId, queryClient]);
+    hasRestoredInitialLocation.current = true;
+  }, [locations, currentLocationId, defaultLocation, queryClient]);
 
   useEffect(() => {
     if (locations.length === 0 || !currentLocationId) return;
     const selected = locations.find((l) => l.id === currentLocationId);
-    const primary = locations.find((l) => l.is_primary) ?? locations[0];
+    const primary = defaultLocation;
+    if (!primary) return;
     if (!selected || (selected.tenant_id !== primary.tenant_id)) {
       console.info("[locations] invalid currentLocationId replaced", {
         before: currentLocationId,
@@ -247,9 +266,10 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
       localStorage.setItem(STORAGE_KEY, primary.id);
       queryClient.invalidateQueries();
     }
-  }, [locations, currentLocationId, queryClient]);
+  }, [locations, currentLocationId, defaultLocation, queryClient]);
 
   const setCurrentLocationId = (id: string) => {
+    hasRestoredInitialLocation.current = true;
     const selected = locations.find((l) => l.id === id) ?? null;
     console.info("[locations] manual selection", {
       before: currentLocationId,
@@ -275,13 +295,13 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const currentLocation = useMemo(
-    () => locations.find((l) => l.id === currentLocationId) ?? null,
-    [locations, currentLocationId]
+    () => locations.find((l) => l.id === effectiveCurrentLocationId) ?? null,
+    [locations, effectiveCurrentLocationId]
   );
 
   return (
     <LocationContext.Provider
-      value={{ currentLocationId, currentLocation, setCurrentLocationId, selectLocation: setCurrentLocationId, upsertLocation, locations, isLoading }}
+      value={{ currentLocationId: effectiveCurrentLocationId, currentLocation, setCurrentLocationId, selectLocation: setCurrentLocationId, upsertLocation, locations, isLoading }}
     >
       {children}
     </LocationContext.Provider>
