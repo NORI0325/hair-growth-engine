@@ -38,7 +38,7 @@ const getEnvironment = (): "sandbox" | "live" => {
 
 const Locations = () => {
   const tenantId = useTenantId();
-  const { setCurrentLocationId, upsertLocation, locations: currentLocations } = useCurrentLocation();
+  const { currentLocationId, setCurrentLocationId, upsertLocation, locations: currentLocations } = useCurrentLocation();
   const { data: queriedLocations = [], isLoading } = useLocations();
   const queryClient = useQueryClient();
   const [addOpen, setAddOpen] = useState(false);
@@ -156,7 +156,11 @@ const Locations = () => {
           ) : (
             <div className="grid gap-4 md:grid-cols-2">
               {locations.map((loc) => (
-                <Card key={loc.id} className="p-6">
+                <Card
+                  key={loc.id}
+                  className={`p-6 cursor-pointer transition-colors ${currentLocationId === loc.id ? "border-gold bg-gold/5" : "hover:bg-muted/30"}`}
+                  onClick={() => setCurrentLocationId(loc.id)}
+                >
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded bg-gold/10 flex items-center justify-center">
@@ -164,19 +168,25 @@ const Locations = () => {
                       </div>
                       <div>
                         <div className="font-serif text-lg">{loc.name}</div>
-                        {loc.is_primary && (
-                          <Badge variant="secondary" className="mt-1 gap-1">
-                            <Star className="w-3 h-3" />
-                            本店
-                          </Badge>
-                        )}
+                        <div className="flex flex-wrap gap-2 mt-1">
+                          {loc.is_primary && (
+                            <Badge variant="secondary" className="gap-1">
+                              <Star className="w-3 h-3" />
+                              本店
+                            </Badge>
+                          )}
+                          {currentLocationId === loc.id && <Badge>選択中</Badge>}
+                        </div>
                       </div>
                     </div>
                     {!loc.is_primary && (
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => setConfirmDelete(loc)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setConfirmDelete(loc);
+                        }}
                       >
                         <Trash2 className="w-4 h-4 text-destructive" />
                       </Button>

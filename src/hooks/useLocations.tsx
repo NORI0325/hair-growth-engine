@@ -51,6 +51,41 @@ const writeRestoredLocation = (location: Location) => {
   localStorage.setItem(RESTORED_LOCATION_KEY, JSON.stringify(normalizeLocation(location)));
 };
 
+const sortLocations = (locations: Location[]) =>
+  [...locations].sort((a, b) => {
+    const primaryDiff = Number(b.is_primary) - Number(a.is_primary);
+    if (primaryDiff !== 0) return primaryDiff;
+    return (a.created_at || a.name).localeCompare(b.created_at || b.name);
+  });
+
+const mergeLocations = (...groups: Location[][]): Location[] => {
+  const byId = new Map<string, Location>();
+  groups.flat().forEach((location) => {
+    const normalized = normalizeLocation(location);
+    const existing = byId.get(normalized.id);
+    byId.set(normalized.id, existing ? { ...existing, ...normalized } : normalized);
+  });
+  return sortLocations(Array.from(byId.values()));
+};
+
+const recoverLocationsFromBackend = async (tenantId: string): Promise<Location[]> => {
+  const { data, error } = await supabase.functions.invoke("recover-locations", {
+    body: { tenant_id: tenantId },
+  });
+
+  if (error || data?.error) {
+    console.warn("[locations] backend recovery failed", {
+      tenantId,
+      message: data?.error ?? error?.message,
+    });
+    return [];
+  }
+
+  return ((data?.locations ?? []) as Location[])
+    .filter((location) => location?.tenant_id === tenantId)
+    .map(normalizeLocation);
+};
+
 /**
  * 現在ログイン中のユーザーがアクセスできる店舗一覧。
  * オーナー/マネージャーは tenant 内の全店舗、スタッフは location_members に紐づく店舗。
@@ -71,23 +106,15 @@ export const useLocations = () => {
         .eq("tenant_id", tenantId)
         .order("is_primary", { ascending: false })
         .order("created_at", { ascending: true });
-      if (error) throw error;
-
-      const directLocations = ((data ?? []) as Location[]).map(normalizeLocation);
-      const primaryLocationId = directLocations.find((l) => l.is_primary)?.id ?? directLocations[0]?.id ?? null;
-      if (directLocations.length > 0) {
-        console.info("[locations] fetch diagnostics", {
+      if (error) {
+        console.warn("[locations] direct fetch failed", {
           authUserId: user?.id ?? null,
           tenantId,
-          companyId: null,
-          primaryLocationId,
-          fetchedLocationsCount: directLocations.length,
-          fallbackLocationsCount: 0,
-          finalLocationsCount: directLocations.length,
-          selectedCurrentLocationId: typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null,
+          message: error.message,
         });
-        return directLocations;
       }
+
+      const directLocations = error ? [] : ((data ?? []) as Location[]).map(normalizeLocation);
 
       // RLS/所属紐付けの一時的なズレで通常取得が空になるケースに備え、
       // 認証ユーザー自身の所属店舗だけを返すDB関数で復元する。
@@ -118,11 +145,15 @@ export const useLocations = () => {
         }));
 
       const restoredFromAddLocation = readRestoredLocation(tenantId);
-      const finalLocations = restored.length > 0
-        ? restored
-        : restoredFromAddLocation
-          ? [restoredFromAddLocation]
-          : [];
+      const mergedBeforeRecovery = mergeLocations(
+        directLocations,
+        restored,
+        restoredFromAddLocation ? [restoredFromAddLocation] : []
+      );
+      const recovered = mergedBeforeRecovery.length === 0 || !mergedBeforeRecovery.some((l) => l.is_primary)
+        ? await recoverLocationsFromBackend(tenantId)
+        : [];
+      const finalLocations = mergeLocations(mergedBeforeRecovery, recovered);
 
       console.info("[locations] fetch diagnostics", {
         authUserId: user?.id ?? null,
@@ -131,8 +162,10 @@ export const useLocations = () => {
         primaryLocationId: finalLocations.find((l) => l.is_primary)?.id ?? finalLocations[0]?.id ?? null,
         fetchedLocationsCount: directLocations.length,
         fallbackLocationsCount: restored.length,
+        backendRecoveredCount: recovered.length,
         finalLocationsCount: finalLocations.length,
         selectedCurrentLocationId: typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null,
+        availableLocations: finalLocations.map((l) => ({ id: l.id, name: l.name, isPrimary: l.is_primary })),
       });
 
       if (finalLocations.length === 0) {
@@ -175,15 +208,7 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
   });
 
   const locations = useMemo(() => {
-    const merged = [...optimisticLocations, ...queriedLocations];
-    const seen = new Set<string>();
-    return merged
-      .filter((location) => {
-        if (seen.has(location.id)) return false;
-        seen.add(location.id);
-        return true;
-      })
-      .sort((a, b) => Number(b.is_primary) - Number(a.is_primary));
+    return mergeLocations(optimisticLocations, queriedLocations);
   }, [optimisticLocations, queriedLocations]);
 
   // 初回ロード or 現在のIDが利用可能店舗にない場合、DBで取得できた店舗をlocalStorageより優先して復元
@@ -192,6 +217,13 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
     const stillValid = currentLocationId && locations.some((l) => l.id === currentLocationId);
     if (!stillValid) {
       const primary = locations.find((l) => l.is_primary) ?? locations[0];
+      console.info("[locations] currentLocationId restore", {
+        before: currentLocationId,
+        after: primary.id,
+        localStorageCurrentLocationId: typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null,
+        selectedLocationName: primary.name,
+        availableLocations: locations.map((l) => ({ id: l.id, name: l.name, isPrimary: l.is_primary })),
+      });
       setCurrentLocationIdState(primary.id);
       localStorage.setItem(STORAGE_KEY, primary.id);
       // フォールバック発動時も依存クエリを再フェッチさせる
@@ -204,6 +236,13 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
     const selected = locations.find((l) => l.id === currentLocationId);
     const primary = locations.find((l) => l.is_primary) ?? locations[0];
     if (!selected || (selected.tenant_id !== primary.tenant_id)) {
+      console.info("[locations] invalid currentLocationId replaced", {
+        before: currentLocationId,
+        after: primary.id,
+        localStorageCurrentLocationId: typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null,
+        selectedLocationName: primary.name,
+        reason: !selected ? "missing_from_locations" : "tenant_mismatch",
+      });
       setCurrentLocationIdState(primary.id);
       localStorage.setItem(STORAGE_KEY, primary.id);
       queryClient.invalidateQueries();
@@ -211,6 +250,13 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
   }, [locations, currentLocationId, queryClient]);
 
   const setCurrentLocationId = (id: string) => {
+    const selected = locations.find((l) => l.id === id) ?? null;
+    console.info("[locations] manual selection", {
+      before: currentLocationId,
+      after: id,
+      selectedLocationName: selected?.name ?? null,
+      localStorageCurrentLocationId: typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null,
+    });
     setCurrentLocationIdState(id);
     if (typeof window !== "undefined") localStorage.setItem(STORAGE_KEY, id);
     // 店舗切り替え時に各種クエリを無効化
@@ -223,7 +269,7 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
     setOptimisticLocations((old) => [normalized, ...old.filter((l) => l.id !== normalized.id)]);
     queryClient.setQueriesData<Location[]>({ queryKey: ["locations"] }, (old = []) => {
       const withoutDuplicate = old.filter((l) => l.id !== normalized.id);
-      return [normalized, ...withoutDuplicate].sort((a, b) => Number(b.is_primary) - Number(a.is_primary));
+      return mergeLocations([normalized], withoutDuplicate);
     });
     setCurrentLocationId(normalized.id);
   };
