@@ -217,17 +217,18 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
     return mergeLocations(optimisticLocations, queriedLocations);
   }, [optimisticLocations, queriedLocations]);
 
-  // 初回ロード or 現在のIDが利用可能店舗にない場合、DBで取得できた店舗をlocalStorageより優先して復元
+  // 初回ロード or 現在のIDが利用可能店舗にない場合、DBで取得できたprimary店舗をlocalStorageより優先して復元
   useEffect(() => {
     if (locations.length === 0) return;
     const stillValid = currentLocationId && locations.some((l) => l.id === currentLocationId);
-    if (!stillValid) {
-      const primary = locations.find((l) => l.is_primary) ?? locations[0];
+    const primary = chooseDefaultLocation(locations);
+    if (primary && currentLocationId !== primary.id) {
       console.info("[locations] currentLocationId restore", {
         before: currentLocationId,
         after: primary.id,
         localStorageCurrentLocationId: typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null,
         selectedLocationName: primary.name,
+        reason: stillValid ? "primary_preferred_over_local_storage" : "missing_or_empty_local_storage",
         availableLocations: locations.map((l) => ({ id: l.id, name: l.name, isPrimary: l.is_primary })),
       });
       setCurrentLocationIdState(primary.id);
@@ -240,7 +241,8 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     if (locations.length === 0 || !currentLocationId) return;
     const selected = locations.find((l) => l.id === currentLocationId);
-    const primary = locations.find((l) => l.is_primary) ?? locations[0];
+    const primary = chooseDefaultLocation(locations);
+    if (!primary) return;
     if (!selected || (selected.tenant_id !== primary.tenant_id)) {
       console.info("[locations] invalid currentLocationId replaced", {
         before: currentLocationId,
