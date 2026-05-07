@@ -29,15 +29,49 @@ export const useLocations = () => {
     enabled: !!user && !!tenantId,
     queryFn: async (): Promise<Location[]> => {
       if (!tenantId) return [];
-      const query = supabase
+      const { data, error } = await supabase
         .from("locations")
         .select("id, tenant_id, name, public_slug, is_primary, created_at")
         .eq("tenant_id", tenantId)
         .order("is_primary", { ascending: false })
         .order("created_at", { ascending: true });
-      const { data, error } = await query;
       if (error) throw error;
-      return (data ?? []) as Location[];
+
+      const directLocations = (data ?? []) as Location[];
+      if (directLocations.length > 0) return directLocations;
+
+      // RLS/所属紐付けの一時的なズレで通常取得が空になるケースに備え、
+      // 認証ユーザー自身の所属店舗だけを返すDB関数で復元する。
+      const { data: memberLocations, error: rpcError } = await (supabase as any)
+        .rpc("get_my_member_locations");
+      if (rpcError) throw rpcError;
+
+      const restored = ((memberLocations ?? []) as Array<{
+        id: string;
+        tenant_id: string;
+        name: string;
+        is_primary: boolean;
+      }>)
+        .filter((l) => l.tenant_id === tenantId)
+        .map((l) => ({
+          id: l.id,
+          tenant_id: l.tenant_id,
+          name: l.name,
+          public_slug: null,
+          is_primary: l.is_primary,
+          created_at: "",
+        }));
+
+      if (restored.length === 0) {
+        console.warn("[locations] no visible locations for current tenant", {
+          tenantId,
+          userId: user?.id,
+          directCount: directLocations.length,
+          rpcCount: memberLocations?.length ?? 0,
+        });
+      }
+
+      return restored as Location[];
     },
   });
 };
@@ -65,7 +99,7 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
     return localStorage.getItem(STORAGE_KEY);
   });
 
-  // 初回ロード or 現在のIDが利用可能店舗にない場合、primaryまたは先頭にフォールバック
+  // 初回ロード or 現在のIDが利用可能店舗にない場合、DBで取得できた店舗をlocalStorageより優先して復元
   useEffect(() => {
     if (locations.length === 0) return;
     const stillValid = currentLocationId && locations.some((l) => l.id === currentLocationId);
@@ -74,6 +108,17 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
       setCurrentLocationIdState(primary.id);
       localStorage.setItem(STORAGE_KEY, primary.id);
       // フォールバック発動時も依存クエリを再フェッチさせる
+      queryClient.invalidateQueries();
+    }
+  }, [locations, currentLocationId, queryClient]);
+
+  useEffect(() => {
+    if (locations.length === 0 || !currentLocationId) return;
+    const selected = locations.find((l) => l.id === currentLocationId);
+    const primary = locations.find((l) => l.is_primary) ?? locations[0];
+    if (!selected || (selected.tenant_id !== primary.tenant_id)) {
+      setCurrentLocationIdState(primary.id);
+      localStorage.setItem(STORAGE_KEY, primary.id);
       queryClient.invalidateQueries();
     }
   }, [locations, currentLocationId, queryClient]);

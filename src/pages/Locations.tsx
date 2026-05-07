@@ -80,7 +80,7 @@ const Locations = () => {
     onSuccess: (data) => {
       const createdId = data?.location?.id;
       if (createdId) setCurrentLocationId(createdId);
-      toast.success("店舗を追加しました");
+      toast.success(data?.already_exists ? "既存の店舗を表示しました" : "店舗を追加しました");
       setAddOpen(false);
       setNewName("");
       queryClient.invalidateQueries({ queryKey: ["locations"] });

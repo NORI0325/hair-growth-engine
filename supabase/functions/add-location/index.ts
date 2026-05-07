@@ -85,12 +85,45 @@ Deno.serve(async (req) => {
     // 同名店舗の重複防止（先回りチェック）
     const { data: dup } = await supabase
       .from("locations")
-      .select("id")
+      .select("id, tenant_id, name, is_primary, public_slug, created_at")
       .eq("tenant_id", tenant_id)
       .ilike("name", name.trim())
       .maybeSingle();
     if (dup) {
-      return new Response(JSON.stringify({ error: "duplicate_name", message: "同じ名前の店舗が既に存在します" }), { status: 409, headers: corsHeaders });
+      const [{ data: tenantLink }, { data: locationLink }] = await Promise.all([
+        supabase
+          .from("tenant_members")
+          .select("role, accepted_at")
+          .eq("tenant_id", tenant_id)
+          .eq("user_id", user.id)
+          .maybeSingle(),
+        supabase
+          .from("location_members")
+          .select("role")
+          .eq("location_id", dup.id)
+          .eq("user_id", user.id)
+          .maybeSingle(),
+      ]);
+      console.warn("add-location duplicate visible-diagnostics", {
+        tenantId: tenant_id,
+        userId: user.id,
+        duplicateLocationId: dup.id,
+        hasTenantMembership: !!tenantLink,
+        tenantRole: tenantLink?.role ?? null,
+        tenantAccepted: !!tenantLink?.accepted_at,
+        hasLocationMembership: !!locationLink,
+        locationRole: locationLink?.role ?? null,
+      });
+      if (tenantLink?.accepted_at && !locationLink) {
+        await supabase.from("location_members").upsert({
+          location_id: dup.id,
+          user_id: user.id,
+          role: tenantLink.role,
+        }, { onConflict: "location_id,user_id" });
+      }
+      return new Response(JSON.stringify({ success: true, already_exists: true, location: dup }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // location 作成
