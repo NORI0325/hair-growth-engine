@@ -6,11 +6,11 @@ export interface CreateReservationInput {
   // YYYYMMDD
   date: string;
   // HHMM (e.g. "1500")
-  time: string;
-  stylistId: string;          // "0000000000" = 指名なし
-  rsvTerm: string;            // 分単位 (e.g. "90")
-  rsvRouteId?: string;        // 予約経路
-  setmenuId?: string;
+  time: string | number;
+  stylistId: string | number;          // "0000000000" = 指名なし
+  rsvTerm: string | number;            // 分単位 (e.g. "90")
+  rsvRouteId?: string | number;        // 予約経路
+  setmenuId?: string | number;
   menuCategoryCdList?: string[];
   menuIdList?: string[];
   netCouponId?: string;
@@ -35,29 +35,44 @@ export async function createReservation(page: Page, input: CreateReservationInpu
 
   await assertNotLoggedOut(page);
 
+  // payload 型ログ（Playwright selectOption は string のみ受け付けるため）
+  logger.info({
+    stylistId: input.stylistId, stylistIdType: typeof input.stylistId,
+    setmenuId: input.setmenuId, setmenuIdType: typeof input.setmenuId,
+    rsvTerm: input.rsvTerm, rsvTermType: typeof input.rsvTerm,
+    rsvRouteId: input.rsvRouteId, rsvRouteIdType: typeof input.rsvRouteId,
+    time: input.time, timeType: typeof input.time,
+    date: input.date,
+  }, "createReservation payload types");
+
+  const toStr = (v: unknown): string => String(v);
+  const toStrArr = (v: unknown): string[] => Array.isArray(v) ? v.map((x) => String(x)) : [String(v)];
+
   // 必須項目入力
-  if (await page.locator('select[name="stylistId"]').count()) {
-    await page.locator('select[name="stylistId"]').selectOption(input.stylistId);
+  if (input.stylistId != null && await page.locator('select[name="stylistId"]').count()) {
+    await page.locator('select[name="stylistId"]').selectOption({ value: toStr(input.stylistId) });
   }
-  if (await page.locator('select[name="time"]').count()) {
-    await page.locator('select[name="time"]').selectOption(input.time);
+  if (input.time != null && await page.locator('select[name="time"]').count()) {
+    await page.locator('select[name="time"]').selectOption({ value: toStr(input.time) });
   }
-  await page.locator('select[name="rsvTerm"]').selectOption(input.rsvTerm);
+  if (input.rsvTerm != null) {
+    await page.locator('select[name="rsvTerm"]').selectOption({ value: toStr(input.rsvTerm) });
+  }
 
   if (input.rsvRouteId && await page.locator('select[name="rsvRouteId"]').count()) {
-    await page.locator('select[name="rsvRouteId"]').selectOption(input.rsvRouteId);
+    await page.locator('select[name="rsvRouteId"]').selectOption({ value: toStr(input.rsvRouteId) });
   }
   if (input.setmenuId && await page.locator('select[name="setmenuId"]').count()) {
-    await page.locator('select[name="setmenuId"]').selectOption(input.setmenuId);
+    await page.locator('select[name="setmenuId"]').selectOption({ value: toStr(input.setmenuId) });
   }
   if (input.menuCategoryCdList && await page.locator('select[name="menuCategoryCdList"]').count()) {
-    await page.locator('select[name="menuCategoryCdList"]').selectOption(input.menuCategoryCdList);
+    await page.locator('select[name="menuCategoryCdList"]').selectOption(toStrArr(input.menuCategoryCdList));
   }
   if (input.menuIdList && await page.locator('select[name="menuIdList"]').count()) {
-    await page.locator('select[name="menuIdList"]').selectOption(input.menuIdList);
+    await page.locator('select[name="menuIdList"]').selectOption(toStrArr(input.menuIdList));
   }
   if (input.netCouponId && await page.locator('select[name="netCouponId"]').count()) {
-    await page.locator('select[name="netCouponId"]').selectOption(input.netCouponId);
+    await page.locator('select[name="netCouponId"]').selectOption({ value: toStr(input.netCouponId) });
   }
 
   await page.locator('input[name="nmSeiKana"]').fill(input.nmSeiKana);
