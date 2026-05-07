@@ -7,8 +7,10 @@ import PageHeader from "@/components/PageHeader";
 import { Loader2, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
+import { Trash2 } from "lucide-react";
 
 import FullCalendar from "@fullcalendar/react";
 import resourceTimegridPlugin from "@fullcalendar/resource-timegrid";
@@ -119,6 +121,14 @@ const CalendarPage = () => {
     await updateStatus(id, "cancelled");
   };
 
+  const deleteBooking = async (id: string) => {
+    const { error } = await supabase.from("bookings").delete().eq("id", id);
+    if (error) { toast.error("削除失敗: " + error.message); return; }
+    toast.success("予約データを完全に削除しました");
+    setSelected(null);
+    load();
+  };
+
   const restoreBooking = async (id: string) => {
     if (!confirm("この予約のキャンセルを取り消し、「確定」に戻します。よろしいですか？")) return;
     await updateStatus(id, "confirmed");
@@ -204,6 +214,28 @@ const CalendarPage = () => {
                 {selected.status === "cancelled" && (
                   <Button size="sm" className="rounded-none" onClick={() => restoreBooking(selected.id)}>キャンセルを取り消す</Button>
                 )}
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button size="sm" variant="ghost" className="rounded-none text-muted-foreground hover:text-destructive" title="予約データを完全に削除">
+                      <Trash2 className="w-3.5 h-3.5 mr-1" />完全に削除
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent className="rounded-none">
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>この予約を完全に削除しますか？</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        予約データをデータベースから完全に削除します。<br />
+                        この操作は取り消せません。
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel className="rounded-none">キャンセル</AlertDialogCancel>
+                      <AlertDialogAction className="rounded-none bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => deleteBooking(selected.id)}>
+                        完全に削除する
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
                 <Button size="sm" variant="outline" className="rounded-none ml-auto" onClick={() => setSelected(null)}>閉じる</Button>
               </div>
               {selected.status === "cancelled" && (
