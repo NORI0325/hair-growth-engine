@@ -1,4 +1,4 @@
-import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, ReactNode, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -208,6 +208,7 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
   const queryClient = useQueryClient();
   const { data: queriedLocations = [], isLoading } = useLocations();
   const [optimisticLocations, setOptimisticLocations] = useState<Location[]>([]);
+  const hasRestoredInitialLocation = useRef(false);
   const [currentLocationId, setCurrentLocationIdState] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
     return localStorage.getItem(STORAGE_KEY);
@@ -222,13 +223,15 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
     if (locations.length === 0) return;
     const stillValid = currentLocationId && locations.some((l) => l.id === currentLocationId);
     const primary = chooseDefaultLocation(locations);
-    if (primary && currentLocationId !== primary.id) {
+    const shouldPreferPrimary = !hasRestoredInitialLocation.current;
+    if (primary && (!stillValid || (shouldPreferPrimary && currentLocationId !== primary.id))) {
+      hasRestoredInitialLocation.current = true;
       console.info("[locations] currentLocationId restore", {
         before: currentLocationId,
         after: primary.id,
         localStorageCurrentLocationId: typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null,
         selectedLocationName: primary.name,
-        reason: stillValid ? "primary_preferred_over_local_storage" : "missing_or_empty_local_storage",
+        reason: stillValid ? "initial_primary_preferred_over_local_storage" : "missing_or_empty_local_storage",
         availableLocations: locations.map((l) => ({ id: l.id, name: l.name, isPrimary: l.is_primary })),
       });
       setCurrentLocationIdState(primary.id);
@@ -236,6 +239,7 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
       // フォールバック発動時も依存クエリを再フェッチさせる
       queryClient.invalidateQueries();
     }
+    hasRestoredInitialLocation.current = true;
   }, [locations, currentLocationId, queryClient]);
 
   useEffect(() => {
