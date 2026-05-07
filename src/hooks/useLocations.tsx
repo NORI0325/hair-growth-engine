@@ -208,15 +208,7 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
   });
 
   const locations = useMemo(() => {
-    const merged = [...optimisticLocations, ...queriedLocations];
-    const seen = new Set<string>();
-    return merged
-      .filter((location) => {
-        if (seen.has(location.id)) return false;
-        seen.add(location.id);
-        return true;
-      })
-      .sort((a, b) => Number(b.is_primary) - Number(a.is_primary));
+    return mergeLocations(optimisticLocations, queriedLocations);
   }, [optimisticLocations, queriedLocations]);
 
   // 初回ロード or 現在のIDが利用可能店舗にない場合、DBで取得できた店舗をlocalStorageより優先して復元
@@ -225,6 +217,13 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
     const stillValid = currentLocationId && locations.some((l) => l.id === currentLocationId);
     if (!stillValid) {
       const primary = locations.find((l) => l.is_primary) ?? locations[0];
+      console.info("[locations] currentLocationId restore", {
+        before: currentLocationId,
+        after: primary.id,
+        localStorageCurrentLocationId: typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null,
+        selectedLocationName: primary.name,
+        availableLocations: locations.map((l) => ({ id: l.id, name: l.name, isPrimary: l.is_primary })),
+      });
       setCurrentLocationIdState(primary.id);
       localStorage.setItem(STORAGE_KEY, primary.id);
       // フォールバック発動時も依存クエリを再フェッチさせる
@@ -237,6 +236,13 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
     const selected = locations.find((l) => l.id === currentLocationId);
     const primary = locations.find((l) => l.is_primary) ?? locations[0];
     if (!selected || (selected.tenant_id !== primary.tenant_id)) {
+      console.info("[locations] invalid currentLocationId replaced", {
+        before: currentLocationId,
+        after: primary.id,
+        localStorageCurrentLocationId: typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null,
+        selectedLocationName: primary.name,
+        reason: !selected ? "missing_from_locations" : "tenant_mismatch",
+      });
       setCurrentLocationIdState(primary.id);
       localStorage.setItem(STORAGE_KEY, primary.id);
       queryClient.invalidateQueries();
@@ -244,6 +250,13 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
   }, [locations, currentLocationId, queryClient]);
 
   const setCurrentLocationId = (id: string) => {
+    const selected = locations.find((l) => l.id === id) ?? null;
+    console.info("[locations] manual selection", {
+      before: currentLocationId,
+      after: id,
+      selectedLocationName: selected?.name ?? null,
+      localStorageCurrentLocationId: typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null,
+    });
     setCurrentLocationIdState(id);
     if (typeof window !== "undefined") localStorage.setItem(STORAGE_KEY, id);
     // 店舗切り替え時に各種クエリを無効化
@@ -256,7 +269,7 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
     setOptimisticLocations((old) => [normalized, ...old.filter((l) => l.id !== normalized.id)]);
     queryClient.setQueriesData<Location[]>({ queryKey: ["locations"] }, (old = []) => {
       const withoutDuplicate = old.filter((l) => l.id !== normalized.id);
-      return [normalized, ...withoutDuplicate].sort((a, b) => Number(b.is_primary) - Number(a.is_primary));
+      return mergeLocations([normalized], withoutDuplicate);
     });
     setCurrentLocationId(normalized.id);
   };
