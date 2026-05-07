@@ -276,18 +276,18 @@ export default function ChannelIntegrations() {
                 <div className="grid grid-cols-2 gap-6 pt-2 border-t border-border">
                   <div className="flex items-center justify-between">
                     <Label className="text-sm">連携を有効化</Label>
-                    <Switch checked={r.enabled} onCheckedChange={(v) => upsert(c.key, { enabled: v, sync_enabled: v ? r.sync_enabled : false })} />
+                    <Switch checked={r.enabled} onCheckedChange={(v) => saveIntegration(c.key, { enabled: v, sync_enabled: v ? r.sync_enabled : false })} />
                   </div>
                   <div className="flex items-center justify-between">
                     <Label className="text-sm">同期対象にする</Label>
-                    <Switch checked={r.sync_enabled} disabled={!r.enabled} onCheckedChange={(v) => upsert(c.key, { sync_enabled: v })} />
+                    <Switch checked={r.sync_enabled} disabled={!r.enabled} onCheckedChange={(v) => saveIntegration(c.key, { sync_enabled: v })} />
                   </div>
                 </div>
 
                 <div>
                   <Label className="text-xs text-muted-foreground mb-1 block">備考メモ</Label>
                   <Input value={r.note ?? ""} onChange={(e) => setRows({ ...rows, [c.key]: { ...r, note: e.target.value } })}
-                    onBlur={() => upsert(c.key, { note: r.note })}
+                    onBlur={() => saveIntegration(c.key, { note: r.note })}
                     placeholder="例：担当者メモ・運用ルール等"
                     className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
                 </div>
