@@ -7,8 +7,10 @@ import PageHeader from "@/components/PageHeader";
 import { Loader2, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
+import { Trash2 } from "lucide-react";
 
 import FullCalendar from "@fullcalendar/react";
 import resourceTimegridPlugin from "@fullcalendar/resource-timegrid";
