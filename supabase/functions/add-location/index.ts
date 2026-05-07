@@ -7,6 +7,21 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const serializeLocation = (location: any, userId: string) => ({
+  id: location.id,
+  name: location.name,
+  tenant_id: location.tenant_id,
+  public_slug: location.public_slug ?? null,
+  is_primary: Boolean(location.is_primary),
+  created_at: location.created_at ?? null,
+  // 互換用: 現行 locations には active/company_id/owner_id/user_id 列がないため、
+  // フロントの即時復元に必要な所属情報として安全な値を返す。
+  active: true,
+  company_id: null,
+  owner_id: location.tenant_id,
+  user_id: userId,
+});
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405, headers: corsHeaders });
@@ -121,7 +136,12 @@ Deno.serve(async (req) => {
           role: tenantLink.role,
         }, { onConflict: "location_id,user_id" });
       }
-      return new Response(JSON.stringify({ success: true, already_exists: true, location: dup }), {
+      return new Response(JSON.stringify({
+        success: true,
+        already_exists: true,
+        restored_existing: true,
+        location: serializeLocation(dup, user.id),
+      }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -143,7 +163,12 @@ Deno.serve(async (req) => {
     // tenant の location_quota を更新
     await supabase.from("tenants").update({ location_quota: newCount }).eq("id", tenant_id);
 
-    return new Response(JSON.stringify({ success: true, location, stripe_updated: stripeUpdated }), {
+    return new Response(JSON.stringify({
+      success: true,
+      restored_existing: false,
+      location: serializeLocation(location, user.id),
+      stripe_updated: stripeUpdated,
+    }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
