@@ -214,6 +214,28 @@ const CalendarPage = () => {
                 {selected.status === "cancelled" && (
                   <Button size="sm" className="rounded-none" onClick={() => restoreBooking(selected.id)}>キャンセルを取り消す</Button>
                 )}
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button size="sm" variant="ghost" className="rounded-none text-muted-foreground hover:text-destructive" title="予約データを完全に削除">
+                      <Trash2 className="w-3.5 h-3.5 mr-1" />完全に削除
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent className="rounded-none">
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>この予約を完全に削除しますか？</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        予約データをデータベースから完全に削除します。<br />
+                        この操作は取り消せません。
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel className="rounded-none">キャンセル</AlertDialogCancel>
+                      <AlertDialogAction className="rounded-none bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => deleteBooking(selected.id)}>
+                        完全に削除する
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
                 <Button size="sm" variant="outline" className="rounded-none ml-auto" onClick={() => setSelected(null)}>閉じる</Button>
               </div>
               {selected.status === "cancelled" && (
