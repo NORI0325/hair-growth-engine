@@ -114,6 +114,13 @@ Deno.serve(async (req) => {
         hasLocationMembership: !!locationLink,
         locationRole: locationLink?.role ?? null,
       });
+      if (tenantLink?.accepted_at && !locationLink) {
+        await supabase.from("location_members").upsert({
+          location_id: dup.id,
+          user_id: user.id,
+          role: tenantLink.role,
+        }, { onConflict: "location_id,user_id" });
+      }
       return new Response(JSON.stringify({ success: true, already_exists: true, location: dup }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
