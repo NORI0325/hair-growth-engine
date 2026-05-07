@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { RefreshCw, AlertTriangle, CheckCircle2, Clock, PlugZap, Loader2, KeyRound } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useAuth } from "@/hooks/useAuth";
+import { useCurrentLocationId } from "@/hooks/useLocations";
 
 const CHANNELS = [
   { key: "salonboard", label: "ホットペッパー / サロンボード" },
@@ -31,6 +32,7 @@ type Integration = {
   last_error?: string | null;
   note?: string | null;
   connection_status?: string | null;
+  location_id?: string | null;
 };
 
 type WorkerLog = {
@@ -45,6 +47,7 @@ type WorkerLog = {
 
 export default function ChannelIntegrations() {
   const { user } = useAuth();
+  const currentLocationId = useCurrentLocationId();
   const [rows, setRows] = useState<Record<string, Integration>>({});
   const [loading, setLoading] = useState(true);
   const [testing, setTesting] = useState(false);
@@ -88,7 +91,10 @@ export default function ChannelIntegrations() {
     const { data } = await supabase.from("channel_integrations").select("*").eq("owner_id", user.id);
     const map: Record<string, Integration> = {};
     for (const c of CHANNELS) {
-      const found = data?.find((d) => d.channel === c.key);
+      const channelRows = (data ?? []).filter((d) => d.channel === c.key);
+      const found = channelRows.find((d) => d.location_id === currentLocationId)
+        ?? channelRows.find((d) => d.location_id !== null)
+        ?? channelRows.find((d) => d.location_id === null);
       map[c.key] = found ?? { channel: c.key, enabled: false, sync_enabled: false, failure_count: 0 };
     }
     setRows(map);
@@ -100,7 +106,7 @@ export default function ChannelIntegrations() {
     setLogs((logRows as WorkerLog[]) || []);
   };
 
-  useEffect(() => { load(); }, [user]);
+  useEffect(() => { load(); }, [user, currentLocationId]);
 
   const runConnectionTest = async () => {
     if (!user) return;
@@ -124,18 +130,53 @@ export default function ChannelIntegrations() {
     }
   };
 
-  const upsert = async (channel: string, patch: Partial<Integration>) => {
+  const saveIntegration = async (channel: string, patch: Partial<Integration>) => {
     if (!user) return;
     const cur = rows[channel];
     const next = { ...cur, ...patch };
     setRows({ ...rows, [channel]: next });
-    const { error } = await supabase.from("channel_integrations").upsert({
-      owner_id: user.id,
-      channel,
+    const payload = {
       enabled: next.enabled,
       sync_enabled: next.sync_enabled,
       note: next.note ?? null,
-    }, { onConflict: "owner_id,location_id,channel" });
+      updated_at: new Date().toISOString(),
+    };
+
+    const rowId = cur?.id;
+    let error: any = null;
+    let updated = false;
+
+    if (rowId) {
+      const res = await supabase.from("channel_integrations").update(payload).eq("id", rowId);
+      error = res.error;
+      updated = !res.error;
+    } else {
+      let query = supabase
+        .from("channel_integrations")
+        .update(payload)
+        .eq("owner_id", user.id)
+        .eq("channel", channel);
+      query = currentLocationId ? query.eq("location_id", currentLocationId) : query.is("location_id", null);
+      const res = await query.select("id").maybeSingle();
+      error = res.error;
+      updated = !res.error && !!res.data?.id;
+    }
+
+    if (!error && !updated) {
+      const insertRes = await supabase.from("channel_integrations").insert({
+        owner_id: user.id,
+        location_id: currentLocationId,
+        channel,
+        enabled: next.enabled,
+        sync_enabled: next.sync_enabled,
+        note: next.note ?? null,
+        connection_status: next.connection_status ?? "disconnected",
+      }).select("*").single();
+      error = insertRes.error;
+      if (!insertRes.error && insertRes.data) {
+        setRows((latest) => ({ ...latest, [channel]: insertRes.data as Integration }));
+      }
+    }
     if (error) toast.error("保存に失敗しました: " + error.message);
   };
 
