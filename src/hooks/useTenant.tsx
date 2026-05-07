@@ -32,19 +32,8 @@ export const useTenant = () => {
       const memberships = (data ?? []) as TenantMembership[];
       if (memberships.length === 0) return null;
 
-      const storedLocationId = typeof window !== "undefined"
-        ? localStorage.getItem("salon-boost:current-location-id")
-        : null;
-      if (storedLocationId) {
-        const { data: location } = await supabase
-          .from("locations")
-          .select("tenant_id")
-          .eq("id", storedLocationId)
-          .maybeSingle();
-        const matched = memberships.find((m) => m.tenant_id === location?.tenant_id);
-        if (matched) return matched;
-      }
-
+      const nonStaffMembership = memberships.find((m) => m.role !== "staff");
+      if (nonStaffMembership) return nonStaffMembership;
       return memberships[0];
     },
   });
