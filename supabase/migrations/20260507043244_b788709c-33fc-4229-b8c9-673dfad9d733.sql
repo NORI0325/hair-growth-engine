@@ -1,0 +1,1 @@
+UPDATE menu_items SET active = true WHERE location_id = '64f905d6-7c7b-459d-af1d-2615fe173848' AND active = false;
