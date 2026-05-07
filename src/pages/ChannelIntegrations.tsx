@@ -297,21 +297,43 @@ export default function ChannelIntegrations() {
           <DialogHeader>
             <DialogTitle className="font-serif">サロンボード ログイン情報</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 text-sm">
+          <form className="space-y-3 text-sm" autoComplete="off" onSubmit={(e) => e.preventDefault()}>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              現在の暗号化キーで保存し直します。以前のキーで保存した情報は復号できないため、必ず再入力してください。
+              ⚠️ ここにはサロンボードのログインID/パスワードを入力してください。SalonBoost本体のメールアドレス/パスワードではありません。Chromeの自動入力に注意してください。
             </p>
+            {/* Chrome自動入力対策 honeypot */}
+            <input type="text" name="username" autoComplete="username" tabIndex={-1} aria-hidden="true" style={{ position: "absolute", left: "-9999px", width: 1, height: 1, opacity: 0 }} readOnly />
+            <input type="password" name="password" autoComplete="current-password" tabIndex={-1} aria-hidden="true" style={{ position: "absolute", left: "-9999px", width: 1, height: 1, opacity: 0 }} readOnly />
             <div>
-              <Label className="text-xs">ログインID</Label>
-              <Input value={credLoginId} onChange={(e) => setCredLoginId(e.target.value)}
-                autoComplete="off" className="rounded-none" />
+              <Label className="text-xs">サロンボード ログインID</Label>
+              <Input
+                name="salonboard_login_id"
+                value={credLoginId}
+                onChange={(e) => setCredLoginId(e.target.value)}
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
+                data-lpignore="true"
+                data-form-type="other"
+                className="rounded-none" />
             </div>
             <div>
-              <Label className="text-xs">パスワード</Label>
-              <Input type="password" value={credPassword} onChange={(e) => setCredPassword(e.target.value)}
-                autoComplete="new-password" className="rounded-none" />
+              <Label className="text-xs">サロンボード パスワード</Label>
+              <Input
+                name="salonboard_password"
+                type="password"
+                value={credPassword}
+                onChange={(e) => setCredPassword(e.target.value)}
+                autoComplete="new-password"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
+                data-lpignore="true"
+                data-form-type="other"
+                className="rounded-none" />
             </div>
-          </div>
+          </form>
           <DialogFooter>
             <Button variant="outline" className="rounded-none" onClick={() => setCredsOpen(false)}>キャンセル</Button>
             <Button className="rounded-none" disabled={savingCreds} onClick={saveCreds}>
