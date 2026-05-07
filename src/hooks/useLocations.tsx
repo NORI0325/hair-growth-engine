@@ -155,9 +155,7 @@ export const useLocations = () => {
         restored,
         restoredFromAddLocation ? [restoredFromAddLocation] : []
       );
-      const recovered = mergedBeforeRecovery.length === 0 || !mergedBeforeRecovery.some((l) => l.is_primary)
-        ? await recoverLocationsFromBackend(tenantId)
-        : [];
+      const recovered = await recoverLocationsFromBackend(tenantId);
       const finalLocations = mergeLocations(mergedBeforeRecovery, recovered);
       const primaryLocation = chooseDefaultLocation(finalLocations);
 
