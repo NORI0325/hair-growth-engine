@@ -68,6 +68,11 @@ const mergeLocations = (...groups: Location[][]): Location[] => {
   return sortLocations(Array.from(byId.values()));
 };
 
+const chooseDefaultLocation = (locations: Location[]): Location | null => {
+  const arunePrimary = locations.find((l) => l.is_primary && l.name.trim().toLowerCase() === "arune hair");
+  return arunePrimary ?? locations.find((l) => l.is_primary) ?? locations[0] ?? null;
+};
+
 const recoverLocationsFromBackend = async (tenantId: string): Promise<Location[]> => {
   const { data, error } = await supabase.functions.invoke("recover-locations", {
     body: { tenant_id: tenantId },
@@ -154,12 +159,13 @@ export const useLocations = () => {
         ? await recoverLocationsFromBackend(tenantId)
         : [];
       const finalLocations = mergeLocations(mergedBeforeRecovery, recovered);
+      const primaryLocation = chooseDefaultLocation(finalLocations);
 
       console.info("[locations] fetch diagnostics", {
         authUserId: user?.id ?? null,
         tenantId,
         companyId: null,
-        primaryLocationId: finalLocations.find((l) => l.is_primary)?.id ?? finalLocations[0]?.id ?? null,
+        primaryLocationId: primaryLocation?.id ?? null,
         fetchedLocationsCount: directLocations.length,
         fallbackLocationsCount: restored.length,
         backendRecoveredCount: recovered.length,
