@@ -216,11 +216,20 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
     return mergeLocations(optimisticLocations, queriedLocations);
   }, [optimisticLocations, queriedLocations]);
 
+  const defaultLocation = useMemo(() => chooseDefaultLocation(locations), [locations]);
+  const selectedLocation = useMemo(
+    () => locations.find((l) => l.id === currentLocationId) ?? null,
+    [locations, currentLocationId]
+  );
+  const effectiveCurrentLocationId = locations.length > 0 && (!hasRestoredInitialLocation.current || !selectedLocation)
+    ? defaultLocation?.id ?? currentLocationId
+    : currentLocationId;
+
   // 初回ロード or 現在のIDが利用可能店舗にない場合、DBで取得できたprimary店舗をlocalStorageより優先して復元
   useEffect(() => {
     if (locations.length === 0) return;
     const stillValid = currentLocationId && locations.some((l) => l.id === currentLocationId);
-    const primary = chooseDefaultLocation(locations);
+    const primary = defaultLocation;
     const shouldPreferPrimary = !hasRestoredInitialLocation.current;
     if (primary && (!stillValid || (shouldPreferPrimary && currentLocationId !== primary.id))) {
       hasRestoredInitialLocation.current = true;
@@ -238,12 +247,12 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
       queryClient.invalidateQueries();
     }
     hasRestoredInitialLocation.current = true;
-  }, [locations, currentLocationId, queryClient]);
+  }, [locations, currentLocationId, defaultLocation, queryClient]);
 
   useEffect(() => {
     if (locations.length === 0 || !currentLocationId) return;
     const selected = locations.find((l) => l.id === currentLocationId);
-    const primary = chooseDefaultLocation(locations);
+    const primary = defaultLocation;
     if (!primary) return;
     if (!selected || (selected.tenant_id !== primary.tenant_id)) {
       console.info("[locations] invalid currentLocationId replaced", {
@@ -257,9 +266,10 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
       localStorage.setItem(STORAGE_KEY, primary.id);
       queryClient.invalidateQueries();
     }
-  }, [locations, currentLocationId, queryClient]);
+  }, [locations, currentLocationId, defaultLocation, queryClient]);
 
   const setCurrentLocationId = (id: string) => {
+    hasRestoredInitialLocation.current = true;
     const selected = locations.find((l) => l.id === id) ?? null;
     console.info("[locations] manual selection", {
       before: currentLocationId,
@@ -285,13 +295,13 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const currentLocation = useMemo(
-    () => locations.find((l) => l.id === currentLocationId) ?? null,
-    [locations, currentLocationId]
+    () => locations.find((l) => l.id === effectiveCurrentLocationId) ?? null,
+    [locations, effectiveCurrentLocationId]
   );
 
   return (
     <LocationContext.Provider
-      value={{ currentLocationId, currentLocation, setCurrentLocationId, selectLocation: setCurrentLocationId, upsertLocation, locations, isLoading }}
+      value={{ currentLocationId: effectiveCurrentLocationId, currentLocation, setCurrentLocationId, selectLocation: setCurrentLocationId, upsertLocation, locations, isLoading }}
     >
       {children}
     </LocationContext.Provider>
