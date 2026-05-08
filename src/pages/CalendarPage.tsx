@@ -204,6 +204,9 @@ const CalendarPage = () => {
                   <FileText className="w-3.5 h-3.5" />
                   カルテを開く
                 </Link>
+                <Button size="sm" variant="outline" className="rounded-none" onClick={() => setSyncOpen(true)}>
+                  <RefreshCcw className="w-3.5 h-3.5 mr-1" />同期状態を確認
+                </Button>
                 {selected.status === "pending" && (
                   <Button size="sm" className="rounded-none" onClick={() => updateStatus(selected.id, "confirmed")}>確定にする</Button>
                 )}
