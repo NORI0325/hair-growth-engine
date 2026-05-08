@@ -185,6 +185,7 @@ Deno.serve(async (req) => {
       if (insErr) return new Response(JSON.stringify({ error: "job_insert_failed", message: insErr.message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       jobId = ins!.id;
     }
+    console.log("[resend] sync_job upserted", { sync_job_id: jobId, external_staff_id: extStaffId, external_menu_id: extMenuId });
 
     await supabase.from("bookings").update({ sync_status: "pending", needs_manual_review: false, last_sync_error: null }).eq("id", b.id);
     // dispatch (fire-and-forget)
