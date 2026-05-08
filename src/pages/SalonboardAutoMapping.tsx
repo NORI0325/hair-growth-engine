@@ -41,6 +41,18 @@ export default function SalonboardAutoMapping() {
   const [menuRsvTerm, setMenuRsvTerm] = useState<Record<string, number | "">>({});
   const [showCoupon, setShowCoupon] = useState(false);
   const [showCategory, setShowCategory] = useState(false);
+  const [lastMenuFetchError, setLastMenuFetchError] = useState<string | null>(null);
+
+  const formatFunctionError = (data: any, error: any) => {
+    const responseStatus = data?.response_status ?? data?.status ?? error?.status;
+    const errorMessage = data?.error_message ?? data?.message ?? data?.error ?? error?.message;
+    const responseBody = data?.response_body ?? data ?? error;
+    return [
+      responseStatus ? `status=${responseStatus}` : null,
+      errorMessage ? `error_message=${errorMessage}` : null,
+      responseBody ? `response_body=${JSON.stringify(responseBody)}` : null,
+    ].filter(Boolean).join(" / ") || "詳細不明のエラーです";
+  };
 
   // クーポンの注意ラベル検出
   const COUPON_WARN_PATTERNS = [
@@ -109,10 +121,12 @@ export default function SalonboardAutoMapping() {
   const fetchMenus = async () => {
     if (!loc) { toast.error("店舗情報が取得できないため、メニューを取得できません。店舗を選択してください。"); return; }
     setFetching("menus");
+    setLastMenuFetchError(null);
     const res = await supabase.functions.invoke("salonboard-fetch-menus", { body: { owner_id: user!.id, location_id: loc } });
     setFetching("");
     if (res.error || res.data?.success === false) {
-      const msg = res.data?.message || res.data?.error || res.error?.message || JSON.stringify(res.data || res.error || {});
+      const msg = formatFunctionError(res.data, res.error);
+      setLastMenuFetchError(msg);
       toast.error("取得失敗: " + msg, { duration: 10000 });
       console.error("fetch-menus failed", res);
       return;
