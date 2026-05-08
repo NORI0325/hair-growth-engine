@@ -158,6 +158,23 @@ Deno.serve(async (req) => {
     };
     console.log("salonboard-connection-test decrypt_credentials diagnostics", decryptDiagnostic);
 
+    const maskPassword = (p: string | null) => {
+      if (!p) return null;
+      const len = p.length;
+      if (len <= 4) return `${"•".repeat(len)} (${len}文字)`;
+      return `${p.slice(0, 2)}${"•".repeat(Math.max(len - 4, 4))}${p.slice(-2)} (${len}文字)`;
+    };
+
+    if (reveal === true) {
+      return json({
+        ok: credsOk,
+        reveal: true,
+        decrypted_login_id: loginId,
+        password_masked: maskPassword(password),
+        diagnostic: decryptDiagnostic,
+      });
+    }
+
     steps.push({
       kind: "decrypt_credentials",
       ok: credsOk,
