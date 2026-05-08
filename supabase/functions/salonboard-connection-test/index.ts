@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
     if (!userRes?.user) return json({ error: "unauthorized" }, 401);
     const userId = userRes.user.id;
 
-    const { owner_id, location_id } = await req.json();
+    const { owner_id, location_id, reveal } = await req.json();
     if (!owner_id) return json({ error: "missing_owner_id" }, 400);
 
     const supabase = createClient(
