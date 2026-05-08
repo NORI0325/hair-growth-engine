@@ -249,7 +249,7 @@ Deno.serve(async (req) => {
     };
 
     // sync_diff_snapshots に保存
-    const { data: snap } = await supabase.from("sync_diff_snapshots").insert({
+    const snapshotPayload = {
       owner_id: b.owner_id,
       location_id: b.location_id,
       booking_id: b.id,
@@ -261,7 +261,28 @@ Deno.serve(async (req) => {
       diff: null,
       external_reservation_id: b.external_reservation_id,
       checked_by: user.id,
-    }).select("id, checked_at").maybeSingle();
+    };
+    const { data: snap, error: snapErr } = await supabase
+      .from("sync_diff_snapshots")
+      .insert(snapshotPayload)
+      .select("id, checked_at")
+      .maybeSingle();
+    if (snapErr) {
+      console.error("sync_diff_snapshots insert failed", {
+        booking_id: b.id,
+        channel: "salonboard",
+        result,
+        local_payload_built: !!local_payload,
+        external_payload_built: !!external_payload,
+        snapshot_payload: snapshotPayload,
+        insert_error: snapErr,
+      });
+      return new Response(JSON.stringify({
+        error: "snapshot_save_failed",
+        message: snapErr.message,
+        details: snapErr,
+      }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
     // bookings.sync_status を更新（結果に応じて needs_review / external_missing 等にマッピング）
     const newStatus = result === "match" ? "synced"
