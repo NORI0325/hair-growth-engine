@@ -9,6 +9,7 @@ import { updateReservation } from "./salonboard/updateReservation.js";
 import { cancelReservation } from "./salonboard/cancelReservation.js";
 import { fetchSalonboardStaff } from "./salonboard/fetchStaff.js";
 import { fetchSalonboardMenus } from "./salonboard/fetchMenus.js";
+import { findReservations } from "./salonboard/findReservation.js";
 import { WorkerError } from "./errorMapper.js";
 import { postCallback } from "./callback.js";
 import { fetchSession, saveSession } from "./sessionStore.js";
