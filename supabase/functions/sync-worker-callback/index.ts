@@ -8,8 +8,22 @@ Deno.serve(async (req) => {
   try {
     const sharedSecret = Deno.env.get("EXTERNAL_WORKER_API_KEY");
     const auth = req.headers.get("authorization") || "";
-    if (!sharedSecret || auth !== `Bearer ${sharedSecret}`) {
-      return new Response(JSON.stringify({ error: "unauthorized" }), {
+    const provided = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+    const reason = !sharedSecret ? "EXTERNAL_WORKER_API_KEY missing in edge secrets"
+      : !auth ? "missing Authorization header"
+      : !auth.startsWith("Bearer ") ? "Authorization header is not Bearer"
+      : provided !== sharedSecret ? "Bearer token mismatch (worker WORKER_API_KEY != edge EXTERNAL_WORKER_API_KEY)"
+      : null;
+    if (reason) {
+      console.error("[sync-worker-callback] 401", {
+        reason,
+        expected_present: !!sharedSecret,
+        expected_len: sharedSecret?.length ?? 0,
+        provided_len: provided.length,
+        expected_prefix: sharedSecret ? sharedSecret.slice(0, 4) : null,
+        provided_prefix: provided ? provided.slice(0, 4) : null,
+      });
+      return new Response(JSON.stringify({ error: "unauthorized", reason }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
