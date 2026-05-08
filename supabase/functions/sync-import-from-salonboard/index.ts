@@ -73,7 +73,7 @@ Deno.serve(async (req) => {
       external_reservation_id,
       external_source: "salonboard_import",
       source_channel: "salonboard",
-      sync_status: needsReview ? "needs_review" : "synced",
+      sync_status: needsReview ? "needs_review" : "success",
       needs_manual_review: needsReview,
       last_synced_at: new Date().toISOString(),
     }).select("id").maybeSingle();

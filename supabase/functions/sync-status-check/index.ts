@@ -307,8 +307,8 @@ Deno.serve(async (req) => {
     }
 
     // bookings.sync_status を更新（結果に応じて needs_review / external_missing 等にマッピング）
-    const newStatus = result === "match" ? "synced"
-      : result === "local_only" ? "external_missing"
+    const newStatus = result === "match" ? "success"
+      : result === "local_only" ? "needs_review"
       : result === "conflict" ? "needs_review"
       : null;
     if (newStatus) {

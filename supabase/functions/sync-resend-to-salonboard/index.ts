@@ -78,7 +78,7 @@ Deno.serve(async (req) => {
 
     // 既存の external_reservation_id 一致 → match → 何もしない
     if (matchedById) {
-      await supabase.from("bookings").update({ sync_status: "synced" }).eq("id", b.id);
+      await supabase.from("bookings").update({ sync_status: "success" }).eq("id", b.id);
       return new Response(JSON.stringify({
         action: "skipped",
         reason: "already_exists_on_salonboard",
@@ -88,7 +88,7 @@ Deno.serve(async (req) => {
     }
     // 候補が見つかった場合 → conflict として扱い、再送信は中止
     if (candidates.length > 0) {
-      await supabase.from("bookings").update({ sync_status: "conflict", needs_manual_review: true }).eq("id", b.id);
+      await supabase.from("bookings").update({ sync_status: "needs_review", needs_manual_review: true }).eq("id", b.id);
       await supabase.from("sync_diff_snapshots").insert({
         owner_id: b.owner_id, location_id: b.location_id, booking_id: b.id, channel: "salonboard",
         result: "conflict", reason: "candidate found on resend pre-check; refused to send to avoid duplicate",
