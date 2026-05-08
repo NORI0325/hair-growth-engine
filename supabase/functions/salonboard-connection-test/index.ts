@@ -5,6 +5,12 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
 import { decryptSalonboardText, getSalonboardKeyDiagnostic } from "../_shared/salonboardCrypto.ts";
 
+async function fingerprint(value: string) {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 12);
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), {
@@ -43,6 +49,13 @@ Deno.serve(async (req) => {
     if (!workerUrl || !workerKey) {
       return json({ ok: false, error: "worker_env_missing" }, 500);
     }
+    const workerAuthDiagnostic = {
+      worker_url: workerUrl.replace(/\/+$/, ""),
+      auth_scheme: "Bearer",
+      provided_key_set: true,
+      provided_key_length: workerKey.length,
+      provided_key_fingerprint_prefix: await fingerprint(workerKey),
+    };
 
     const steps: Array<{ kind: string; ok: boolean; status?: number; latency_ms?: number; error?: string; body?: unknown; diagnostic?: unknown }> = [];
 
@@ -189,14 +202,28 @@ Deno.serve(async (req) => {
         const latency = Date.now() - t0;
         const success = res.ok && (body as any)?.success !== false;
         const error = success ? undefined : (((body as any)?.message) || `http_${res.status}`);
-        await logRow(`dry_run_${kind}`, payload, res.status, body, latency, success, error);
-        steps.push({ kind: `dry_run_${kind}`, ok: success, status: res.status, latency_ms: latency, body, error });
+        console.info("salonboard-connection-test dry-run worker response", {
+          kind: `dry_run_${kind}`,
+          status: res.status,
+          success,
+          latency_ms: latency,
+          error,
+          worker_auth: workerAuthDiagnostic,
+        });
+        await logRow(`dry_run_${kind}`, { ...payload, worker_auth: workerAuthDiagnostic }, res.status, body, latency, success, error);
+        steps.push({ kind: `dry_run_${kind}`, ok: success, status: res.status, latency_ms: latency, body, error, diagnostic: workerAuthDiagnostic });
         return success;
       } catch (e) {
         const latency = Date.now() - t0;
         const error = e instanceof Error ? e.message : String(e);
-        await logRow(`dry_run_${kind}`, payload, null, { error }, latency, false, error);
-        steps.push({ kind: `dry_run_${kind}`, ok: false, latency_ms: latency, error });
+        console.error("salonboard-connection-test dry-run worker request failed", {
+          kind: `dry_run_${kind}`,
+          latency_ms: latency,
+          error,
+          worker_auth: workerAuthDiagnostic,
+        });
+        await logRow(`dry_run_${kind}`, { ...payload, worker_auth: workerAuthDiagnostic }, null, { error }, latency, false, error);
+        steps.push({ kind: `dry_run_${kind}`, ok: false, latency_ms: latency, error, diagnostic: workerAuthDiagnostic });
         return false;
       }
     };
