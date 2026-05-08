@@ -8,8 +8,22 @@ Deno.serve(async (req) => {
   try {
     const auth = req.headers.get("authorization") || "";
     const expected = Deno.env.get("EXTERNAL_WORKER_API_KEY");
-    if (!expected || auth !== `Bearer ${expected}`) {
-      return new Response(JSON.stringify({ error: "unauthorized" }), {
+    const provided = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+    const reason = !expected ? "EXTERNAL_WORKER_API_KEY missing in edge secrets"
+      : !auth ? "missing Authorization header"
+      : !auth.startsWith("Bearer ") ? "Authorization header is not Bearer"
+      : provided !== expected ? "Bearer token mismatch (worker WORKER_API_KEY != edge EXTERNAL_WORKER_API_KEY)"
+      : null;
+    if (reason) {
+      console.error("[salonboard-session-save] 401", {
+        reason,
+        expected_present: !!expected,
+        expected_len: expected?.length ?? 0,
+        provided_len: provided.length,
+        expected_prefix: expected ? expected.slice(0, 4) : null,
+        provided_prefix: provided ? provided.slice(0, 4) : null,
+      });
+      return new Response(JSON.stringify({ error: "unauthorized", reason }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
