@@ -76,7 +76,7 @@ Deno.serve(async (req) => {
       if (!ext) return new Response(JSON.stringify({ error: "no_external_data", message: "サロンボード側の最新スナップショットが見つかりません。先に同期状態を確認してください。" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
       const updates: any = {
-        sync_status: "synced", needs_manual_review: false, last_synced_at: new Date().toISOString(),
+        sync_status: "success", needs_manual_review: false, last_synced_at: new Date().toISOString(),
       };
       if (ext.external_reservation_id) updates.external_reservation_id = ext.external_reservation_id;
       if (ext.time && /^\d{2}:\d{2}$/.test(ext.time)) updates.booking_time = ext.time + ":00";
