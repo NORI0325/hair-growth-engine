@@ -202,16 +202,20 @@ export async function findReservations(
 ): Promise<FoundReservation[]> {
   logger.info({ input }, "findReservations: start");
 
-  const nav = await navigateToDate(page, input.date);
+  const wantTime = input.time != null ? String(input.time).padStart(4, "0") : null;
+  const wantTimeFmt = wantTime ? `${wantTime.slice(0, 2)}:${wantTime.slice(2, 4)}` : null;
+  const wantName = input.customerName?.trim() || null;
+
+  const nav = await navigateToDate(page, input.date, wantTimeFmt, wantName);
   if (/\/login/i.test(page.url())) throw new Error("session_expired_in_find");
   logger.info({
     finalUrl: nav.url, title: nav.title, bodySnippet: nav.bodySnippet,
     expectedDateLabel: expectedDateLabel(input.date), dateLabelMatched: nav.matched,
   }, "findReservations: navigation result");
 
-  const wantTime = input.time != null ? String(input.time).padStart(4, "0") : null;
-  const wantTimeFmt = wantTime ? `${wantTime.slice(0, 2)}:${wantTime.slice(2, 4)}` : null;
-  const wantName = input.customerName?.trim() || null;
+  if (!nav.matched) {
+    logger.warn({ finalUrl: nav.url }, "findReservations: page did not match expected date/time/name");
+  }
 
   // メインフレーム + 全iframe を走査
   const frames: Array<{ name: string; frame: Page | Frame }> = [{ name: "main", frame: page }];
