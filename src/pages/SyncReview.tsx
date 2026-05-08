@@ -206,6 +206,11 @@ export default function SyncReview() {
                     <Button variant="outline" size="sm" className="rounded-none" disabled={!b.latest_snapshot} onClick={() => setDiffTarget(b)} title={!b.latest_snapshot ? "先に「同期状態を確認」を実行してください" : ""}>
                       <GitCompare className="w-3 h-3 mr-1" />差分を確認
                     </Button>
+                    {(b.sync_status === "external_missing" || b.latest_snapshot?.result === "local_only") && b.location_id && (
+                      <Button size="sm" className="rounded-none" onClick={() => resendOne(b)}>
+                        <Send className="w-3 h-3 mr-1" />サロンボードへ再送信
+                      </Button>
+                    )}
                     <Button variant="ghost" size="sm" className="rounded-none" disabled={!(b.last_sync_error || b.sync_error_message || b.latest_job?.error_message)} onClick={() => setErrorTarget(b)}>
                       <AlertCircle className="w-3 h-3 mr-1" />エラー内容
                     </Button>
