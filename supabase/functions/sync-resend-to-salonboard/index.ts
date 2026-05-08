@@ -166,7 +166,7 @@ Deno.serve(async (req) => {
       start_time: startISO, end_time: endISO,
       staff_name: b.staff?.name ?? null,
       external_staff_name: extStaffName, external_staff_id: extStaffId,
-      menu_name: b.menu, external_menu_name: extMenuName,
+      menu_name: b.menu, external_menu_id: extMenuId, external_menu_name: extMenuName,
       source_channel: "manual_resend",
     };
 
