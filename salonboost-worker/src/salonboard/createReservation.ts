@@ -145,7 +145,14 @@ export async function createReservation(page: Page, input: CreateReservationInpu
     await page.locator('select[name="time"]').selectOption({ value: toStr(input.time) });
   }
   if (input.rsvTerm != null) {
-    await page.locator('select[name="rsvTerm"]').selectOption({ value: toStr(input.rsvTerm) });
+    const rsvTerm = page.locator('#rsvTermId, select[name="rsvTerm"]').first();
+    try {
+      await rsvTerm.waitFor({ state: "attached", timeout: 30000 });
+      await rsvTerm.selectOption(toStr(input.rsvTerm));
+    } catch (e) {
+      await dumpPageDiag(page, "rsvTerm-not-found");
+      throw e;
+    }
   }
 
   if (input.rsvRouteId && await page.locator('select[name="rsvRouteId"]').count()) {
