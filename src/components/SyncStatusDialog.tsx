@@ -24,6 +24,7 @@ const RESULT_LABEL: Record<Result, { text: string; tone: string; icon: any }> = 
 
 export default function SyncStatusDialog({ bookingId, open, onOpenChange }: Props) {
   const [loading, setLoading] = useState(false);
+  const [acting, setActing] = useState<null | "resend" | "import" | "resolve">(null);
   const [data, setData] = useState<any>(null);
 
   const run = async () => {
@@ -42,6 +43,65 @@ export default function SyncStatusDialog({ bookingId, open, onOpenChange }: Prop
       return;
     }
     setData(res);
+  };
+
+  const resendToSalonboard = async () => {
+    if (!confirm("サロンボードへ再送信します。\n\n直前にもう一度サロンボード側を照合し、外部に予約が無い場合のみ送信します。\n外部に候補が見つかった場合は二重予約防止のため送信を中止します。\n\n実行しますか？")) return;
+    setActing("resend");
+    const { data: res, error } = await supabase.functions.invoke("sync-resend-to-salonboard", {
+      body: { booking_id: bookingId },
+    });
+    setActing(null);
+    if (error) { toast.error("再送信失敗: " + error.message); return; }
+    const r: any = res;
+    if (r?.action === "enqueued") toast.success(r.message);
+    else if (r?.action === "refused") toast.warning(r.message);
+    else if (r?.action === "skipped") toast.info(r.message);
+    else if (r?.error) toast.error(r.message ?? r.error);
+    await run();
+  };
+
+  const importFromSalonboard = async () => {
+    const ext = data?.external?.items?.[0];
+    if (!ext?.external_reservation_id) { toast.error("external_reservation_id が取得できないため取り込みできません"); return; }
+    if (!data?.local?.location_id_for_import && !confirm("location_id を SalonBoost 側の予約と同じにして取り込みます。よろしいですか？")) return;
+    if (!confirm(`サロンボード側の予約 (ID: ${ext.external_reservation_id}, ${ext.time ?? "-"}, ${ext.customerName ?? "-"}) を SalonBoost に取り込みます。\n\n情報が不足している場合は「要確認」状態になります。\n\n実行しますか？`)) return;
+    setActing("import");
+    const { data: res, error } = await supabase.functions.invoke("sync-import-from-salonboard", {
+      body: {
+        location_id: data.local.location_id ?? null,
+        external_reservation_id: ext.external_reservation_id,
+        booking_date: data.local.date,
+        booking_time: ext.time ? ext.time + ":00" : data.local.time + ":00",
+        customer_name: ext.customerName ?? data.local.customer_name,
+      },
+    });
+    setActing(null);
+    if (error) { toast.error("取り込み失敗: " + error.message); return; }
+    const r: any = res;
+    if (r?.action === "imported") toast.success(r.message);
+    else if (r?.action === "skipped") toast.info(r.message);
+    else if (r?.error) toast.error(r.message ?? r.error);
+    await run();
+  };
+
+  const resolveConflict = async (decision: "A" | "B" | "C") => {
+    const labels: Record<string, string> = {
+      A: "SalonBoost の内容でサロンボードを更新します。サロンボード側の予約が書き換わります。",
+      B: "サロンボードの内容で SalonBoost を更新します（時刻 / external_id のみ）。",
+      C: "差分を据え置き、「対応不要」にします。",
+    };
+    if (!confirm(labels[decision] + "\n\n実行しますか？")) return;
+    setActing("resolve");
+    const { data: res, error } = await supabase.functions.invoke("sync-resolve-conflict", {
+      body: { booking_id: bookingId, decision, snapshot_id: data?.snapshot_id },
+    });
+    setActing(null);
+    if (error) { toast.error("競合解消失敗: " + error.message); return; }
+    const r: any = res;
+    if (r?.error) toast.error(r.message ?? r.error);
+    else toast.success(r?.message ?? "処理しました");
+    await run();
   };
 
   const result: Result | null = data?.result ?? null;
