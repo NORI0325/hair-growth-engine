@@ -187,12 +187,40 @@ export default function SyncStatusDialog({ bookingId, open, onOpenChange }: Prop
 
               <div className="border-t border-border pt-3 space-y-2">
                 <p className="text-[11px] text-muted-foreground">
-                  ※ 第1段階では「確認・表示」のみを行います。<br />
-                  「サロンボードへ再送信」「サロンボードから取り込み」「差分の解消」は次段階で個別に実装します。<br />
-                  二重予約事故を防ぐため、外部に予約が存在しないことを確認した上で、管理者の手動操作でのみ実行されます。
+                  ※ 二重予約事故を防ぐため、再送信・取り込み・上書きは管理者の明示的な操作でのみ実行されます。<br />
+                  再送信時は実行直前にもう一度サロンボード側を照合し、外部に候補がある場合は中止します。
                 </p>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" className="rounded-none" onClick={run} disabled={loading}>再確認</Button>
+
+                {/* result に応じたアクション */}
+                {result === "local_only" && (
+                  <Button className="rounded-none w-full" onClick={resendToSalonboard} disabled={!!acting}>
+                    {acting === "resend" ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
+                    サロンボードへ再送信（直前照合あり）
+                  </Button>
+                )}
+                {result === "external_only" && (
+                  <Button className="rounded-none w-full" onClick={importFromSalonboard} disabled={!!acting}>
+                    {acting === "import" ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
+                    SalonBoost へ取り込み
+                  </Button>
+                )}
+                {result === "conflict" && (
+                  <div className="space-y-1">
+                    <div className="text-[11px] text-muted-foreground flex items-center gap-1"><GitMerge className="w-3 h-3" />差分の解消（自動上書きはしません）</div>
+                    <Button variant="outline" size="sm" className="rounded-none w-full" disabled={!!acting} onClick={() => resolveConflict("A")}>
+                      A. SalonBoost の内容でサロンボードを更新
+                    </Button>
+                    <Button variant="outline" size="sm" className="rounded-none w-full" disabled={!!acting} onClick={() => resolveConflict("B")}>
+                      B. サロンボードの内容で SalonBoost を更新
+                    </Button>
+                    <Button variant="ghost" size="sm" className="rounded-none w-full" disabled={!!acting} onClick={() => resolveConflict("C")}>
+                      C. 何もしない（対応不要にする）
+                    </Button>
+                  </div>
+                )}
+
+                <div className="flex gap-2 pt-1">
+                  <Button variant="outline" size="sm" className="rounded-none" onClick={run} disabled={loading || !!acting}>再確認</Button>
                   <Button variant="ghost" size="sm" className="rounded-none ml-auto" onClick={() => onOpenChange(false)}>閉じる</Button>
                 </div>
               </div>
