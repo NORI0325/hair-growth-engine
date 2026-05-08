@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, AlertTriangle, CheckCircle2, FileSearch, ServerCrash } from "lucide-react";
+import { Loader2, AlertTriangle, CheckCircle2, FileSearch, ServerCrash, Send, Download, GitMerge } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -24,6 +24,7 @@ const RESULT_LABEL: Record<Result, { text: string; tone: string; icon: any }> = 
 
 export default function SyncStatusDialog({ bookingId, open, onOpenChange }: Props) {
   const [loading, setLoading] = useState(false);
+  const [acting, setActing] = useState<null | "resend" | "import" | "resolve">(null);
   const [data, setData] = useState<any>(null);
 
   const run = async () => {
@@ -42,6 +43,65 @@ export default function SyncStatusDialog({ bookingId, open, onOpenChange }: Prop
       return;
     }
     setData(res);
+  };
+
+  const resendToSalonboard = async () => {
+    if (!confirm("サロンボードへ再送信します。\n\n直前にもう一度サロンボード側を照合し、外部に予約が無い場合のみ送信します。\n外部に候補が見つかった場合は二重予約防止のため送信を中止します。\n\n実行しますか？")) return;
+    setActing("resend");
+    const { data: res, error } = await supabase.functions.invoke("sync-resend-to-salonboard", {
+      body: { booking_id: bookingId },
+    });
+    setActing(null);
+    if (error) { toast.error("再送信失敗: " + error.message); return; }
+    const r: any = res;
+    if (r?.action === "enqueued") toast.success(r.message);
+    else if (r?.action === "refused") toast.warning(r.message);
+    else if (r?.action === "skipped") toast.info(r.message);
+    else if (r?.error) toast.error(r.message ?? r.error);
+    await run();
+  };
+
+  const importFromSalonboard = async () => {
+    const ext = data?.external?.items?.[0];
+    if (!ext?.external_reservation_id) { toast.error("external_reservation_id が取得できないため取り込みできません"); return; }
+    if (!data?.local?.location_id_for_import && !confirm("location_id を SalonBoost 側の予約と同じにして取り込みます。よろしいですか？")) return;
+    if (!confirm(`サロンボード側の予約 (ID: ${ext.external_reservation_id}, ${ext.time ?? "-"}, ${ext.customerName ?? "-"}) を SalonBoost に取り込みます。\n\n情報が不足している場合は「要確認」状態になります。\n\n実行しますか？`)) return;
+    setActing("import");
+    const { data: res, error } = await supabase.functions.invoke("sync-import-from-salonboard", {
+      body: {
+        location_id: data.local.location_id ?? null,
+        external_reservation_id: ext.external_reservation_id,
+        booking_date: data.local.date,
+        booking_time: ext.time ? ext.time + ":00" : data.local.time + ":00",
+        customer_name: ext.customerName ?? data.local.customer_name,
+      },
+    });
+    setActing(null);
+    if (error) { toast.error("取り込み失敗: " + error.message); return; }
+    const r: any = res;
+    if (r?.action === "imported") toast.success(r.message);
+    else if (r?.action === "skipped") toast.info(r.message);
+    else if (r?.error) toast.error(r.message ?? r.error);
+    await run();
+  };
+
+  const resolveConflict = async (decision: "A" | "B" | "C") => {
+    const labels: Record<string, string> = {
+      A: "SalonBoost の内容でサロンボードを更新します。サロンボード側の予約が書き換わります。",
+      B: "サロンボードの内容で SalonBoost を更新します（時刻 / external_id のみ）。",
+      C: "差分を据え置き、「対応不要」にします。",
+    };
+    if (!confirm(labels[decision] + "\n\n実行しますか？")) return;
+    setActing("resolve");
+    const { data: res, error } = await supabase.functions.invoke("sync-resolve-conflict", {
+      body: { booking_id: bookingId, decision, snapshot_id: data?.snapshot_id },
+    });
+    setActing(null);
+    if (error) { toast.error("競合解消失敗: " + error.message); return; }
+    const r: any = res;
+    if (r?.error) toast.error(r.message ?? r.error);
+    else toast.success(r?.message ?? "処理しました");
+    await run();
   };
 
   const result: Result | null = data?.result ?? null;
@@ -127,12 +187,40 @@ export default function SyncStatusDialog({ bookingId, open, onOpenChange }: Prop
 
               <div className="border-t border-border pt-3 space-y-2">
                 <p className="text-[11px] text-muted-foreground">
-                  ※ 第1段階では「確認・表示」のみを行います。<br />
-                  「サロンボードへ再送信」「サロンボードから取り込み」「差分の解消」は次段階で個別に実装します。<br />
-                  二重予約事故を防ぐため、外部に予約が存在しないことを確認した上で、管理者の手動操作でのみ実行されます。
+                  ※ 二重予約事故を防ぐため、再送信・取り込み・上書きは管理者の明示的な操作でのみ実行されます。<br />
+                  再送信時は実行直前にもう一度サロンボード側を照合し、外部に候補がある場合は中止します。
                 </p>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" className="rounded-none" onClick={run} disabled={loading}>再確認</Button>
+
+                {/* result に応じたアクション */}
+                {result === "local_only" && (
+                  <Button className="rounded-none w-full" onClick={resendToSalonboard} disabled={!!acting}>
+                    {acting === "resend" ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
+                    サロンボードへ再送信（直前照合あり）
+                  </Button>
+                )}
+                {result === "external_only" && (
+                  <Button className="rounded-none w-full" onClick={importFromSalonboard} disabled={!!acting}>
+                    {acting === "import" ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
+                    SalonBoost へ取り込み
+                  </Button>
+                )}
+                {result === "conflict" && (
+                  <div className="space-y-1">
+                    <div className="text-[11px] text-muted-foreground flex items-center gap-1"><GitMerge className="w-3 h-3" />差分の解消（自動上書きはしません）</div>
+                    <Button variant="outline" size="sm" className="rounded-none w-full" disabled={!!acting} onClick={() => resolveConflict("A")}>
+                      A. SalonBoost の内容でサロンボードを更新
+                    </Button>
+                    <Button variant="outline" size="sm" className="rounded-none w-full" disabled={!!acting} onClick={() => resolveConflict("B")}>
+                      B. サロンボードの内容で SalonBoost を更新
+                    </Button>
+                    <Button variant="ghost" size="sm" className="rounded-none w-full" disabled={!!acting} onClick={() => resolveConflict("C")}>
+                      C. 何もしない（対応不要にする）
+                    </Button>
+                  </div>
+                )}
+
+                <div className="flex gap-2 pt-1">
+                  <Button variant="outline" size="sm" className="rounded-none" onClick={run} disabled={loading || !!acting}>再確認</Button>
                   <Button variant="ghost" size="sm" className="rounded-none ml-auto" onClick={() => onOpenChange(false)}>閉じる</Button>
                 </div>
               </div>

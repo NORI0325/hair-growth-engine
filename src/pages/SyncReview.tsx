@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { AlertTriangle, CheckCheck, FileSearch, GitCompare, AlertCircle, MapPinOff } from "lucide-react";
+import { AlertTriangle, CheckCheck, FileSearch, GitCompare, AlertCircle, MapPinOff, Send, Download } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import SyncStatusDialog from "@/components/SyncStatusDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -115,6 +115,18 @@ export default function SyncReview() {
     load();
   };
 
+  const resendOne = async (b: Row) => {
+    if (!confirm(`「${b.customers?.full_name ?? "顧客"}」${b.booking_date} ${b.booking_time?.slice(0,5)} の予約をサロンボードへ再送信します。\n\n直前にサロンボード側を再照合し、外部に予約が無い場合のみ送信します。\n候補が見つかった場合は二重予約防止のため送信を中止します。\n\n実行しますか？`)) return;
+    const { data: res, error } = await supabase.functions.invoke("sync-resend-to-salonboard", { body: { booking_id: b.id } });
+    if (error) { toast.error("再送信失敗: " + error.message); return; }
+    const r: any = res;
+    if (r?.action === "enqueued") toast.success(r.message);
+    else if (r?.action === "refused") toast.warning(r.message);
+    else if (r?.action === "skipped") toast.info(r.message);
+    else if (r?.error) toast.error(r.message ?? r.error);
+    load();
+  };
+
   return (
     <div className="container max-w-6xl py-12 px-6">
       <div className="mb-10">
@@ -122,7 +134,7 @@ export default function SyncReview() {
         <h1 className="font-serif text-3xl mb-2">同期エラー一覧</h1>
         <p className="text-sm text-muted-foreground leading-relaxed">
           サロンボードへの同期に失敗した予約、差異が検出された予約、店舗未割当の予約をまとめて確認できます。<br />
-          <span className="text-amber-700">第2段階：読み取り・確認系のみ表示。再送信・取り込み・上書きは第3段階で個別操作で実装します。</span>
+          <span className="text-amber-700">第3段階：再送信は直前照合付き、取り込みは external_reservation_id 重複防止付き、競合は管理者判断のみ。自動上書きは行いません。</span>
         </p>
       </div>
 
@@ -194,6 +206,11 @@ export default function SyncReview() {
                     <Button variant="outline" size="sm" className="rounded-none" disabled={!b.latest_snapshot} onClick={() => setDiffTarget(b)} title={!b.latest_snapshot ? "先に「同期状態を確認」を実行してください" : ""}>
                       <GitCompare className="w-3 h-3 mr-1" />差分を確認
                     </Button>
+                    {(b.sync_status === "external_missing" || b.latest_snapshot?.result === "local_only") && b.location_id && (
+                      <Button size="sm" className="rounded-none" onClick={() => resendOne(b)}>
+                        <Send className="w-3 h-3 mr-1" />サロンボードへ再送信
+                      </Button>
+                    )}
                     <Button variant="ghost" size="sm" className="rounded-none" disabled={!(b.last_sync_error || b.sync_error_message || b.latest_job?.error_message)} onClick={() => setErrorTarget(b)}>
                       <AlertCircle className="w-3 h-3 mr-1" />エラー内容
                     </Button>
