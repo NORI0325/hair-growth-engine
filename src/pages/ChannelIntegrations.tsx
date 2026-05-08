@@ -262,8 +262,9 @@ export default function ChannelIntegrations() {
                         </Button>
                       </>
                     )}
-                    <Button variant="outline" size="sm" className="rounded-none" onClick={() => retry(c.key)}>
-                      <RefreshCw className="w-3 h-3 mr-1" />再同期
+                    <Button variant="outline" size="sm" className="rounded-none" onClick={() => retry(c.key)} title={c.key === "salonboard" ? "サロンボードからスタッフ・メニュー情報を再取得します（予約の再送信ではありません）" : ""}>
+                      <RefreshCw className="w-3 h-3 mr-1" />
+                      {c.key === "salonboard" ? "スタッフ・メニューを再取得" : "再同期"}
                     </Button>
                   </div>
                 </div>
