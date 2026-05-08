@@ -245,6 +245,7 @@ const LocationContext = createContext<LocationContextValue | undefined>(undefine
 
 export const LocationProvider = ({ children }: { children: ReactNode }) => {
   const queryClient = useQueryClient();
+  const tenantId = useTenantId();
   const { data: queriedLocations = [], isLoading } = useLocations();
   const [optimisticLocations, setOptimisticLocations] = useState<Location[]>([]);
   const hasRestoredInitialLocation = useRef(false);
