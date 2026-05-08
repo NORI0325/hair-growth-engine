@@ -19,6 +19,7 @@ export interface Location {
 
 const STORAGE_KEY = "salon-boost:current-location-id";
 const RESTORED_LOCATION_KEY = "salon-boost:restored-location";
+const RESTORED_LOCATIONS_KEY = "salon-boost:restored-locations";
 
 const normalizeLocation = (location: Partial<Location> & { id: string; tenant_id: string; name: string }): Location => ({
   id: location.id,
@@ -46,9 +47,42 @@ const readRestoredLocation = (tenantId: string | null): Location | null => {
   }
 };
 
+const readRestoredLocations = (tenantId: string | null): Location[] => {
+  if (typeof window === "undefined" || !tenantId) return [];
+  try {
+    const raw = localStorage.getItem(RESTORED_LOCATIONS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as Record<string, Location[]> | Location[];
+    const tenantLocations = Array.isArray(parsed) ? parsed : parsed[tenantId];
+    if (!Array.isArray(tenantLocations)) return [];
+    return sortLocations(
+      tenantLocations
+        .filter((location) => location?.id && location.tenant_id === tenantId)
+        .map(normalizeLocation)
+    );
+  } catch {
+    return [];
+  }
+};
+
 const writeRestoredLocation = (location: Location) => {
   if (typeof window === "undefined") return;
   localStorage.setItem(RESTORED_LOCATION_KEY, JSON.stringify(normalizeLocation(location)));
+};
+
+const writeRestoredLocations = (tenantId: string, locations: Location[]) => {
+  if (typeof window === "undefined" || locations.length === 0) return;
+  try {
+    const raw = localStorage.getItem(RESTORED_LOCATIONS_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    const byTenant = Array.isArray(parsed) ? {} : parsed;
+    byTenant[tenantId] = sortLocations(locations.map(normalizeLocation));
+    localStorage.setItem(RESTORED_LOCATIONS_KEY, JSON.stringify(byTenant));
+    const primary = chooseDefaultLocation(byTenant[tenantId]);
+    if (primary) writeRestoredLocation(primary);
+  } catch {
+    // localStorage が使えない場合はDB取得結果だけで続行する
+  }
 };
 
 const sortLocations = (locations: Location[]) =>
@@ -149,15 +183,21 @@ export const useLocations = () => {
           created_at: "",
         }));
 
+      const cachedRecoveredLocations = readRestoredLocations(tenantId);
       const restoredFromAddLocation = readRestoredLocation(tenantId);
       const mergedBeforeRecovery = mergeLocations(
         directLocations,
         restored,
+        cachedRecoveredLocations,
         restoredFromAddLocation ? [restoredFromAddLocation] : []
       );
       const recovered = await recoverLocationsFromBackend(tenantId);
       const finalLocations = mergeLocations(mergedBeforeRecovery, recovered);
       const primaryLocation = chooseDefaultLocation(finalLocations);
+
+      if (finalLocations.length > 0) {
+        writeRestoredLocations(tenantId, finalLocations);
+      }
 
       console.info("[locations] fetch diagnostics", {
         authUserId: user?.id ?? null,
@@ -166,6 +206,7 @@ export const useLocations = () => {
         primaryLocationId: primaryLocation?.id ?? null,
         fetchedLocationsCount: directLocations.length,
         fallbackLocationsCount: restored.length,
+        cachedRecoveredCount: cachedRecoveredLocations.length,
         backendRecoveredCount: recovered.length,
         finalLocationsCount: finalLocations.length,
         selectedCurrentLocationId: typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null,
@@ -204,6 +245,7 @@ const LocationContext = createContext<LocationContextValue | undefined>(undefine
 
 export const LocationProvider = ({ children }: { children: ReactNode }) => {
   const queryClient = useQueryClient();
+  const tenantId = useTenantId();
   const { data: queriedLocations = [], isLoading } = useLocations();
   const [optimisticLocations, setOptimisticLocations] = useState<Location[]>([]);
   const hasRestoredInitialLocation = useRef(false);
@@ -213,8 +255,15 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
   });
 
   const locations = useMemo(() => {
-    return mergeLocations(optimisticLocations, queriedLocations);
-  }, [optimisticLocations, queriedLocations]);
+    const cachedRecoveredLocations = readRestoredLocations(tenantId);
+    const restoredFromAddLocation = readRestoredLocation(tenantId);
+    return mergeLocations(
+      optimisticLocations,
+      cachedRecoveredLocations,
+      restoredFromAddLocation ? [restoredFromAddLocation] : [],
+      queriedLocations
+    );
+  }, [optimisticLocations, queriedLocations, tenantId]);
 
   const defaultLocation = useMemo(() => chooseDefaultLocation(locations), [locations]);
   const selectedLocation = useMemo(
@@ -291,6 +340,7 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
       const withoutDuplicate = old.filter((l) => l.id !== normalized.id);
       return mergeLocations([normalized], withoutDuplicate);
     });
+    writeRestoredLocations(normalized.tenant_id, mergeLocations([normalized], locations));
     setCurrentLocationId(normalized.id);
   };
 
