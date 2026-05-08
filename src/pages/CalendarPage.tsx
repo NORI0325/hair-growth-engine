@@ -53,6 +53,7 @@ const CalendarPage = () => {
   const [selected, setSelected] = useState<Booking | null>(null);
   const [openHour, setOpenHour] = useState("09:00");
   const [closeHour, setCloseHour] = useState("21:00");
+  const [syncOpen, setSyncOpen] = useState(false);
 
   const load = async () => {
     if (!user || !locationId) { setLoading(false); return; }
