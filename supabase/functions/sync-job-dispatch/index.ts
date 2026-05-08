@@ -54,17 +54,36 @@ Deno.serve(async (req) => {
     // ---- payload 変換: アプリ標準 → サロンボード生フォーマット ----
     // create時のみ変換が必要（update/cancelは既に生フォーマットで投入される運用）
     const SALONBOARD_DEFAULT_RSV_ROUTE_ID = "K000000001"; // 電話(自社)固定
+    // サロンボードは氏名欄に半角/全角数字・英字・記号を「不正文字」と判定する
+    // → 漢字・ひらがな・カタカナ・長音以外は除去
+    function sanitizeNameKanji(s: string): string {
+      return (s || "")
+        // 全角→半角の数字/英字も含めまとめて除去対象
+        .replace(/[0-9０-９A-Za-zＡ-Ｚａ-ｚ!-/:-@\[-`{-~！-／：-＠［-｀｛-～\-_]/g, "")
+        .replace(/\s+/g, "")
+        .trim();
+    }
+    function sanitizeNameKana(s: string): string {
+      // ひらがな→カタカナに変換し、カタカナ・長音以外は全部除去
+      const kata = (s || "").replace(/[ぁ-ん]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0x60));
+      return kata.replace(/[^ァ-ヶー]/g, "").trim();
+    }
     function splitName(full: string | null | undefined): { sei: string; mei: string } {
-      const s = (full || "").trim();
-      if (!s) return { sei: "", mei: "" };
-      const parts = s.split(/[\s　]+/);
-      if (parts.length >= 2) return { sei: parts[0], mei: parts.slice(1).join("") };
-      // スペース無し → 全部姓に
-      return { sei: s, mei: "" };
+      const raw = (full || "").trim();
+      if (!raw) return { sei: "お客様", mei: "" };
+      const parts = raw.split(/[\s　]+/);
+      let sei: string; let mei: string;
+      if (parts.length >= 2) { sei = parts[0]; mei = parts.slice(1).join(""); }
+      else { sei = raw; mei = ""; }
+      sei = sanitizeNameKanji(sei);
+      mei = sanitizeNameKanji(mei);
+      // 全部除去されてしまった場合のフォールバック（数字入りテスト名など）
+      if (!sei) sei = "お客様";
+      return { sei, mei };
     }
     function toKana(s: string): string {
-      // ひらがな→カタカナ。サロンボード必須なので空でも空文字
-      return (s || "").replace(/[ぁ-ん]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0x60));
+      const k = sanitizeNameKana(s);
+      return k || "オキャクサマ";
     }
     function fmtDate(iso: string): string {
       const d = new Date(iso);
@@ -114,6 +133,16 @@ Deno.serve(async (req) => {
       if (!p.start_time || !p.end_time) missing.push("start_time/end_time");
       if (missing.length > 0) return { ok: false, missing };
       const { sei, mei } = splitName(p.customer_name);
+      // カナ: customer_kana があればそれを優先、無ければ漢字部分から推定（漢字はカナ化できないので "オキャクサマ" になる）
+      const kanaSrc = (p.customer_kana || p.customer_name_kana || "").trim();
+      let seiKana = ""; let meiKana = "";
+      if (kanaSrc) {
+        const kp = kanaSrc.split(/[\s　]+/);
+        seiKana = sanitizeNameKana(kp[0] || "");
+        meiKana = sanitizeNameKana(kp.slice(1).join(""));
+      }
+      if (!seiKana) seiKana = sanitizeNameKana(sei) || "オキャクサマ";
+      if (!meiKana) meiKana = sanitizeNameKana(mei);
       const durationMin = Math.max(15, Math.round((new Date(p.end_time).getTime() - new Date(p.start_time).getTime()) / 60_000));
       return {
         ok: true,
@@ -127,8 +156,8 @@ Deno.serve(async (req) => {
           rsvTerm: durationMin,
           nmSei: sei,
           nmMei: mei,
-          nmSeiKana: toKana(sei),
-          nmMeiKana: toKana(mei),
+          nmSeiKana: seiKana,
+          nmMeiKana: meiKana,
           tel: (p.customer_phone || "").replace(/[^\d]/g, ""),
           memo: p.notes || "",
         },

@@ -249,20 +249,34 @@ export async function createReservation(page: Page, input: CreateReservationInpu
   const detected = detectErrorFromPage({ url: finalUrl, bodyText: finalText });
   if (detected) throw new WorkerError(detected, `create failed: ${detected}`);
 
-  // 入力画面に残っているバリデーションエラー（営業時間外など）を検出
-  if (/営業終了時間|終了時間は営業終了時間|入力してください|エラー|必須/.test(finalText) && /extReserveRegist(Input)?\/?$/.test(finalUrl)) {
-    const errLine = (finalText.match(/[^\n]*(エラー|してください|営業終了時間)[^\n]*/) || [""])[0].slice(0, 200);
-    logger.warn({ finalUrl, errLine }, "validation error on input page");
-    throw new WorkerError("external_site_changed", `validation error: ${errLine}`);
+  // サロンボード側の入力バリデーションエラー検知（doComplete 含むあらゆるURLで先に判定）
+  const invalidCharMatch = finalText.match(/[^\n]*(不正な文字|使用できない文字列|登録できません|必須|入力してください|エラー)[^\n]*/);
+  if (invalidCharMatch) {
+    const errLine = invalidCharMatch[0].slice(0, 300);
+    // 完了文言が同時にあるなら本物の完了優先（誤検知回避）
+    const trulyCompleted = /予約を登録しました|予約が完了|登録が完了|登録を完了/.test(finalText)
+      && !/不正な文字|使用できない文字列/.test(finalText);
+    if (!trulyCompleted) {
+      logger.warn({ finalUrl, errLine }, "salonboard input validation error");
+      const isNameError = /不正な文字|使用できない文字列|氏名|カナ/.test(errLine);
+      const msg = isNameError
+        ? "[salonboard] 入力エラー: 氏名またはカナにサロンボードで使用できない文字が含まれています。数字入りのテスト名は使わず、カナはカタカナで入力してください。"
+        : `[salonboard] 入力エラー: ${errLine}`;
+      throw new WorkerError("external_site_changed", msg);
+    }
   }
 
-  // 完了画面URL・予約番号(BE...)・明確な完了文言のいずれかが必須
-  const isCompleteUrl = /extReserveRegistComp|extReserveComp|Complete|complete/.test(finalUrl);
+  // 完了画面URL or 予約番号(BE...) or 完了文言が必要（doComplete URL だけでは成功扱いしない）
+  const isCompleteUrl = /extReserveRegistComp|extReserveComp|Complete|complete|doComplete/.test(finalUrl);
   const m = finalText.match(/(BE\d{6,})/);
   const hasCompleteText = /予約を登録しました|予約が完了|登録が完了|登録を完了/.test(finalText);
 
+  // doComplete URL だけで本文に完了文言も予約番号も無いケースは失敗扱い
+  if (!m && !hasCompleteText) {
+    logger.warn({ finalUrl, isCompleteUrl, snippet: finalText.slice(0, 400) }, "create result: no reserveId & no complete text");
+    throw new WorkerError("external_site_changed", "create completion not confirmed (no reserveId / no complete message)");
+  }
   if (!isCompleteUrl && !m && !hasCompleteText) {
-    logger.warn({ finalUrl, snippet: finalText.slice(0, 300) }, "create result unclear");
     throw new WorkerError("external_site_changed", "create completion not confirmed");
   }
 
