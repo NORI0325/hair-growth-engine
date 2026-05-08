@@ -234,9 +234,30 @@ Deno.serve(async (req) => {
         result = "local_only";
         reason = "no candidate found on salonboard";
       } else if (candidates.length === 1 && !b.external_reservation_id) {
-        // 同条件で1件 → 多分同じ予約だが ID 紐付けされていない
-        result = "conflict";
-        reason = "candidate found but external_reservation_id not linked";
+        // 同条件で1件 → 同じ予約とみなし external_reservation_id を自動リンク（安全な紐付けのみ）
+        const linkedId = candidates[0].external_reservation_id;
+        if (linkedId) {
+          const { error: linkErr } = await supabase
+            .from("bookings")
+            .update({
+              external_reservation_id: String(linkedId),
+              sync_status: "success",
+              last_synced_at: new Date().toISOString(),
+            })
+            .eq("id", b.id);
+          if (linkErr) {
+            console.error("auto-link external_reservation_id failed", linkErr);
+            result = "conflict";
+            reason = "candidate found but external_reservation_id link failed";
+          } else {
+            b.external_reservation_id = String(linkedId);
+            result = "match";
+            reason = "auto-linked external_reservation_id from single candidate";
+          }
+        } else {
+          result = "conflict";
+          reason = "candidate found but no external_reservation_id parsed";
+        }
       } else {
         result = "conflict";
         reason = `${candidates.length} candidates found`;
