@@ -123,6 +123,7 @@ Deno.serve(async (req) => {
 
     const local_payload = {
       booking_id: b.id,
+      location_id: b.location_id,
       date: b.booking_date,
       time: b.booking_time?.slice(0, 5),
       duration: b.total_duration_minutes,
