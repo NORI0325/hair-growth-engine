@@ -134,7 +134,7 @@ Deno.serve(async (req) => {
       stylist_id_resolved: stylistId,
       stylist_fallback_no_designation: stylistFallback,
       channel_integration: ci ?? null,
-      staff_mapping: staffMap ?? null,
+      staff_mapping: staffMapNormalized,
       menu_mapping_exists: !!menuMap,
       last_job: lastJob ?? null,
     };
