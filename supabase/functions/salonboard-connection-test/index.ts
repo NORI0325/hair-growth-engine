@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
     if (!userRes?.user) return json({ error: "unauthorized" }, 401);
     const userId = userRes.user.id;
 
-    const { owner_id, location_id } = await req.json();
+    const { owner_id, location_id, reveal } = await req.json();
     if (!owner_id) return json({ error: "missing_owner_id" }, 400);
 
     const supabase = createClient(
@@ -157,6 +157,23 @@ Deno.serve(async (req) => {
       decrypt_password_ok: !!password,
     };
     console.log("salonboard-connection-test decrypt_credentials diagnostics", decryptDiagnostic);
+
+    const maskPassword = (p: string | null) => {
+      if (!p) return null;
+      const len = p.length;
+      if (len <= 4) return `${"•".repeat(len)} (${len}文字)`;
+      return `${p.slice(0, 2)}${"•".repeat(Math.max(len - 4, 4))}${p.slice(-2)} (${len}文字)`;
+    };
+
+    if (reveal === true) {
+      return json({
+        ok: credsOk,
+        reveal: true,
+        decrypted_login_id: loginId,
+        password_masked: maskPassword(password),
+        diagnostic: decryptDiagnostic,
+      });
+    }
 
     steps.push({
       kind: "decrypt_credentials",
