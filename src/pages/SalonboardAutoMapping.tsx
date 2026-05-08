@@ -98,7 +98,9 @@ export default function SalonboardAutoMapping() {
     const res = await supabase.functions.invoke("salonboard-fetch-staff", { body: { owner_id: user!.id, location_id: loc } });
     setFetching("");
     if (res.error || res.data?.success === false) {
-      toast.error("取得失敗: " + (res.data?.message || res.error?.message || "unknown"));
+      const msg = res.data?.message || res.data?.error || res.error?.message || JSON.stringify(res.data || res.error || {});
+      toast.error("取得失敗: " + msg, { duration: 10000 });
+      console.error("fetch-staff failed", res);
       return;
     }
     toast.success(`スタッフ ${res.data?.count ?? 0} 件取得`);
@@ -110,7 +112,9 @@ export default function SalonboardAutoMapping() {
     const res = await supabase.functions.invoke("salonboard-fetch-menus", { body: { owner_id: user!.id, location_id: loc } });
     setFetching("");
     if (res.error || res.data?.success === false) {
-      toast.error("取得失敗: " + (res.data?.message || res.error?.message || "unknown"));
+      const msg = res.data?.message || res.data?.error || res.error?.message || JSON.stringify(res.data || res.error || {});
+      toast.error("取得失敗: " + msg, { duration: 10000 });
+      console.error("fetch-menus failed", res);
       return;
     }
     toast.success(`メニュー ${res.data?.count ?? 0} 件取得`);
