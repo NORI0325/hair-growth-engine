@@ -26,14 +26,103 @@ export interface CreateReservationInput {
 }
 
 const FORM_URL = "https://salonboard.com/CLP/bt/reserve/ext/extReserveRegist/";
+const SCHEDULE_URL = "https://salonboard.com/CLP/bt/schedule/";
+
+async function dumpPageDiag(page: Page, label: string) {
+  try {
+    const url = page.url();
+    const title = await page.title().catch(() => "");
+    const body = await page.locator("body").innerText().catch(() => "");
+    const forms = await page.$$eval("form", (els) =>
+      els.map((e) => ({ id: (e as HTMLFormElement).id, action: (e as HTMLFormElement).action })),
+    ).catch(() => []);
+    const selects = await page.$$eval("select", (els) =>
+      els.map((e) => (e as HTMLSelectElement).name || (e as HTMLSelectElement).id),
+    ).catch(() => []);
+    const inputs = await page.$$eval("input", (els) =>
+      els.map((e) => `${(e as HTMLInputElement).type}:${(e as HTMLInputElement).name || (e as HTMLInputElement).id}`),
+    ).catch(() => []);
+    const reserveLinks = await page.$$eval('a', (els) =>
+      els.filter((e) => /予約登録/.test(e.textContent || "")).map((e) => ({
+        id: (e as HTMLAnchorElement).id, href: (e as HTMLAnchorElement).getAttribute("href"),
+      })),
+    ).catch(() => []);
+    let screenshotPath: string | null = null;
+    try {
+      screenshotPath = `/tmp/sb-${label}-${Date.now()}.png`;
+      await page.screenshot({ path: screenshotPath, fullPage: false });
+    } catch { screenshotPath = null; }
+    logger.warn({
+      label, url, title, snippet: body.slice(0, 400),
+      forms, selects, inputs, reserveLinks, screenshotPath,
+    }, "page diagnostic");
+  } catch (e) {
+    logger.warn({ e: e instanceof Error ? e.message : String(e) }, "dumpPageDiag failed");
+  }
+}
+
+async function gotoReservationForm(page: Page, input: CreateReservationInput) {
+  const directUrl = `${FORM_URL}?date=${input.date}&time=${input.time}&stylistId=${input.stylistId}`;
+  logger.info({ directUrl }, "navigating to reservation form (direct URL)");
+  await page.goto(directUrl, { waitUntil: "domcontentloaded" }).catch((e) => {
+    logger.warn({ e: e instanceof Error ? e.message : String(e) }, "direct goto failed, will try via schedule");
+  });
+  await assertNotLoggedOut(page);
+
+  // 予約登録画面に到達したかチェック（rsvTerm等のいずれかが見えればOK）
+  const formMarker = page.locator(
+    '#rsvTermId, select[name="rsvTerm"], select[name="setmenuId"], input[name="nmSei"]',
+  ).first();
+  try {
+    await formMarker.waitFor({ state: "attached", timeout: 15000 });
+    return;
+  } catch {
+    logger.warn({ url: page.url(), title: await page.title().catch(() => "") }, "direct URL did not reach reservation form, trying schedule fallback");
+  }
+
+  // フォールバック: スケジュール画面 → #extReserve form を submit
+  await page.goto(SCHEDULE_URL, { waitUntil: "domcontentloaded" });
+  await assertNotLoggedOut(page);
+
+  const submitted = await page.evaluate(({ date, time, stylistId }) => {
+    const f = document.querySelector('#extReserve') as HTMLFormElement | null;
+    if (!f) return false;
+    const set = (n: string, v: string) => {
+      let el = f.querySelector(`input[name="${n}"]`) as HTMLInputElement | null;
+      if (!el) {
+        el = document.createElement("input");
+        el.type = "hidden"; el.name = n;
+        f.appendChild(el);
+      }
+      el.value = v;
+    };
+    set("date", String(date));
+    set("time", String(time));
+    set("stylistId", String(stylistId));
+    f.submit();
+    return true;
+  }, { date: input.date, time: String(input.time), stylistId: String(input.stylistId) }).catch(() => false);
+
+  if (!submitted) {
+    await dumpPageDiag(page, "schedule-no-form");
+    throw new WorkerError("external_site_changed", "schedule page missing #extReserve form");
+  }
+
+  await page.waitForLoadState("domcontentloaded");
+  try {
+    await formMarker.waitFor({ state: "attached", timeout: 20000 });
+  } catch {
+    const title = await page.title().catch(() => "");
+    await dumpPageDiag(page, "post-schedule-submit");
+    if (/SALON BOARD\s*:\s*TOP/i.test(title)) {
+      throw new WorkerError("external_site_changed", `still on TOP after navigation (title=${title})`);
+    }
+    throw new WorkerError("external_site_changed", `reservation form not loaded (title=${title})`);
+  }
+}
 
 export async function createReservation(page: Page, input: CreateReservationInput) {
-  // 新規予約フォームへ遷移
-  // URL構築: /CLP/bt/reserve/ext/extReserveRegistInput/?date=YYYYMMDD&time=HHMM&stylistId=...
-  const inputUrl = `https://salonboard.com/CLP/bt/reserve/ext/extReserveRegistInput/?date=${input.date}&time=${input.time}&stylistId=${input.stylistId}`;
-  await page.goto(inputUrl, { waitUntil: "domcontentloaded" });
-
-  await assertNotLoggedOut(page);
+  await gotoReservationForm(page, input);
 
   // payload 型ログ（Playwright selectOption は string のみ受け付けるため）
   logger.info({
@@ -56,7 +145,14 @@ export async function createReservation(page: Page, input: CreateReservationInpu
     await page.locator('select[name="time"]').selectOption({ value: toStr(input.time) });
   }
   if (input.rsvTerm != null) {
-    await page.locator('select[name="rsvTerm"]').selectOption({ value: toStr(input.rsvTerm) });
+    const rsvTerm = page.locator('#rsvTermId, select[name="rsvTerm"]').first();
+    try {
+      await rsvTerm.waitFor({ state: "attached", timeout: 30000 });
+      await rsvTerm.selectOption(toStr(input.rsvTerm));
+    } catch (e) {
+      await dumpPageDiag(page, "rsvTerm-not-found");
+      throw e;
+    }
   }
 
   if (input.rsvRouteId && await page.locator('select[name="rsvRouteId"]').count()) {
