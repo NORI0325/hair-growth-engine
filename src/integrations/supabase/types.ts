@@ -3264,6 +3264,65 @@ export type Database = {
         }
         Relationships: []
       }
+      sync_diff_snapshots: {
+        Row: {
+          booking_id: string | null
+          channel: string
+          checked_at: string
+          checked_by: string | null
+          created_at: string
+          diff: Json | null
+          external_payload: Json | null
+          external_reservation_id: string | null
+          id: string
+          local_payload: Json | null
+          location_id: string | null
+          owner_id: string
+          reason: string | null
+          result: string
+        }
+        Insert: {
+          booking_id?: string | null
+          channel?: string
+          checked_at?: string
+          checked_by?: string | null
+          created_at?: string
+          diff?: Json | null
+          external_payload?: Json | null
+          external_reservation_id?: string | null
+          id?: string
+          local_payload?: Json | null
+          location_id?: string | null
+          owner_id: string
+          reason?: string | null
+          result: string
+        }
+        Update: {
+          booking_id?: string | null
+          channel?: string
+          checked_at?: string
+          checked_by?: string | null
+          created_at?: string
+          diff?: Json | null
+          external_payload?: Json | null
+          external_reservation_id?: string | null
+          id?: string
+          local_payload?: Json | null
+          location_id?: string | null
+          owner_id?: string
+          reason?: string | null
+          result?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sync_diff_snapshots_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "bookings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sync_jobs: {
         Row: {
           created_at: string

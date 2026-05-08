@@ -10,7 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
-import { Trash2 } from "lucide-react";
+import { Trash2, RefreshCcw } from "lucide-react";
+import SyncStatusDialog from "@/components/SyncStatusDialog";
 
 import FullCalendar from "@fullcalendar/react";
 import resourceTimegridPlugin from "@fullcalendar/resource-timegrid";
@@ -52,6 +53,7 @@ const CalendarPage = () => {
   const [selected, setSelected] = useState<Booking | null>(null);
   const [openHour, setOpenHour] = useState("09:00");
   const [closeHour, setCloseHour] = useState("21:00");
+  const [syncOpen, setSyncOpen] = useState(false);
 
   const load = async () => {
     if (!user || !locationId) { setLoading(false); return; }
@@ -202,6 +204,9 @@ const CalendarPage = () => {
                   <FileText className="w-3.5 h-3.5" />
                   カルテを開く
                 </Link>
+                <Button size="sm" variant="outline" className="rounded-none" onClick={() => setSyncOpen(true)}>
+                  <RefreshCcw className="w-3.5 h-3.5 mr-1" />同期状態を確認
+                </Button>
                 {selected.status === "pending" && (
                   <Button size="sm" className="rounded-none" onClick={() => updateStatus(selected.id, "confirmed")}>確定にする</Button>
                 )}
@@ -245,6 +250,10 @@ const CalendarPage = () => {
           )}
         </DialogContent>
       </Dialog>
+
+      {selected && (
+        <SyncStatusDialog bookingId={selected.id} open={syncOpen} onOpenChange={setSyncOpen} />
+      )}
     </AppLayout>
   );
 };

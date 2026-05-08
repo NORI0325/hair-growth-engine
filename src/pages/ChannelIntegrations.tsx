@@ -182,7 +182,21 @@ export default function ChannelIntegrations() {
   };
 
   const retry = async (channel: string) => {
-    // この媒体宛のpending/failedジョブを再投入
+    // 注意: ここは「予約の再送信」ではない。
+    // 予約の再送信・取込・差分解消は SyncReview / 同期状態確認 から個別操作で行う（二重予約事故防止）。
+    if (channel === "salonboard") {
+      toast.loading("サロンボードからスタッフ・メニュー情報を再取得中...");
+      const [s, m] = await Promise.all([
+        supabase.functions.invoke("salonboard-fetch-staff", { body: {} }),
+        supabase.functions.invoke("salonboard-fetch-menus", { body: {} }),
+      ]);
+      toast.dismiss();
+      if (s.error || m.error) toast.error("再取得に失敗しました");
+      else toast.success("スタッフ・メニュー情報を更新しました");
+      load();
+      return;
+    }
+    // その他チャネル: 既存挙動（pending/failed ジョブの一括再送）
     const { data: jobs } = await supabase.from("sync_jobs")
       .select("id").eq("target_channel", channel).in("status", ["pending", "failed", "needs_review"]).limit(50);
     if (!jobs || jobs.length === 0) {
@@ -248,8 +262,9 @@ export default function ChannelIntegrations() {
                         </Button>
                       </>
                     )}
-                    <Button variant="outline" size="sm" className="rounded-none" onClick={() => retry(c.key)}>
-                      <RefreshCw className="w-3 h-3 mr-1" />再同期
+                    <Button variant="outline" size="sm" className="rounded-none" onClick={() => retry(c.key)} title={c.key === "salonboard" ? "サロンボードからスタッフ・メニュー情報を再取得します（予約の再送信ではありません）" : ""}>
+                      <RefreshCw className="w-3 h-3 mr-1" />
+                      {c.key === "salonboard" ? "スタッフ・メニューを再取得" : "再同期"}
                     </Button>
                   </div>
                 </div>
