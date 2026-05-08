@@ -10,7 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
-import { Trash2 } from "lucide-react";
+import { Trash2, RefreshCcw } from "lucide-react";
+import SyncStatusDialog from "@/components/SyncStatusDialog";
 
 import FullCalendar from "@fullcalendar/react";
 import resourceTimegridPlugin from "@fullcalendar/resource-timegrid";
