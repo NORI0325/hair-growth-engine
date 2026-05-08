@@ -24,6 +24,8 @@ export function detectErrorFromPage(opts: { url: string; bodyText: string }): Er
   if (/セッションが切れ|再度ログイン|ログイン画面/.test(t) || /\/login/i.test(opts.url)) {
     return "session_expired";
   }
-  if (/重複|既に予約|同じ時間に/.test(t)) return "duplicate_risk";
+  // duplicate_risk は明確に「既存予約と衝突」を示す文言だけに限定する
+  // （「予約を登録します。よろしいですか？」のような通常確認は除外）
+  if (/重複して|同一の予約|既に予約が|予約が存在|同じ時間に予約/.test(t)) return "duplicate_risk";
   return null;
 }
