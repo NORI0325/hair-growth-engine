@@ -86,18 +86,33 @@ Deno.serve(async (req) => {
     }
 
     // channel_integrations / mappings の状態
+    // channel_integrations: location_id でも絞り込む（同一 owner で複数ロケーションあり得る）
+    let ciQuery = supabase.from("channel_integrations")
+      .select("enabled, sync_enabled, connection_status, location_id")
+      .eq("owner_id", b.owner_id).eq("channel", "salonboard");
+    if (b.location_id) ciQuery = ciQuery.eq("location_id", b.location_id);
+    else ciQuery = ciQuery.is("location_id", null);
+
     const [{ data: ci }, { data: staffMap }, { data: menuMap }] = await Promise.all([
-      supabase.from("channel_integrations").select("enabled, sync_enabled, connection_status, location_id")
-        .eq("owner_id", b.owner_id).eq("channel", "salonboard").maybeSingle(),
+      ciQuery.maybeSingle(),
       b.staff_id
-        ? supabase.from("staff_channel_mappings").select("external_staff_id, external_staff_name, enabled")
+        ? supabase.from("staff_channel_mappings")
+            .select("external_id, external_name, enabled, is_no_designation")
             .eq("owner_id", b.owner_id).eq("channel", "salonboard").eq("staff_id", b.staff_id).maybeSingle()
         : Promise.resolve({ data: null }),
-      supabase.from("menu_channel_mappings").select("id, enabled")
+      supabase.from("menu_channel_mappings").select("id, enabled, external_id, external_name")
         .eq("owner_id", b.owner_id).eq("channel", "salonboard").limit(1).maybeSingle(),
     ]);
 
-    const stylistId = b.staff_id ? (staffMap?.external_staff_id ?? null) : "0000000000";
+    // SyncStatusDialog の表示互換のため、external_staff_id/external_staff_name にも揃える
+    const staffMapNormalized = staffMap ? {
+      external_staff_id: (staffMap as any).external_id ?? null,
+      external_staff_name: (staffMap as any).external_name ?? null,
+      enabled: (staffMap as any).enabled ?? null,
+      is_no_designation: (staffMap as any).is_no_designation ?? false,
+    } : null;
+
+    const stylistId = b.staff_id ? (staffMapNormalized?.external_staff_id ?? null) : "0000000000";
     const stylistFallback = !b.staff_id;
 
     // 最新の sync_jobs
@@ -119,7 +134,7 @@ Deno.serve(async (req) => {
       stylist_id_resolved: stylistId,
       stylist_fallback_no_designation: stylistFallback,
       channel_integration: ci ?? null,
-      staff_mapping: staffMap ?? null,
+      staff_mapping: staffMapNormalized,
       menu_mapping_exists: !!menuMap,
       last_job: lastJob ?? null,
     };
