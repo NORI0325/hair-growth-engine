@@ -37,27 +37,79 @@ Deno.serve(async (req) => {
       });
     }
 
-    const res = await fetch(`${workerUrl.replace(/\/+$/, "")}/api/salonboard/fetch-menus`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${workerKey}` },
-      body: JSON.stringify({ store_id: owner_id, location_id }),
-    });
+    const workerEndpoint = `${workerUrl.replace(/\/+$/, "")}/api/salonboard/fetch-menus`;
+    const safeWorkerUrl = (() => {
+      try {
+        const url = new URL(workerEndpoint);
+        return `${url.origin}${url.pathname}`;
+      } catch {
+        return workerEndpoint.replace(/\?.*$/, "");
+      }
+    })();
+
+    let res: Response;
+    try {
+      res = await fetch(workerEndpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${workerKey}` },
+        body: JSON.stringify({ store_id: owner_id, location_id }),
+      });
+    } catch (workerError) {
+      const latency = Date.now() - t0;
+      const message = workerError instanceof Error ? workerError.message : String(workerError);
+      console.error("salonboard-fetch-menus worker request failed", {
+        owner_id, location_id, worker_url: safeWorkerUrl, latency_ms: latency, message,
+      });
+      await supabase.from("worker_request_logs").insert({
+        owner_id, location_id, channel: "salonboard", kind: "fetch_menus",
+        request_payload: { store_id: owner_id, location_id, worker_url: safeWorkerUrl, auth_scheme: "Bearer" },
+        response_status: null,
+        response_body: { error: "worker_request_failed", message },
+        latency_ms: latency,
+        success: false,
+        error_message: message,
+      });
+      return new Response(JSON.stringify({
+        success: false,
+        error: "worker_request_failed",
+        message,
+        worker_url: safeWorkerUrl,
+        response_body: { error: "worker_request_failed", message },
+      }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     const httpStatus = res.status;
     const json = await res.json().catch(() => ({ success: false, error_type: "invalid_json" }));
     const latency = Date.now() - t0;
+    const errorMessage = json?.success ? null : (json?.message || json?.error || `HTTP ${httpStatus}`);
+
+    console.info("salonboard-fetch-menus worker response", {
+      owner_id, location_id, worker_url: safeWorkerUrl, response_status: httpStatus,
+      success: !!json?.success, latency_ms: latency, error_message: errorMessage,
+    });
 
     await supabase.from("worker_request_logs").insert({
       owner_id, location_id, channel: "salonboard", kind: "fetch_menus",
-      request_payload: { store_id: owner_id, location_id },
+      request_payload: { store_id: owner_id, location_id, worker_url: safeWorkerUrl, auth_scheme: "Bearer" },
       response_status: httpStatus,
       response_body: json,
       latency_ms: latency,
       success: !!json?.success,
-      error_message: json?.success ? null : (json?.message || `HTTP ${httpStatus}`),
+      error_message: errorMessage,
     });
 
     if (!json?.success) {
-      return new Response(JSON.stringify({ success: false, error: json?.error_type || "fetch_failed", message: json?.message }), {
+      return new Response(JSON.stringify({
+        success: false,
+        error: json?.error_type || "fetch_failed",
+        message: errorMessage,
+        status: httpStatus,
+        response_status: httpStatus,
+        response_body: json,
+        error_message: errorMessage,
+        worker_url: safeWorkerUrl,
+      }), {
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
