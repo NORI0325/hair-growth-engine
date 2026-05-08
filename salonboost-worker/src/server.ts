@@ -113,6 +113,37 @@ app.post("/api/salonboard/fetch-menus", bearerAuth, async (req, res) => {
   }
 });
 
+// ===== 同期確認用：サロンボード側の予約を読み取り専用で検索 =====
+const FindSchema = z.object({
+  store_id: z.string().min(1),
+  location_id: z.string().nullable().optional(),
+  date: z.string().min(8),
+  time: z.union([z.string(), z.number()]).optional(),
+  customer_name: z.string().optional(),
+  stylist_id: z.union([z.string(), z.number()]).optional(),
+});
+
+app.post("/api/salonboard/find-reservation", bearerAuth, async (req, res) => {
+  const parsed = FindSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ success: false, error_type: "unknown_error", message: "invalid_body" });
+  const p = parsed.data;
+  logger.info({ owner: p.store_id, location: p.location_id ?? null, date: p.date, type: "find_reservation" }, "job received");
+  try {
+    const items = await withSalonboardSession(p.store_id, p.location_id ?? null, (page) =>
+      findReservations(page, {
+        date: p.date,
+        time: p.time,
+        customerName: p.customer_name,
+        stylistId: p.stylist_id,
+      }),
+    );
+    res.json({ success: true, items });
+  } catch (e) {
+    if (e instanceof WorkerError) res.json({ success: false, error_type: e.errorType, message: e.message });
+    else { logger.error({ err: e }, "find-reservation failed"); res.json({ success: false, error_type: "unknown_error", message: e instanceof Error ? e.message : String(e) }); }
+  }
+});
+
 async function runJob(job: z.infer<typeof JobSchema>) {
   // 店舗別の認証情報・保存セッションを取得
   const creds = await fetchSession(job.store_id, job.location_id ?? null).catch((e) => {
