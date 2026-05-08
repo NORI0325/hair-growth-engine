@@ -194,7 +194,7 @@ const PublicBooking = () => {
     if (!parsed.success) { toast.error(parsed.error.errors[0].message); return; }
     if (selectedMenus.length === 0) { toast.error("メニューを1つ以上お選びください"); return; }
     setSubmitting(true);
-    const { data, error } = await supabase.rpc("public_create_booking_v3" as any, {
+    const payload = {
       _salon_slug: slug!,
       _full_name: parsed.data.full_name,
       _phone: parsed.data.phone,
@@ -203,13 +203,18 @@ const PublicBooking = () => {
       _booking_time: parsed.data.time,
       _menus: selectedMenus,
       _notes: parsed.data.notes || "",
-    });
+    };
+    console.log("[PublicBooking] submit payload:", payload);
+    const { data, error } = await supabase.rpc("public_create_booking_v3" as any, payload);
     setSubmitting(false);
-    if (error || !(data as any)?.success) {
-      toast.error("ご予約に失敗しました。お手数ですが再度お試しください。");
+    console.log("[PublicBooking] response:", { data, error });
+    const bookingId = (data as any)?.booking_id;
+    if (error || !(data as any)?.success || !bookingId) {
+      const reason = (data as any)?.error || error?.message || "unknown";
+      console.error("[PublicBooking] booking failed:", reason);
+      toast.error(`ご予約に失敗しました（${reason}）。お手数ですが再度お試しください。`);
       return;
     }
-    const bookingId = (data as any)?.booking_id;
     if (bookingId) {
       supabase.functions.invoke("notify-owner-booking", {
         body: { bookingId, eventType: "created" },
