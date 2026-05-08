@@ -254,8 +254,15 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
   });
 
   const locations = useMemo(() => {
-    return mergeLocations(optimisticLocations, queriedLocations);
-  }, [optimisticLocations, queriedLocations]);
+    const cachedRecoveredLocations = readRestoredLocations(tenantId);
+    const restoredFromAddLocation = readRestoredLocation(tenantId);
+    return mergeLocations(
+      optimisticLocations,
+      cachedRecoveredLocations,
+      restoredFromAddLocation ? [restoredFromAddLocation] : [],
+      queriedLocations
+    );
+  }, [optimisticLocations, queriedLocations, tenantId]);
 
   const defaultLocation = useMemo(() => chooseDefaultLocation(locations), [locations]);
   const selectedLocation = useMemo(
@@ -332,6 +339,7 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
       const withoutDuplicate = old.filter((l) => l.id !== normalized.id);
       return mergeLocations([normalized], withoutDuplicate);
     });
+    writeRestoredLocations(normalized.tenant_id, mergeLocations([normalized], locations));
     setCurrentLocationId(normalized.id);
   };
 
