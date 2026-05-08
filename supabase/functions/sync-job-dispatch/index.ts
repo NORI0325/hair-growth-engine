@@ -166,7 +166,7 @@ Deno.serve(async (req) => {
         } else {
           preflightFail = {
             error_type: "mapping_not_found",
-            message: `必須マッピング不足: ${conv.missing.join(", ")}`,
+            message: (conv as any).message || `必須マッピング不足: ${conv.missing.join(", ")}`,
           };
         }
       }
