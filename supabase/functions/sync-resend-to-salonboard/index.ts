@@ -109,23 +109,54 @@ Deno.serve(async (req) => {
       .select("id").eq("reservation_id", b.id).eq("target_channel", "salonboard")
       .eq("job_type", "create_reservation").in("status", ["pending", "processing"]).limit(1).maybeSingle();
 
-    // staff/menu mapping
+    // staff/menu mapping (※ staff_channel_mappings / menu_channel_mappings の実カラムは external_id / external_name)
+    console.log("[resend] booking", { booking_id: b.id, location_id: b.location_id, staff_id: b.staff_id, menu: b.menu });
+    console.log("[resend] channel_integration", { enabled: ci?.enabled, sync_enabled: ci?.sync_enabled, status: ci?.connection_status });
+
     let extStaffId: string | null = null, extStaffName: string | null = null;
-    if (b.staff_id) {
+    const staffSelected = !!b.staff_id;
+    if (staffSelected) {
       const { data: scm } = await supabase.from("staff_channel_mappings")
-        .select("external_id, external_name").eq("staff_id", b.staff_id).eq("channel", "salonboard").maybeSingle();
-      extStaffId = scm?.external_id ?? null; extStaffName = scm?.external_name ?? null;
+        .select("external_id, external_name, enabled, is_no_designation")
+        .eq("staff_id", b.staff_id).eq("channel", "salonboard").maybeSingle();
+      extStaffId = scm?.external_id ?? null;
+      extStaffName = scm?.external_name ?? null;
+      console.log("[resend] staff_mapping", scm ? { found: true, external_id: extStaffId, external_name: extStaffName, enabled: scm.enabled } : { found: false, staff_id: b.staff_id });
+      if (!extStaffId) {
+        return new Response(JSON.stringify({
+          error: "mapping_not_found",
+          message: `mapping_not_found: staff_channel_mappings for staff_id=${b.staff_id} (担当スタッフのサロンボード連携が未設定です)`,
+        }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    } else {
+      console.log("[resend] staff not selected → フリー fallback");
     }
+
+    let extMenuId: string | null = null;
     let extMenuName: string | null = null;
+    let menuItemId: string | null = null;
     {
       const { data: menuRow } = await supabase.from("menu_items")
         .select("id").eq("owner_id", b.owner_id).eq("name", b.menu).maybeSingle();
-      if (menuRow?.id) {
+      menuItemId = menuRow?.id ?? null;
+      if (menuItemId) {
         const { data: mcm } = await supabase.from("menu_channel_mappings")
-          .select("external_name").eq("menu_id", menuRow.id).eq("channel", "salonboard").maybeSingle();
+          .select("external_id, external_name")
+          .eq("menu_id", menuItemId).eq("channel", "salonboard").maybeSingle();
+        extMenuId = mcm?.external_id ?? null;
         extMenuName = mcm?.external_name ?? null;
+        console.log("[resend] menu_mapping", mcm ? { found: true, external_id: extMenuId, external_name: extMenuName } : { found: false, menu_item_id: menuItemId });
+      } else {
+        console.log("[resend] menu_item not found", { owner_id: b.owner_id, menu: b.menu });
+      }
+      if (!extMenuId) {
+        return new Response(JSON.stringify({
+          error: "mapping_not_found",
+          message: `mapping_not_found: menu_channel_mappings for menu_item_id=${menuItemId ?? "null"} (menu="${b.menu}") — サロンボードのメニューIDが未紐付けです`,
+        }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
     }
+    console.log("[resend] find_reservation result count:", items.length);
     const startISO = new Date(`${b.booking_date}T${b.booking_time?.slice(0, 5)}:00+09:00`).toISOString();
     const endISO = new Date(new Date(startISO).getTime() + (b.total_duration_minutes || 60) * 60_000).toISOString();
     const payload = {
