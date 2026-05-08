@@ -270,6 +270,11 @@ export default function SalonboardAutoMapping() {
             店舗情報が取得できないため、メニューを取り込めません。店舗を選択してください。
           </div>
         )}
+        {lastMenuFetchError && (
+          <div className="text-xs border border-destructive/40 bg-destructive/10 text-destructive px-3 py-2 mb-4 whitespace-pre-wrap break-words">
+            取得失敗: {lastMenuFetchError}
+          </div>
+        )}
         {menuOpts.length === 0 ? (
           <div className="text-sm text-muted-foreground py-6 text-center">未取得です。「サロンボードから取得」を押してください。</div>
         ) : (() => {
