@@ -93,14 +93,29 @@ export default function SyncStatusDialog({ bookingId, open, onOpenChange }: Prop
     };
     if (!confirm(labels[decision] + "\n\n実行しますか？")) return;
     setActing("resolve");
-    const { data: res, error } = await supabase.functions.invoke("sync-resolve-conflict", {
-      body: { booking_id: bookingId, decision, snapshot_id: data?.snapshot_id },
-    });
-    setActing(null);
-    if (error) { toast.error("競合解消失敗: " + error.message); return; }
-    const r: any = res;
-    if (r?.error) toast.error(r.message ?? r.error);
-    else toast.success(r?.message ?? "処理しました");
+    try {
+      const { data: res, error } = await supabase.functions.invoke("sync-resolve-conflict", {
+        body: { booking_id: bookingId, decision, snapshot_id: data?.snapshot_id },
+      });
+      if (error) {
+        // 失敗時もレスポンスJSONを読み取り、画面を落とさずトーストで通知
+        let detail = error.message;
+        try {
+          const respBody = await (error as any)?.context?.response?.json?.();
+          if (respBody?.message) detail = respBody.message;
+          else if (respBody?.error) detail = respBody.error;
+        } catch { /* noop */ }
+        toast.error("競合解消に失敗しました: " + detail);
+      } else {
+        const r: any = res;
+        if (r?.error) toast.error("競合解消に失敗しました: " + (r.message ?? r.error));
+        else toast.success(r?.message ?? "処理しました");
+      }
+    } catch (e) {
+      toast.error("競合解消に失敗しました: " + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setActing(null);
+    }
     await run();
   };
 
