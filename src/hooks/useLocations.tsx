@@ -183,15 +183,21 @@ export const useLocations = () => {
           created_at: "",
         }));
 
+      const cachedRecoveredLocations = readRestoredLocations(tenantId);
       const restoredFromAddLocation = readRestoredLocation(tenantId);
       const mergedBeforeRecovery = mergeLocations(
         directLocations,
         restored,
+        cachedRecoveredLocations,
         restoredFromAddLocation ? [restoredFromAddLocation] : []
       );
       const recovered = await recoverLocationsFromBackend(tenantId);
       const finalLocations = mergeLocations(mergedBeforeRecovery, recovered);
       const primaryLocation = chooseDefaultLocation(finalLocations);
+
+      if (finalLocations.length > 0) {
+        writeRestoredLocations(tenantId, finalLocations);
+      }
 
       console.info("[locations] fetch diagnostics", {
         authUserId: user?.id ?? null,
@@ -200,6 +206,7 @@ export const useLocations = () => {
         primaryLocationId: primaryLocation?.id ?? null,
         fetchedLocationsCount: directLocations.length,
         fallbackLocationsCount: restored.length,
+        cachedRecoveredCount: cachedRecoveredLocations.length,
         backendRecoveredCount: recovered.length,
         finalLocationsCount: finalLocations.length,
         selectedCurrentLocationId: typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null,
