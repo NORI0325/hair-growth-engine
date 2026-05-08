@@ -133,6 +133,16 @@ Deno.serve(async (req) => {
       if (!p.start_time || !p.end_time) missing.push("start_time/end_time");
       if (missing.length > 0) return { ok: false, missing };
       const { sei, mei } = splitName(p.customer_name);
+      // カナ: customer_kana があればそれを優先、無ければ漢字部分から推定（漢字はカナ化できないので "オキャクサマ" になる）
+      const kanaSrc = (p.customer_kana || p.customer_name_kana || "").trim();
+      let seiKana = ""; let meiKana = "";
+      if (kanaSrc) {
+        const kp = kanaSrc.split(/[\s　]+/);
+        seiKana = sanitizeNameKana(kp[0] || "");
+        meiKana = sanitizeNameKana(kp.slice(1).join(""));
+      }
+      if (!seiKana) seiKana = sanitizeNameKana(sei) || "オキャクサマ";
+      if (!meiKana) meiKana = sanitizeNameKana(mei);
       const durationMin = Math.max(15, Math.round((new Date(p.end_time).getTime() - new Date(p.start_time).getTime()) / 60_000));
       return {
         ok: true,
