@@ -80,9 +80,36 @@ Deno.serve(async (req) => {
       const j = new Date(d.getTime() + 9 * 60 * 60 * 1000);
       return `${String(j.getUTCHours()).padStart(2, "0")}${String(j.getUTCMinutes()).padStart(2, "0")}`;
     }
-    function buildSalonboardCreatePayload(p: any): { ok: true; payload: any } | { ok: false; missing: string[] } {
+    function buildSalonboardCreatePayload(p: any): { ok: true; payload: any; error?: string } | { ok: false; missing: string[]; message?: string } {
       const missing: string[] = [];
-      if (!p.external_staff_id) missing.push("stylistId(staff_channel_mappings)");
+      // スタッフ選択判定: staff_name が入っていれば「選択あり」、無ければ「未選択 → フリーへfallback」
+      const staffSelected = !!(p.staff_name && String(p.staff_name).trim().length > 0);
+      let resolvedStylistId: string | null = p.external_staff_id || null;
+      let resolvedExternalStaffName: string | null = p.external_staff_name || null;
+      let fallbackToNoDesignation = false;
+      if (!staffSelected) {
+        // 未選択 → 必ずフリーにfallback (staff_channel_mappings 不要)
+        if (!resolvedStylistId) {
+          resolvedStylistId = "0000000000";
+          resolvedExternalStaffName = "フリー";
+          fallbackToNoDesignation = true;
+        }
+      } else {
+        // スタッフ選択あり → mappings 必須
+        if (!resolvedStylistId) {
+          return {
+            ok: false,
+            missing: ["stylistId(staff_channel_mappings)"],
+            message: "スタッフが選択されている予約では、サロンボード側スタッフIDとの紐づけが必要です。スタイリスト未選択の場合は、サロンボード側の「フリー」に自動割り当てします。",
+          };
+        }
+      }
+      console.log("[salonboard] stylist resolution:", {
+        staff_selected: staffSelected,
+        fallback_to_no_designation: fallbackToNoDesignation,
+        resolved_stylist_id: resolvedStylistId,
+        resolved_external_staff_name: resolvedExternalStaffName,
+      });
       if (!p.external_menu_id && !p.salonboard_setmenu_id) missing.push("setmenuId(menu_channel_mappings)");
       if (!p.start_time || !p.end_time) missing.push("start_time/end_time");
       if (missing.length > 0) return { ok: false, missing };
@@ -93,7 +120,8 @@ Deno.serve(async (req) => {
         payload: {
           date: fmtDate(p.start_time),
           time: fmtTime(p.start_time),
-          stylistId: p.external_staff_id,
+          stylistId: resolvedStylistId,
+          external_staff_name: resolvedExternalStaffName,
           setmenuId: p.external_menu_id || p.salonboard_setmenu_id,
           rsvRouteId: p.rsv_route_id || SALONBOARD_DEFAULT_RSV_ROUTE_ID,
           rsvTerm: durationMin,
@@ -138,7 +166,7 @@ Deno.serve(async (req) => {
         } else {
           preflightFail = {
             error_type: "mapping_not_found",
-            message: `必須マッピング不足: ${conv.missing.join(", ")}`,
+            message: (conv as any).message || `必須マッピング不足: ${conv.missing.join(", ")}`,
           };
         }
       }
