@@ -185,19 +185,60 @@ export async function createReservation(page: Page, input: CreateReservationInpu
     if (await cb.count()) await cb.check().catch(() => {});
   }
 
-  // 登録ボタン押下
-  await Promise.all([
-    page.waitForLoadState("domcontentloaded"),
-    page.locator('a#regist').click(),
-  ]);
+  // 登録ボタン押下前に確認ダイアログ (window.confirm) ハンドラを設定
+  let dialogDuplicate = false;
+  let dialogUnexpected: string | null = null;
+  let lastDialogMessage: string | null = null;
+  const dialogHandler = async (dialog: import("playwright").Dialog) => {
+    const message = dialog.message();
+    lastDialogMessage = message;
+    logger.info({ message, type: dialog.type() }, "salonboard confirm dialog");
+    // 通常の登録確認 → OK
+    if (/予約を登録します|登録します。よろしい|よろしいですか/.test(message)
+        && !/重複|同一|既に予約|予約が存在|同じ時間/.test(message)) {
+      await dialog.accept().catch(() => {});
+      return;
+    }
+    // 明確な重複系
+    if (/重複|同一の予約|既に予約|予約が存在|同じ時間/.test(message)) {
+      dialogDuplicate = true;
+      await dialog.dismiss().catch(() => {});
+      return;
+    }
+    // 不明 → 安全側で閉じる
+    dialogUnexpected = message;
+    await dialog.dismiss().catch(() => {});
+  };
+  page.on("dialog", dialogHandler);
 
-  // 確認画面が出る場合 → 「登録する」を押す
-  const confirmBtn = page.locator('a#regist, a.mod_btn_entry_08').first();
-  if (await confirmBtn.count() && /\/extReserveRegistConfirm|確認/.test(page.url() + (await page.locator("body").innerText().catch(() => "")))) {
-    await Promise.all([
-      page.waitForLoadState("domcontentloaded"),
-      confirmBtn.click().catch(() => {}),
-    ]);
+  try {
+    // 登録ボタン押下（dialog → 遷移の順に発生する想定）
+    await page.locator('a#regist').click().catch((e) => {
+      logger.warn({ e: e instanceof Error ? e.message : String(e) }, "regist click failed");
+    });
+    // dialog 処理 + 遷移待ち
+    await page.waitForLoadState("domcontentloaded", { timeout: 30000 }).catch(() => {});
+
+    if (dialogDuplicate) {
+      await dumpPageDiag(page, "duplicate-dialog");
+      throw new WorkerError("duplicate_risk", `duplicate dialog: ${lastDialogMessage ?? ""}`);
+    }
+    if (dialogUnexpected) {
+      await dumpPageDiag(page, "unexpected-dialog");
+      throw new WorkerError("external_site_changed", `unexpected dialog: ${dialogUnexpected}`);
+    }
+
+    // 確認画面が別ページで出る場合 → 「登録する」を押す
+    const confirmBtn = page.locator('a#regist, a.mod_btn_entry_08').first();
+    const bodyTextNow = await page.locator("body").innerText().catch(() => "");
+    if (await confirmBtn.count() && /\/extReserveRegistConfirm|確認/.test(page.url() + bodyTextNow)) {
+      await Promise.all([
+        page.waitForLoadState("domcontentloaded").catch(() => {}),
+        confirmBtn.click().catch(() => {}),
+      ]);
+    }
+  } finally {
+    page.off("dialog", dialogHandler);
   }
 
   // 完了判定
