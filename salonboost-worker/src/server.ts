@@ -89,6 +89,7 @@ async function withSalonboardSession<T>(
 app.post("/api/salonboard/fetch-staff", bearerAuth, async (req, res) => {
   const parsed = FetchSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ success: false, error_type: "unknown_error", message: "invalid_body" });
+  logger.info({ owner: parsed.data.store_id, location: parsed.data.location_id ?? null, type: "fetch_staff" }, "job received");
   try {
     const staff = await withSalonboardSession(parsed.data.store_id, parsed.data.location_id ?? null, fetchSalonboardStaff);
     res.json({ success: true, staff });
@@ -101,6 +102,7 @@ app.post("/api/salonboard/fetch-staff", bearerAuth, async (req, res) => {
 app.post("/api/salonboard/fetch-menus", bearerAuth, async (req, res) => {
   const parsed = FetchSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ success: false, error_type: "unknown_error", message: "invalid_body" });
+  logger.info({ owner: parsed.data.store_id, location: parsed.data.location_id ?? null, type: "fetch_menus" }, "job received");
   try {
     const menus = await withSalonboardSession(parsed.data.store_id, parsed.data.location_id ?? null, fetchSalonboardMenus);
     res.json({ success: true, menus });
