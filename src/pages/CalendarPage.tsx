@@ -250,6 +250,10 @@ const CalendarPage = () => {
           )}
         </DialogContent>
       </Dialog>
+
+      {selected && (
+        <SyncStatusDialog bookingId={selected.id} open={syncOpen} onOpenChange={setSyncOpen} />
+      )}
     </AppLayout>
   );
 };
