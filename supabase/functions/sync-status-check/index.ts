@@ -167,14 +167,19 @@ Deno.serve(async (req) => {
         });
         const wJson = await wRes.json().catch(() => ({}));
         const latency = Date.now() - t0;
-        await supabase.from("worker_request_logs").insert({
-          owner_id: b.owner_id, location_id: b.location_id, channel: "salonboard",
-          kind: "find_reservation",
-          request_payload: { booking_id: b.id, date: b.booking_date, time: b.booking_time },
-          response_status: wRes.status, response_body: wJson, latency_ms: latency,
-          success: !!wJson?.success,
-          error_message: wJson?.success ? null : (wJson?.message || `HTTP ${wRes.status}`),
-        }).catch(() => {});
+        try {
+          const { error: logErr } = await supabase.from("worker_request_logs").insert({
+            owner_id: b.owner_id, location_id: b.location_id, channel: "salonboard",
+            kind: "find_reservation",
+            request_payload: { booking_id: b.id, date: b.booking_date, time: b.booking_time },
+            response_status: wRes.status, response_body: wJson, latency_ms: latency,
+            success: !!wJson?.success,
+            error_message: wJson?.success ? null : (wJson?.message || `HTTP ${wRes.status}`),
+          });
+          if (logErr) console.error("worker_request_logs insert failed", logErr);
+        } catch (logEx) {
+          console.error("worker_request_logs insert threw", logEx);
+        }
         if (wJson?.success) {
           externalReachable = true;
           externalItems = Array.isArray(wJson.items) ? wJson.items : [];
