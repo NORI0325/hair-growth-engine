@@ -267,7 +267,7 @@ export async function createReservation(page: Page, input: CreateReservationInpu
   }
 
   // 完了画面URL or 予約番号(BE...) or 完了文言が必要（doComplete URL だけでは成功扱いしない）
-  const isCompleteUrl = /extReserveRegistComp|extReserveComp|Complete|complete|doComplete/.test(finalUrl);
+  const isCompleteUrl = /extReserveRegistComp|extReserveComp|Complete|complete|doComplete|salonSchedule/.test(finalUrl);
   const hasCompleteText = /予約を登録しました|予約が完了|登録が完了|登録を完了/.test(finalText);
 
   // 予約ID 抽出: 本文 BE\d+ / 各種URLパラメータ / hidden input / リンク
@@ -275,18 +275,20 @@ export async function createReservation(page: Page, input: CreateReservationInpu
   const mText = finalText.match(/(BE\d{6,})/);
   if (mText) reserveId = mText[1];
   if (!reserveId) {
-    const mUrl = finalUrl.match(/(?:rsvId|reserveId|reserve_id|rsvid)=([A-Za-z0-9]+)/i);
+    const mUrl = finalUrl.match(/(?:rsvId|reserveId|reserve_id|rsvid|reservationId)=([A-Za-z0-9]+)/i);
     if (mUrl) reserveId = mUrl[1];
   }
   if (!reserveId) {
     try {
       const idFromDom = await page.evaluate(() => {
-        const a = Array.from(document.querySelectorAll('a[href*="rsvId="], a[href*="reserveId="], a[href*="reserve_id="]')) as HTMLAnchorElement[];
-        for (const el of a) {
-          const m = (el.getAttribute("href") || "").match(/(?:rsvId|reserveId|reserve_id)=([A-Za-z0-9]+)/i);
+        const all = Array.from(document.querySelectorAll('a[href], [onclick]')) as HTMLElement[];
+        for (const el of all) {
+          const href = el.getAttribute("href") || "";
+          const onclick = el.getAttribute("onclick") || "";
+          const m = (href + " " + onclick).match(/(?:rsvId|reserveId|reserve_id|reservationId)['"=:\s]+([A-Z0-9]+)/i);
           if (m) return m[1];
         }
-        const inp = document.querySelector('input[name="rsvId"], input[name="reserveId"]') as HTMLInputElement | null;
+        const inp = document.querySelector('input[name="rsvId"], input[name="reserveId"], input[name="reservationId"]') as HTMLInputElement | null;
         if (inp?.value) return inp.value;
         const txt = document.body?.innerText || "";
         const m2 = txt.match(/予約番号[^\w]*([A-Z0-9]{6,})/);
@@ -299,12 +301,11 @@ export async function createReservation(page: Page, input: CreateReservationInpu
 
   logger.info({ finalUrl, isCompleteUrl, hasCompleteText, reserveId, snippet: finalText.slice(0, 500) }, "create result diag");
 
-  if (!reserveId && !hasCompleteText) {
+  // 「予約を登録しました。」が出ていれば登録成功と確定（reserveIdは後から復元する）
+  const createdSuccessfully = hasCompleteText || !!reserveId;
+  if (!createdSuccessfully) {
     logger.warn({ finalUrl, isCompleteUrl }, "create result: no reserveId & no complete text");
     throw new WorkerError("external_site_changed", "create completion not confirmed (no reserveId / no complete message)");
-  }
-  if (!isCompleteUrl && !reserveId && !hasCompleteText) {
-    throw new WorkerError("external_site_changed", "create completion not confirmed");
   }
 
   // フォールバック: 予約IDが取れなかった場合、スケジュール画面から検索して取得
@@ -323,7 +324,7 @@ export async function createReservation(page: Page, input: CreateReservationInpu
         reserveId = hit.external_reservation_id;
         logger.info({ reserveId }, "createReservation: reserveId resolved via fallback find");
       } else {
-        logger.warn({ count: items.length }, "createReservation: fallback find returned no reserveId");
+        logger.warn({ count: items.length }, "createReservation: fallback find returned no reserveId (will return success without id)");
       }
     } catch (e) {
       logger.warn({ e: e instanceof Error ? e.message : String(e) }, "createReservation: fallback find failed");
