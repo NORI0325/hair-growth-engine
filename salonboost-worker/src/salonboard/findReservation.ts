@@ -22,7 +22,6 @@ const SCHEDULE_URLS = [
   (d: string) => `https://salonboard.com/CLP/bt/schedule/salonSchedule/?date=${d}`,
   (d: string) => `https://salonboard.com/CLP/bt/schedule/salonScheduleWeek/?date=${d}`,
   (d: string) => `https://salonboard.com/CLP/bt/schedule/salonScheduleDay/?date=${d}`,
-  (d: string) => `https://salonboard.com/CLP/bt/schedule/?date=${d}`,
 ];
 
 function expectedDateLabel(yyyymmdd: string): string {
@@ -31,8 +30,38 @@ function expectedDateLabel(yyyymmdd: string): string {
   return `${m}月${d}日`;
 }
 
-async function navigateToDate(page: Page, date: string): Promise<{ url: string; title: string; bodySnippet: string; matched: boolean }> {
+function isErrorPage(body: string): boolean {
+  const lower = body.toLowerCase();
+  return lower.includes("指定されたurlは存在しません") ||
+    lower.includes("エラー") ||
+    lower.includes("error") ||
+    lower.includes("not found") ||
+    lower.includes("ページが見つかりません");
+}
+
+function pageLooksValid(
+  body: string,
+  wantLabel: string,
+  wantTimeFmt: string | null,
+  wantName: string | null,
+): boolean {
+  if (isErrorPage(body)) return false;
+  if (body.includes(wantLabel)) return true;
+  if (wantTimeFmt && body.includes(wantTimeFmt)) return true;
+  if (wantName && body.includes(wantName)) return true;
+  // salonSchedule ページの特徴: 予約表らしい要素があるか
+  if (body.includes("予約") && body.includes(":")) return true;
+  return false;
+}
+
+async function navigateToDate(
+  page: Page,
+  date: string,
+  wantTimeFmt: string | null,
+  wantName: string | null,
+): Promise<{ url: string; title: string; bodySnippet: string; matched: boolean }> {
   const want = expectedDateLabel(date);
+
   for (const build of SCHEDULE_URLS) {
     const url = build(date);
     try {
@@ -43,17 +72,21 @@ async function navigateToDate(page: Page, date: string): Promise<{ url: string; 
       }
       const title = await page.title().catch(() => "");
       const body = await page.locator("body").innerText().catch(() => "");
-      const matched = body.includes(want);
-      logger.info({ tried: url, finalUrl: page.url(), title, matched, wantLabel: want, snippet: body.slice(0, 300) }, "findReservations: nav attempt");
+      const matched = pageLooksValid(body, want, wantTimeFmt, wantName);
+      logger.info({
+        tried: url, finalUrl: page.url(), title, matched, wantLabel: want,
+        snippet: body.slice(0, 300), errorPage: isErrorPage(body),
+      }, "findReservations: nav attempt");
       if (matched) return { url: page.url(), title, bodySnippet: body.slice(0, 600), matched: true };
     } catch (e) {
       logger.warn({ url, e: e instanceof Error ? e.message : String(e) }, "findReservations: nav failed");
     }
   }
 
-  // フォーム送信フォールバック: スケジュール画面の date input を直接書き換えて submit
+  // フォーム送信フォールバック: salonSchedule の date input を直接書き換えて submit
   try {
-    await page.goto(SCHEDULE_URLS[0](date), { waitUntil: "domcontentloaded" });
+    const fallbackUrl = SCHEDULE_URLS[0](date);
+    await page.goto(fallbackUrl, { waitUntil: "domcontentloaded" });
     const submitted = await page.evaluate((d) => {
       const forms = Array.from(document.querySelectorAll("form")) as HTMLFormElement[];
       for (const f of forms) {
@@ -76,7 +109,8 @@ async function navigateToDate(page: Page, date: string): Promise<{ url: string; 
 
   const title = await page.title().catch(() => "");
   const body = await page.locator("body").innerText().catch(() => "");
-  return { url: page.url(), title, bodySnippet: body.slice(0, 600), matched: body.includes(want) };
+  const matched = pageLooksValid(body, want, wantTimeFmt, wantName);
+  return { url: page.url(), title, bodySnippet: body.slice(0, 600), matched };
 }
 
 async function dumpFrame(frame: Page | Frame, label: string, want: { time: string | null; name: string | null }) {
@@ -168,16 +202,20 @@ export async function findReservations(
 ): Promise<FoundReservation[]> {
   logger.info({ input }, "findReservations: start");
 
-  const nav = await navigateToDate(page, input.date);
+  const wantTime = input.time != null ? String(input.time).padStart(4, "0") : null;
+  const wantTimeFmt = wantTime ? `${wantTime.slice(0, 2)}:${wantTime.slice(2, 4)}` : null;
+  const wantName = input.customerName?.trim() || null;
+
+  const nav = await navigateToDate(page, input.date, wantTimeFmt, wantName);
   if (/\/login/i.test(page.url())) throw new Error("session_expired_in_find");
   logger.info({
     finalUrl: nav.url, title: nav.title, bodySnippet: nav.bodySnippet,
     expectedDateLabel: expectedDateLabel(input.date), dateLabelMatched: nav.matched,
   }, "findReservations: navigation result");
 
-  const wantTime = input.time != null ? String(input.time).padStart(4, "0") : null;
-  const wantTimeFmt = wantTime ? `${wantTime.slice(0, 2)}:${wantTime.slice(2, 4)}` : null;
-  const wantName = input.customerName?.trim() || null;
+  if (!nav.matched) {
+    logger.warn({ finalUrl: nav.url }, "findReservations: page did not match expected date/time/name");
+  }
 
   // メインフレーム + 全iframe を走査
   const frames: Array<{ name: string; frame: Page | Frame }> = [{ name: "main", frame: page }];
