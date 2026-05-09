@@ -1,0 +1,1 @@
+UPDATE public.external_reservation_logs SET status='needs_review', error='reservation_cue_but_decoded_garbled — 文字化けでAI判定不能。手動確認: BE92312361 / 2026-05-10 15:00 / 3step / ¥8,250' WHERE id='2eb9fd6d-2268-42ad-b4c9-e05ee447f4d0';
