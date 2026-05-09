@@ -61,6 +61,77 @@ async function dumpPageDiag(page: Page, label: string) {
   }
 }
 
+async function getCreateFormDiag(page: Page, input: CreateReservationInput, label: string) {
+  const desired = {
+    time: String(input.time ?? ""),
+    rsvTerm: String(input.rsvTerm ?? ""),
+    setmenuId: String(input.setmenuId ?? ""),
+    stylistId: String(input.stylistId ?? ""),
+  };
+  const form = await page.evaluate((desiredValues) => {
+    const readSelect = (selector: string, desiredValue: string) => {
+      const el = document.querySelector(selector) as HTMLSelectElement | null;
+      if (!el) return { exists: false, value: null, selectedText: null, desiredOptionExists: false, desiredOptionText: null };
+      const opts = Array.from(el.options).map((o) => ({ value: o.value, text: (o.textContent || "").trim() }));
+      const selected = el.selectedOptions?.[0];
+      const desiredOpt = opts.find((o) => o.value === desiredValue) || null;
+      return {
+        exists: true,
+        value: el.value,
+        selectedText: (selected?.textContent || "").trim() || null,
+        desiredOptionExists: !!desiredOpt,
+        desiredOptionText: desiredOpt?.text || null,
+      };
+    };
+    const readInput = (selector: string) => {
+      const el = document.querySelector(selector) as HTMLInputElement | HTMLTextAreaElement | null;
+      return el?.value ?? null;
+    };
+    return {
+      url: location.href,
+      title: document.title,
+      date: readInput('input[name="date"]') || desiredValues.date,
+      time: readSelect('select[name="time"]', desiredValues.time),
+      rsvTerm: readSelect('#rsvTermId, select[name="rsvTerm"]', desiredValues.rsvTerm),
+      setmenuId: readSelect('select[name="setmenuId"]', desiredValues.setmenuId),
+      stylistId: readSelect('select[name="stylistId"]', desiredValues.stylistId),
+      rsvRouteId: readSelect('select[name="rsvRouteId"]', desiredValues.rsvRouteId),
+      nmSei: readInput('input[name="nmSei"]'),
+      nmMei: readInput('input[name="nmMei"]'),
+      tel: readInput('input[name="tel"]'),
+    };
+  }, { ...desired, date: input.date, rsvRouteId: String(input.rsvRouteId ?? "") }).catch((e) => ({
+    error: e instanceof Error ? e.message : String(e),
+  }));
+
+  const actualTime = (form as any)?.time?.value ?? desired.time;
+  const actualRsvTerm = (form as any)?.rsvTerm?.value ?? desired.rsvTerm;
+  const hhmm = String(actualTime || "").padStart(4, "0");
+  const minutes = Number(actualRsvTerm);
+  let calculatedEndTime: string | null = null;
+  if (/^\d{4}$/.test(hhmm) && Number.isFinite(minutes)) {
+    const start = Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(2, 4));
+    const end = start + minutes;
+    calculatedEndTime = `${String(Math.floor(end / 60)).padStart(2, "0")}:${String(end % 60).padStart(2, "0")}`;
+  }
+
+  return {
+    label,
+    selected_time: actualTime,
+    selected_rsvTerm: actualRsvTerm,
+    selected_setmenuId: (form as any)?.setmenuId?.value ?? null,
+    selected_stylistId: (form as any)?.stylistId?.value ?? null,
+    rsvTime_option_exists: (form as any)?.time?.desiredOptionExists ?? false,
+    rsvTerm_option_exists: (form as any)?.rsvTerm?.desiredOptionExists ?? false,
+    setmenuId_option_exists: (form as any)?.setmenuId?.desiredOptionExists ?? false,
+    stylistId_option_exists: (form as any)?.stylistId?.desiredOptionExists ?? false,
+    selectedMenuText: (form as any)?.setmenuId?.selectedText ?? null,
+    selectedStaffText: (form as any)?.stylistId?.selectedText ?? null,
+    calculatedEndTime,
+    form,
+  };
+}
+
 async function gotoReservationForm(page: Page, input: CreateReservationInput) {
   const directUrl = `${FORM_URL}?date=${input.date}&time=${input.time}&stylistId=${input.stylistId}`;
   logger.info({ directUrl }, "navigating to reservation form (direct URL)");
@@ -138,19 +209,23 @@ export async function createReservation(page: Page, input: CreateReservationInpu
   const toStrArr = (v: unknown): string[] => Array.isArray(v) ? v.map((x) => String(x)) : [String(v)];
 
   // 必須項目入力
+  logger.info(await getCreateFormDiag(page, input, "initial form values"), "salonboard create form diag");
   if (input.stylistId != null && await page.locator('select[name="stylistId"]').count()) {
     await page.locator('select[name="stylistId"]').selectOption({ value: toStr(input.stylistId) });
   }
   if (input.time != null && await page.locator('select[name="time"]').count()) {
     await page.locator('select[name="time"]').selectOption({ value: toStr(input.time) });
   }
+  logger.info(await getCreateFormDiag(page, input, "after staff/time selection"), "salonboard create form diag");
   if (input.rsvTerm != null) {
     const rsvTerm = page.locator('#rsvTermId, select[name="rsvTerm"]').first();
     try {
       await rsvTerm.waitFor({ state: "attached", timeout: 30000 });
       await rsvTerm.selectOption(toStr(input.rsvTerm));
+      logger.info(await getCreateFormDiag(page, input, "after rsvTerm selection before menu"), "salonboard create form diag");
     } catch (e) {
       await dumpPageDiag(page, "rsvTerm-not-found");
+      logger.warn(await getCreateFormDiag(page, input, "rsvTerm selection failed"), "salonboard create form diag");
       throw e;
     }
   }
@@ -160,6 +235,8 @@ export async function createReservation(page: Page, input: CreateReservationInpu
   }
   if (input.setmenuId && await page.locator('select[name="setmenuId"]').count()) {
     await page.locator('select[name="setmenuId"]').selectOption({ value: toStr(input.setmenuId) });
+    await page.waitForLoadState("networkidle", { timeout: 3000 }).catch(() => {});
+    logger.info(await getCreateFormDiag(page, input, "after setmenuId selection"), "salonboard create form diag");
   }
   if (input.menuCategoryCdList && await page.locator('select[name="menuCategoryCdList"]').count()) {
     await page.locator('select[name="menuCategoryCdList"]').selectOption(toStrArr(input.menuCategoryCdList));
@@ -184,6 +261,9 @@ export async function createReservation(page: Page, input: CreateReservationInpu
     const cb = page.locator('input[name="rsvTypeCdBool"]');
     if (await cb.count()) await cb.check().catch(() => {});
   }
+
+  const preSubmitDiag = await getCreateFormDiag(page, input, "before submit");
+  logger.info(preSubmitDiag, "salonboard create submit form values");
 
   // 登録ボタン押下前に確認ダイアログ (window.confirm) ハンドラを設定
   let dialogDuplicate = false;
@@ -257,7 +337,12 @@ export async function createReservation(page: Page, input: CreateReservationInpu
     const trulyCompleted = /予約を登録しました|予約が完了|登録が完了|登録を完了/.test(finalText)
       && !/不正な文字|使用できない文字列/.test(finalText);
     if (!trulyCompleted) {
-      logger.warn({ finalUrl, errLine }, "salonboard input validation error");
+      logger.warn({
+        finalUrl,
+        errLine,
+        page_body_error_snippet: finalText.slice(0, 800),
+        submit_values: await getCreateFormDiag(page, input, "validation error after submit"),
+      }, "salonboard input validation error");
       const isNameError = /不正な文字|使用できない文字列|氏名|カナ/.test(errLine);
       const msg = isNameError
         ? "[salonboard] 入力エラー: 氏名またはカナにサロンボードで使用できない文字が含まれています。数字入りのテスト名は使わず、カナはカタカナで入力してください。"
