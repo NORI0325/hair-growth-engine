@@ -462,17 +462,46 @@ Deno.serve(async (req) => {
     }
 
     if (target) {
-      await supabase.from("bookings").update({ status: "cancelled" }).eq("id", target.id);
+      // 進行中の同期 (pending/syncing) は自動上書きしない → 人間判断へ
+      const { data: bk } = await supabase
+        .from("bookings")
+        .select("sync_status, external_reservation_id")
+        .eq("id", target.id)
+        .maybeSingle();
+      const inFlight = bk && (bk.sync_status === "pending" || bk.sync_status === "syncing");
+      // external_reservation_id 一致を確認（あれば優先一致条件）
+      const extId = (extracted.external_reservation_id || "").toString().trim();
+      const idMatches = extId && bk?.external_reservation_id && extId === bk.external_reservation_id;
+      const safeAuto = !inFlight && (idMatches || !extId); // ID一致 or 元々ID無し → 自動許可
+
+      if (safeAuto) {
+        await supabase.from("bookings").update({
+          status: "cancelled",
+          cancelled_source: source,
+          cancelled_at: new Date().toISOString(),
+          sync_status: "success",
+        }).eq("id", target.id);
+        await supabase.from("external_reservation_logs").insert({
+          owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
+          parsed_data: extracted, status: "cancelled_booking", matched_customer_id: target.customer_id, created_booking_id: target.id,
+        });
+        try {
+          await supabase.functions.invoke("notify-owner-booking", {
+            body: { bookingId: target.id, eventType: "cancelled" },
+          });
+        } catch {}
+        return new Response(JSON.stringify({ ok: true, cancelled: true, booking_id: target.id }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      // pending/syncing 中、または ID 不一致 → needs_review
+      await supabase.from("bookings").update({ sync_status: "needs_review" }).eq("id", target.id);
       await supabase.from("external_reservation_logs").insert({
         owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
-        parsed_data: extracted, status: "cancelled_booking", matched_customer_id: target.customer_id, created_booking_id: target.id,
+        parsed_data: extracted, status: "needs_review", matched_customer_id: target.customer_id, created_booking_id: target.id,
+        error: inFlight ? "cancel_during_sync_inflight" : "cancel_external_id_mismatch",
       });
-      try {
-        await supabase.functions.invoke("notify-owner-booking", {
-          body: { bookingId: target.id, eventType: "cancelled" },
-        });
-      } catch {}
-      return new Response(JSON.stringify({ ok: true, cancelled: true, booking_id: target.id }), {
+      return new Response(JSON.stringify({ ok: true, needs_review: true, booking_id: target.id }), {
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -502,7 +531,52 @@ Deno.serve(async (req) => {
     });
   }
 
-  // 予約以外（変更・問い合わせ等）はログだけ残す
+  // === 変更通知 (event_type='changed') ===
+  // external_reservation_id 一致が取れた場合のみ自動更新。それ以外は needs_review。
+  if (extracted.event_type === "changed") {
+    const extId = (extracted.external_reservation_id || "").toString().trim();
+    let target: any = null;
+    if (extId) {
+      const { data } = await supabase.from("bookings")
+        .select("id, customer_id, sync_status, external_reservation_id")
+        .eq("owner_id", ownerId).eq("external_source", source).eq("external_reservation_id", extId)
+        .maybeSingle();
+      target = data;
+    }
+    const inFlight = target && (target.sync_status === "pending" || target.sync_status === "syncing");
+    if (target && !inFlight && extracted.extraction_confidence !== "low") {
+      const updates: any = {};
+      if (extracted.booking_date) updates.booking_date = extracted.booking_date;
+      if (extracted.booking_time && /^\d{2}:\d{2}$/.test(extracted.booking_time)) updates.booking_time = extracted.booking_time + ":00";
+      if (extracted.menu) updates.menu = String(extracted.menu).slice(0, 200);
+      if (extracted.notes) updates.notes = String(extracted.notes).slice(0, 500);
+      updates.sync_status = "success";
+      await supabase.from("bookings").update(updates).eq("id", target.id);
+      await supabase.from("external_reservation_logs").insert({
+        owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
+        parsed_data: extracted, status: "updated", matched_customer_id: target.customer_id, created_booking_id: target.id,
+      });
+      try { await supabase.functions.invoke("notify-owner-booking", { body: { bookingId: target.id, eventType: "changed" } }); } catch {}
+      return new Response(JSON.stringify({ ok: true, updated: true, booking_id: target.id }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    // 自動更新できない → needs_review
+    if (target) {
+      await supabase.from("bookings").update({ sync_status: "needs_review" }).eq("id", target.id);
+    }
+    await supabase.from("external_reservation_logs").insert({
+      owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
+      parsed_data: extracted, status: "needs_review",
+      created_booking_id: target?.id ?? null,
+      error: !extId ? "changed_no_external_id" : !target ? "changed_target_not_found" : inFlight ? "changed_during_sync_inflight" : "changed_low_confidence",
+    });
+    return new Response(JSON.stringify({ ok: true, needs_review: true }), {
+      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  // 予約以外（問い合わせ等）はログだけ残す
   if (!extracted.is_reservation || extracted.event_type !== "created") {
     await supabase.from("external_reservation_logs").insert({
       owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
