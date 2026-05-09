@@ -387,12 +387,6 @@ Deno.serve(async (req) => {
   const source = inferSourceFromContent(subject, text, parsed.source);
 
   // === 冪等チェック (重複Webhookを早期遮断) ===
-  const headersObj: Record<string, string> = {};
-  for (const [k, v] of Object.entries(data.headers || {})) {
-    headersObj[String(k)] = String(v ?? "");
-  }
-  const inboundMessageId = extractInboundMessageId(data, headersObj);
-  const idempotencyKey = await computeIdempotencyKey(inboundMessageId, from, subject, text);
   {
     const { data: dup } = await supabase
       .from("external_reservation_logs")
