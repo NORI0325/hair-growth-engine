@@ -49,7 +49,7 @@ Deno.serve(async (req) => {
 
     const { data: booking } = await supabase
       .from("bookings")
-      .select("id, owner_id, location_id, booking_date, booking_time, status, external_reservation_id, staff_id, sync_status")
+      .select("id, owner_id, location_id, booking_date, booking_time, status, external_reservation_id, staff_id, sync_status, customer_id, customers(full_name)")
       .eq("id", booking_id).maybeSingle();
     if (!booking) {
       return new Response(JSON.stringify({ error: "booking_not_found" }), {
