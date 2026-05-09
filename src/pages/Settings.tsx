@@ -898,13 +898,16 @@ const Settings = () => {
                   </div>
                 </div>
 
-                {[
-                  { code: "sb", label: "サロンボード", color: "text-emerald-500", desc: "サロンボードの予約お知らせメール（ネット予約・キャンセル等の通知メール）の転送先には、このアドレスを登録してください。" },
-                  { code: "hp", label: "ホットペッパービューティー", color: "text-orange-500" },
-                  { code: "mn", label: "minimo（ミニモ）", color: "text-pink-500" },
-                  { code: "rb", label: "楽天ビューティ", color: "text-red-500" },
-                ].map(site => {
-                  const addr = inboundKey ? `${site.code}-${inboundKey}@inbound.saronboost.com` : "（保存後に発行されます）";
+                {(() => {
+                  // inbound_key は "sb-xxxx" 形式で保存されているため、prefix の二重付与を防ぐ
+                  const baseKey = inboundKey.replace(/^sb-/, "");
+                  return [
+                    { code: "sb", label: "サロンボード / ホットペッパービューティー予約通知", color: "text-emerald-500", desc: "サロンボードの予約お知らせメール、またはホットペッパービューティー経由でサロンボードに届く予約通知メールの転送先には、このアドレスを登録してください。通常はこちらだけで運用できます。" },
+                    { code: "hp", label: "ホットペッパービューティー（独立通知のみ）", color: "text-orange-500", desc: "ホットペッパービューティーから独立した通知メール（サロンボードを経由しないもの）を転送する場合のみ使用します。通常のサロンボード通知メールは、上のサロンボード用アドレスを使ってください。" },
+                    { code: "mn", label: "minimo（ミニモ）", color: "text-pink-500" },
+                    { code: "rb", label: "楽天ビューティ", color: "text-red-500" },
+                  ].map(site => {
+                  const addr = baseKey ? `${site.code}-${baseKey}@inbound.saronboost.com` : "（保存後に発行されます）";
                   return (
                     <div key={site.code} className="border border-border bg-background p-4 mb-3 last:mb-0">
                       <div className={`font-serif text-sm ${site.color} mb-2 font-medium`}>{site.label}</div>
