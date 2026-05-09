@@ -117,9 +117,11 @@ Deno.serve(async (req) => {
 
     // 最新の sync_jobs
     const { data: lastJob } = await supabase.from("sync_jobs")
-      .select("id, status, error_type, error_message, updated_at, job_type")
+      .select("id, status, error_type, error_message, updated_at, created_at, job_type")
       .eq("reservation_id", b.id).eq("target_channel", "salonboard")
-      .order("updated_at", { ascending: false }).limit(1).maybeSingle();
+      .order("updated_at", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(1).maybeSingle();
 
     const local_payload = {
       booking_id: b.id,
