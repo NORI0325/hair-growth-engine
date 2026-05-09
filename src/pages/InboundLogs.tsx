@@ -24,9 +24,12 @@ type Log = {
 };
 
 const statusBadge = (s: string) => {
-  if (s === "received" || s === "processed") return { Icon: CheckCircle2, color: "text-success", label: "登録済" };
+  if (s === "received" || s === "processed" || s === "created") return { Icon: CheckCircle2, color: "text-success", label: "登録済" };
   if (s === "duplicate") return { Icon: CheckCircle2, color: "text-muted-foreground", label: "重複" };
   if (s === "skipped") return { Icon: AlertCircle, color: "text-gold", label: "スキップ" };
+  if (s === "verification") return { Icon: AlertCircle, color: "text-blue-600", label: "認証メール" };
+  if (s === "other") return { Icon: AlertCircle, color: "text-muted-foreground", label: "その他" };
+  if (s === "needs_review") return { Icon: AlertCircle, color: "text-amber-600", label: "要確認" };
   if (s === "failed") return { Icon: XCircle, color: "text-destructive", label: "失敗" };
   return { Icon: AlertCircle, color: "text-muted-foreground", label: s };
 };
