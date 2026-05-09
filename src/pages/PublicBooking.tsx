@@ -245,6 +245,10 @@ const PublicBooking = () => {
       supabase.functions.invoke("notify-owner-booking", {
         body: { bookingId, eventType: "created" },
       }).catch(() => {});
+      // 外部媒体（サロンボード）への同期ジョブを即時dispatch
+      supabase.functions.invoke("sync-job-dispatch", {
+        body: { reservation_id: bookingId },
+      }).catch((e) => console.error("[PublicBooking] dispatch error (non-fatal):", e));
     }
     setCompleted(true);
   };
