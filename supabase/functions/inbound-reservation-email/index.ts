@@ -155,6 +155,19 @@ function decodeEmailText(input: string, headers: Record<string, string> = {}, fa
   return { text, meta };
 }
 
+function withDecodeMeta(parsedData: any, meta: DecodeMeta, rawTextUtf8: string): any {
+  const base = parsedData && typeof parsedData === "object" && !Array.isArray(parsedData) ? parsedData : { value: parsedData };
+  return {
+    ...base,
+    _email_decode: {
+      detected_charset: meta.detected_charset,
+      transfer_encoding: meta.transfer_encoding,
+      decode_status: meta.decode_status,
+      raw_text_utf8: rawTextUtf8.slice(0, 8000),
+    },
+  };
+}
+
 // Resend Inbound API から本文を取得（webhookにはメタデータしか含まれないため）
 async function fetchInboundEmailBody(emailId: string): Promise<{ text: string; html: string; subject: string; from: string; to: string[]; decodeMeta: DecodeMeta } | null> {
   if (!RESEND_API_KEY || !emailId) return null;
