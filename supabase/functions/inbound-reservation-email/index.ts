@@ -779,6 +779,19 @@ Deno.serve(async (req) => {
   }
 
   const phone = normalizePhone(extracted.customer_phone);
+
+  // 文字化け救済: external_reservation_id + 日時が取れていれば仮名で自動作成を許可
+  // （Gmail転送等で本文文字コードが壊れたメール対策）
+  const hasExtId = !!extracted.external_reservation_id;
+  const hasDateTime = !!extracted.booking_date && !!extracted.booking_time && /^\d{2}:\d{2}$/.test(extracted.booking_time);
+  const garbleRescue = confidence === "low" && !extracted.customer_name && !phone && hasExtId && hasDateTime;
+  if (garbleRescue) {
+    extracted.customer_name = `予約 ${extracted.external_reservation_id}`;
+    extracted._garble_rescued = true;
+    if (!extracted.menu) extracted.menu = "（文字化けのため未取得）";
+    confidence = "high"; // 識別子+日時があるので登録は許可（needs_reviewは別途で残す）
+  }
+
   // 信頼度lowで氏名なしなら、自動登録せず needs_review として人手確認に
   if (confidence === "low" && !extracted.customer_name && !phone) {
     await supabase.from("external_reservation_logs").insert({
@@ -793,14 +806,14 @@ Deno.serve(async (req) => {
 
   // === source='salonboard' は確定予約として登録するための厳格な前提条件チェック ===
   // 必須: customer_name / booking_date / booking_time / (menu or notes) / confidence!=low
-  // 不足する場合は bookings を作成せず needs_review として SyncReview に出す
+  // ただし garbleRescue で external_reservation_id + 日時が取れている場合は通す
   if (source === "salonboard") {
     const missing: string[] = [];
     if (!extracted.customer_name) missing.push("customer_name");
     if (!extracted.booking_date) missing.push("booking_date");
     if (!extracted.booking_time || !/^\d{2}:\d{2}$/.test(extracted.booking_time)) missing.push("booking_time");
     if (!extracted.menu && !extracted.notes) missing.push("menu_or_notes");
-    if (confidence === "low") missing.push("low_confidence");
+    if (confidence === "low" && !garbleRescue) missing.push("low_confidence");
     if (missing.length > 0) {
       await supabase.from("external_reservation_logs").insert({
         owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
