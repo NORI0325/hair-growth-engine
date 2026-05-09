@@ -93,6 +93,9 @@ const InboundLogs = () => {
             <SelectItem value="received">登録済</SelectItem>
             <SelectItem value="duplicate">重複</SelectItem>
             <SelectItem value="skipped">スキップ</SelectItem>
+            <SelectItem value="verification">認証メール</SelectItem>
+            <SelectItem value="other">その他</SelectItem>
+            <SelectItem value="needs_review">要確認</SelectItem>
             <SelectItem value="failed">失敗</SelectItem>
           </SelectContent>
         </Select>
