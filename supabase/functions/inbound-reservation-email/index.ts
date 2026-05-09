@@ -10,47 +10,149 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") || "";
 
-// 日本語メールの文字コード自動判定 & デコード
-// SALON BOARD等は ISO-2022-JP で送信される。文字化けしたままAIに渡すとハルシネーションの温床。
-function decodeJapaneseIfNeeded(input: string): string {
-  if (!input) return input;
-  // ISO-2022-JP のエスケープシーケンスが含まれる場合
-  if (input.includes("\x1B$B") || input.includes("\x1b$B") || input.includes("$B") && input.includes("(B")) {
-    try {
-      // 文字列を一旦バイト列として解釈し直す（Latin-1 として byte-preserving）
-      const bytes = new Uint8Array(input.length);
-      for (let i = 0; i < input.length; i++) bytes[i] = input.charCodeAt(i) & 0xff;
-      const decoded = new TextDecoder("iso-2022-jp", { fatal: false }).decode(bytes);
-      // 化け文字（U+FFFD）が多すぎる場合はオリジナルを返す
-      const replacementCount = (decoded.match(/\uFFFD/g) || []).length;
-      if (replacementCount < decoded.length * 0.05) return decoded;
-    } catch (e) { console.warn("ISO-2022-JP decode failed:", e); }
-  }
-  return input;
+type DecodeMeta = {
+  detected_charset: string | null;
+  transfer_encoding: string | null;
+  decode_status: string;
+  content_type?: string | null;
+};
+
+const emptyDecodeMeta = (): DecodeMeta => ({
+  detected_charset: null,
+  transfer_encoding: null,
+  decode_status: "not_needed",
+  content_type: null,
+});
+
+function normalizeHeaders(headers: any): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(headers || {})) out[String(k).toLowerCase()] = String(v ?? "");
+  return out;
 }
 
-// charsetを明示指定して再デコード
-function decodeWithCharset(input: string, charset: string): string {
-  if (!input || !charset) return input;
-  const cs = charset.toLowerCase().replace(/[_-]/g, "");
-  const map: Record<string, string> = {
-    "iso2022jp": "iso-2022-jp",
-    "shiftjis": "shift_jis",
-    "sjis": "shift_jis",
-    "windows31j": "shift_jis",
-    "eucjp": "euc-jp",
-    "utf8": "utf-8",
-  };
-  const target = map[cs] || charset.toLowerCase();
-  if (target === "utf-8") return input;
-  try {
-    const bytes = new Uint8Array(input.length);
-    for (let i = 0; i < input.length; i++) bytes[i] = input.charCodeAt(i) & 0xff;
-    return new TextDecoder(target, { fatal: false }).decode(bytes);
-  } catch (e) {
-    console.warn(`decode ${target} failed:`, e);
-    return input;
+function normalizeCharset(charset: string | null | undefined): string | null {
+  if (!charset) return null;
+  const cs = charset.toLowerCase().trim().replace(/^['"]|['"]$/g, "").replace(/[_\s]/g, "-");
+  const compact = cs.replace(/-/g, "");
+  if (["iso2022jp", "jis"].includes(compact)) return "iso-2022-jp";
+  if (["shiftjis", "sjis", "windows31j", "cp932", "mskanji"].includes(compact)) return "shift_jis";
+  if (["eucjp"].includes(compact)) return "euc-jp";
+  if (["utf8", "unicode11utf8"].includes(compact)) return "utf-8";
+  return cs;
+}
+
+function extractCharset(contentType: string | null | undefined): string | null {
+  const m = String(contentType || "").match(/charset\s*=\s*["']?([^"';\s]+)/i);
+  return normalizeCharset(m?.[1]);
+}
+
+const hasReadableJapanese = (s: string) => /[ぁ-んァ-ヶ一-龠々〆ヵヶ]/.test(s);
+const hasIso2022JpEscape = (s: string) => /\x1b\$B|\x1b\(B/i.test(s);
+const hasStrippedIso2022JpMarkers = (s: string) => /(^|[^\x1b])\$B[!-~]{3,}/.test(s) && /(^|[^\x1b])\(B/.test(s);
+const looksQuotedPrintable = (s: string) => /=([0-9A-F]{2})/i.test(s) || /=\r?\n/.test(s);
+
+function repairStrippedIso2022JpEscapes(input: string): string {
+  return input
+    .replace(/(^|[^\x1b])\$B/g, (_m, p1) => `${p1}\x1B$B`)
+    .replace(/(^|[^\x1b])\(B/g, (_m, p1) => `${p1}\x1B(B`);
+}
+
+function binaryStringToBytes(input: string): Uint8Array {
+  const bytes = new Uint8Array(input.length);
+  for (let i = 0; i < input.length; i++) bytes[i] = input.charCodeAt(i) & 0xff;
+  return bytes;
+}
+
+function decodeBytes(bytes: Uint8Array, charset: string | null): string {
+  return new TextDecoder(charset || "utf-8", { fatal: false }).decode(bytes);
+}
+
+function decodeQuotedPrintableToBytes(input: string): Uint8Array {
+  const cleaned = input.replace(/=\r?\n/g, "");
+  const bytes: number[] = [];
+  for (let i = 0; i < cleaned.length; i++) {
+    if (cleaned[i] === "=" && /^[0-9A-Fa-f]{2}$/.test(cleaned.slice(i + 1, i + 3))) {
+      bytes.push(parseInt(cleaned.slice(i + 1, i + 3), 16));
+      i += 2;
+    } else {
+      bytes.push(cleaned.charCodeAt(i) & 0xff);
+    }
   }
+  return new Uint8Array(bytes);
+}
+
+function decodeBase64ToBytes(input: string): Uint8Array | null {
+  const cleaned = input.replace(/\s+/g, "");
+  if (!cleaned || cleaned.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(cleaned)) return null;
+  try {
+    const bin = atob(cleaned);
+    return binaryStringToBytes(bin);
+  } catch {
+    return null;
+  }
+}
+
+function decodeMimeWords(input: string): string {
+  return input.replace(/=\?([^?]+)\?([bqBQ])\?([^?]*)\?=/g, (_m, rawCharset, enc, value) => {
+    const charset = normalizeCharset(rawCharset) || "utf-8";
+    try {
+      const bytes = enc.toLowerCase() === "b"
+        ? decodeBase64ToBytes(value)
+        : decodeQuotedPrintableToBytes(value.replace(/_/g, " "));
+      return bytes ? decodeBytes(bytes, charset) : _m;
+    } catch {
+      return _m;
+    }
+  });
+}
+
+// 日本語メールの共通前処理: MIME encoded-word / Content-Transfer-Encoding / charset / ISO-2022-JP化けをUTF-8へ正規化
+function decodeEmailText(input: string, headers: Record<string, string> = {}, fallbackCharset?: string | null): { text: string; meta: DecodeMeta } {
+  const meta = emptyDecodeMeta();
+  if (!input) return { text: input, meta };
+
+  const contentType = headers["content-type"] || headers["content_type"] || "";
+  const charset = extractCharset(contentType) || normalizeCharset(fallbackCharset);
+  const transferEncoding = normalizeCharset(headers["content-transfer-encoding"] || headers["content_transfer_encoding"] || "");
+  meta.detected_charset = charset;
+  meta.transfer_encoding = headers["content-transfer-encoding"] || headers["content_transfer_encoding"] || null;
+  meta.content_type = contentType || null;
+
+  let text = decodeMimeWords(input);
+  const alreadyReadable = hasReadableJapanese(text) && !hasIso2022JpEscape(text) && !hasStrippedIso2022JpMarkers(text) && !looksQuotedPrintable(text);
+  if (alreadyReadable) {
+    meta.decode_status = "already_utf8";
+    return { text, meta };
+  }
+
+  try {
+    if (transferEncoding === "base64") {
+      const bytes = decodeBase64ToBytes(text);
+      if (bytes) {
+        text = decodeBytes(bytes, charset || "utf-8");
+        meta.decode_status = `decoded_base64_${charset || "utf-8"}`;
+        return { text, meta };
+      }
+    }
+
+    if (transferEncoding === "quoted-printable" || looksQuotedPrintable(text)) {
+      text = decodeBytes(decodeQuotedPrintableToBytes(text), charset || "utf-8");
+      meta.decode_status = `decoded_quoted_printable_${charset || "utf-8"}`;
+    } else if (hasIso2022JpEscape(text) || hasStrippedIso2022JpMarkers(text)) {
+      const repaired = hasStrippedIso2022JpMarkers(text) ? repairStrippedIso2022JpEscapes(text) : text;
+      text = decodeBytes(binaryStringToBytes(repaired), "iso-2022-jp");
+      meta.detected_charset = meta.detected_charset || "iso-2022-jp";
+      meta.decode_status = hasStrippedIso2022JpMarkers(input) ? "decoded_iso2022jp_repaired_esc" : "decoded_iso2022jp";
+    } else if (charset && charset !== "utf-8") {
+      text = decodeBytes(binaryStringToBytes(text), charset);
+      meta.decode_status = `decoded_${charset}`;
+    }
+  } catch (e) {
+    console.warn("email decode failed:", e);
+    meta.decode_status = `failed_${charset || "unknown"}`;
+  }
+
+  return { text, meta };
 }
 
 // Resend Inbound API から本文を取得（webhookにはメタデータしか含まれないため）
