@@ -75,6 +75,7 @@ export default function SyncStatusDialog({ bookingId, open, onOpenChange }: Prop
     await run();
   };
 
+  const importFromSalonboard = async () => {
     const ext = data?.external?.items?.[0];
     if (!ext?.external_reservation_id) { toast.error("external_reservation_id が取得できないため取り込みできません"); return; }
     if (!data?.local?.location_id_for_import && !confirm("location_id を SalonBoost 側の予約と同じにして取り込みます。よろしいですか？")) return;
