@@ -66,7 +66,11 @@ Deno.serve(async (req) => {
 
     // キャンセル実行
     const { error: updErr } = await supabase
-      .from("bookings").update({ status: "cancelled" }).eq("id", booking.id);
+      .from("bookings").update({
+        status: "cancelled",
+        cancelled_source: "salonboost",
+        cancelled_at: new Date().toISOString(),
+      }).eq("id", booking.id);
     if (updErr) {
       return new Response(JSON.stringify({ error: "update_failed" }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -106,6 +110,13 @@ Deno.serve(async (req) => {
         body: { bookingId: booking.id, eventType: "cancelled_by_customer" },
       });
     } catch (e) { console.error("owner notify error:", e); }
+
+    // サロンボード側にもキャンセル同期（external_reservation_id があれば）
+    try {
+      await supabase.functions.invoke("sync-cancel-to-salonboard", {
+        body: { booking_id: booking.id, internal_secret: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") },
+      });
+    } catch (e) { console.error("sync-cancel invoke error:", e); }
 
     return new Response(JSON.stringify({ success: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
