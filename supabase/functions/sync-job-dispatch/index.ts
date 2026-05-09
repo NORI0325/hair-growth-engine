@@ -130,7 +130,8 @@ Deno.serve(async (req) => {
         resolved_external_staff_name: resolvedExternalStaffName,
       });
       if (!p.external_menu_id && !p.salonboard_setmenu_id) missing.push("setmenuId(menu_channel_mappings)");
-      if (!p.start_time || !p.end_time) missing.push("start_time/end_time");
+      const hasPrecomputed = !!(p.date && p.time);
+      if (!hasPrecomputed && (!p.start_time || !p.end_time)) missing.push("start_time/end_time");
       if (missing.length > 0) return { ok: false, missing };
       const { sei, mei } = splitName(p.customer_name);
       // カナ: customer_kana があればそれを優先、無ければ漢字部分から推定（漢字はカナ化できないので "オキャクサマ" になる）
@@ -143,17 +144,29 @@ Deno.serve(async (req) => {
       }
       if (!seiKana) seiKana = sanitizeNameKana(sei) || "オキャクサマ";
       if (!meiKana) meiKana = sanitizeNameKana(mei);
-      const durationMin = Math.max(15, Math.round((new Date(p.end_time).getTime() - new Date(p.start_time).getTime()) / 60_000));
+      // 重要: time/date は RPC で生成された値(JSTのまま HHMM/YYYYMMDD)を優先する。
+      // start_time/end_time は naive timestamp(JST想定)で来るため、Deno の new Date() で UTC扱いされ
+      // fmtTime で +9h されてしまう。p.date/p.time/p.rsvTerm が既にあるならそれを使う。
+      const outDate = p.date && /^\d{8}$/.test(String(p.date)) ? String(p.date) : fmtDate(p.start_time);
+      const outTime = p.time && /^\d{3,4}$/.test(String(p.time)) ? String(p.time).padStart(4, "0") : fmtTime(p.start_time);
+      let outRsvTerm: number;
+      if (typeof p.rsvTerm === "number" && p.rsvTerm > 0) {
+        outRsvTerm = p.rsvTerm;
+      } else if (p.start_time && p.end_time) {
+        outRsvTerm = Math.max(15, Math.round((new Date(p.end_time).getTime() - new Date(p.start_time).getTime()) / 60_000));
+      } else {
+        outRsvTerm = 60;
+      }
       return {
         ok: true,
         payload: {
-          date: fmtDate(p.start_time),
-          time: fmtTime(p.start_time),
+          date: outDate,
+          time: outTime,
           stylistId: resolvedStylistId,
           external_staff_name: resolvedExternalStaffName,
           setmenuId: p.external_menu_id || p.salonboard_setmenu_id,
           rsvRouteId: p.rsv_route_id || SALONBOARD_DEFAULT_RSV_ROUTE_ID,
-          rsvTerm: durationMin,
+          rsvTerm: outRsvTerm,
           nmSei: sei,
           nmMei: mei,
           nmSeiKana: seiKana,
