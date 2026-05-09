@@ -218,6 +218,12 @@ const CalendarPage = () => {
             resources={resources}
             events={events}
             eventClick={(info) => setSelected((info.event.extendedProps as any).booking)}
+            editable
+            eventStartEditable
+            eventDurationEditable
+            eventResourceEditable
+            eventDrop={onEventChange}
+            eventResize={onEventChange}
             expandRows
           />
         </div>
