@@ -130,7 +130,8 @@ Deno.serve(async (req) => {
         resolved_external_staff_name: resolvedExternalStaffName,
       });
       if (!p.external_menu_id && !p.salonboard_setmenu_id) missing.push("setmenuId(menu_channel_mappings)");
-      if (!p.start_time || !p.end_time) missing.push("start_time/end_time");
+      const hasPrecomputed = !!(p.date && p.time);
+      if (!hasPrecomputed && (!p.start_time || !p.end_time)) missing.push("start_time/end_time");
       if (missing.length > 0) return { ok: false, missing };
       const { sei, mei } = splitName(p.customer_name);
       // カナ: customer_kana があればそれを優先、無ければ漢字部分から推定（漢字はカナ化できないので "オキャクサマ" になる）
