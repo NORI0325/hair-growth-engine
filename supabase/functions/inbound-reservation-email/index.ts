@@ -49,7 +49,7 @@ function extractCharset(contentType: string | null | undefined): string | null {
 const hasReadableJapanese = (s: string) => /[ぁ-んァ-ヶ一-龠々〆ヵヶ]/.test(s);
 const hasIso2022JpEscape = (s: string) => /\x1b\$B|\x1b\(B/i.test(s);
 const hasStrippedIso2022JpMarkers = (s: string) => /(^|[^\x1b])\$B[!-~]{3,}/.test(s) && /(^|[^\x1b])\(B/.test(s);
-const looksQuotedPrintable = (s: string) => /=([0-9A-F]{2})/i.test(s) || /=\r?\n/.test(s);
+const looksQuotedPrintable = (s: string) => /=\r?\n/.test(s) || ((s.match(/=[0-9A-F]{2}/gi) || []).length >= 3);
 
 function repairStrippedIso2022JpEscapes(input: string): string {
   return input
