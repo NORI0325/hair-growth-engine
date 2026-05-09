@@ -3,9 +3,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { AlertTriangle, CheckCheck, FileSearch, GitCompare, AlertCircle, MapPinOff, Send, Download } from "lucide-react";
+import { AlertTriangle, CheckCheck, FileSearch, GitCompare, AlertCircle, MapPinOff, Send, Download, CalendarDays, RefreshCw } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { useCurrentLocationId } from "@/hooks/useLocations";
 import SyncStatusDialog from "@/components/SyncStatusDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
@@ -53,8 +55,21 @@ interface InboundLog {
   created_at: string;
 }
 
+interface DayItem {
+  external_reservation_id: string | null;
+  date: string;
+  time: string | null;
+  customerName: string | null;
+  menu: string | null;
+  stylistName: string | null;
+  classification: "matched" | "salonboard_only" | "conflict";
+  matched_booking_id?: string | null;
+  reason?: string;
+}
+
 export default function SyncReview() {
   const { user } = useAuth();
+  const currentLocationId = useCurrentLocationId();
   const [items, setItems] = useState<Row[]>([]);
   const [inboundLogs, setInboundLogs] = useState<InboundLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -62,6 +77,14 @@ export default function SyncReview() {
   const [diffTarget, setDiffTarget] = useState<Row | null>(null);
   const [errorTarget, setErrorTarget] = useState<Row | null>(null);
   const [inboundDetail, setInboundDetail] = useState<InboundLog | null>(null);
+
+  // サロンボード予約表チェック
+  const today = new Date().toISOString().slice(0, 10);
+  const [dayDate, setDayDate] = useState<string>(today);
+  const [dayLoading, setDayLoading] = useState(false);
+  const [dayItems, setDayItems] = useState<DayItem[] | null>(null);
+  const [dayMeta, setDayMeta] = useState<{ checked_at: string; total_external: number; total_local: number } | null>(null);
+  const [importingKey, setImportingKey] = useState<string | null>(null);
 
   const load = async () => {
     if (!user) return;
@@ -152,6 +175,68 @@ export default function SyncReview() {
     load();
   };
 
+  const fetchDay = async () => {
+    if (!dayDate) return;
+    setDayLoading(true);
+    setDayItems(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("salonboard-fetch-day-reservations", {
+        body: { date: dayDate, location_id: currentLocationId },
+      });
+      if (error) {
+        toast.error("予約表取得に失敗しました: " + error.message);
+        return;
+      }
+      const r: any = data;
+      if (!r?.success) {
+        toast.error("予約表取得に失敗しました: " + (r?.message || r?.error || "unknown"));
+        return;
+      }
+      setDayItems(r.items as DayItem[]);
+      setDayMeta({ checked_at: new Date().toISOString(), total_external: r.total_external, total_local: r.total_local });
+      toast.success(`サロンボードから ${r.total_external} 件取得しました`);
+    } catch (e: any) {
+      toast.error("予約表取得に失敗しました: " + (e?.message || String(e)));
+    } finally {
+      setDayLoading(false);
+    }
+  };
+
+  const importItem = async (it: DayItem) => {
+    if (!it.customerName || !it.time) {
+      toast.error("顧客名または時刻が不足しているため取り込めません");
+      return;
+    }
+    const key = `${it.external_reservation_id ?? ""}|${it.customerName}|${it.time}`;
+    setImportingKey(key);
+    try {
+      const { data, error } = await supabase.functions.invoke("salonboard-import-reservation", {
+        body: {
+          date: dayDate,
+          time: it.time,
+          customer_name: it.customerName,
+          menu: it.menu,
+          external_reservation_id: it.external_reservation_id,
+          location_id: currentLocationId,
+        },
+      });
+      if (error) { toast.error("取り込み失敗: " + error.message); return; }
+      const r: any = data;
+      if (r?.success) {
+        if (r.action === "skipped") toast.info(r.message || "既に存在するためスキップしました");
+        else toast.success("SalonBoost に取り込みました");
+        await fetchDay();
+        await load();
+      } else {
+        toast.error("取り込み失敗: " + (r?.message || r?.error || "unknown"));
+      }
+    } catch (e: any) {
+      toast.error("取り込み失敗: " + (e?.message || String(e)));
+    } finally {
+      setImportingKey(null);
+    }
+  };
+
   return (
     <div className="container max-w-6xl py-12 px-6">
       <div className="mb-10">
@@ -162,6 +247,69 @@ export default function SyncReview() {
           <span className="text-amber-700">第3段階：再送信は直前照合付き、取り込みは external_reservation_id 重複防止付き、競合は管理者判断のみ。自動上書きは行いません。</span>
         </p>
       </div>
+
+      {/* サロンボード予約表チェック */}
+      <Card className="rounded-none p-5 mb-8 border-l-4 border-l-gold">
+        <div className="flex items-start justify-between gap-4 flex-wrap mb-3">
+          <div>
+            <div className="text-[10px] tracking-luxury text-gold mb-1">SALONBOARD DAILY CHECK</div>
+            <h2 className="font-serif text-lg">サロンボード予約表を確認</h2>
+            <p className="text-xs text-muted-foreground mt-1">
+              サロンボードに直接入力された予約（メール通知では拾えない予約）を、日付指定で取得し SalonBoost と差分照合します。
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 flex-wrap">
+          <CalendarDays className="w-4 h-4 text-muted-foreground" />
+          <Input type="date" value={dayDate} onChange={(e) => setDayDate(e.target.value)} className="w-44 rounded-none" />
+          <Button onClick={fetchDay} disabled={dayLoading || !dayDate} className="rounded-none">
+            {dayLoading ? <RefreshCw className="w-3 h-3 mr-1 animate-spin" /> : <FileSearch className="w-3 h-3 mr-1" />}
+            予約表を取得
+          </Button>
+          {dayMeta && (
+            <span className="text-[11px] text-muted-foreground">
+              取得: {new Date(dayMeta.checked_at).toLocaleString("ja-JP")} ／ サロンボード {dayMeta.total_external} 件 ／ SalonBoost {dayMeta.total_local} 件
+            </span>
+          )}
+        </div>
+
+        {dayItems && (
+          <div className="mt-4 space-y-2">
+            {dayItems.length === 0 ? (
+              <div className="text-sm text-muted-foreground py-4 text-center">サロンボード側の予約は見つかりませんでした</div>
+            ) : dayItems.map((it, idx) => {
+              const tone =
+                it.classification === "matched" ? "border-l-emerald-500 bg-emerald-50/30" :
+                it.classification === "salonboard_only" ? "border-l-amber-500 bg-amber-50/30" :
+                "border-l-red-500 bg-red-50/30";
+              const labelText =
+                it.classification === "matched" ? "一致" :
+                it.classification === "salonboard_only" ? "サロンボードのみ" : "競合";
+              const key = `${it.external_reservation_id ?? ""}|${it.customerName}|${it.time}|${idx}`;
+              return (
+                <div key={key} className={`border-l-4 ${tone} px-3 py-2 flex items-center justify-between gap-3 flex-wrap`}>
+                  <div className="text-sm flex-1 min-w-0">
+                    <Badge className="rounded-none mr-2 text-[10px]" variant="outline">{labelText}</Badge>
+                    <span className="font-serif">{it.customerName ?? "顧客不明"}</span>
+                    <span className="text-muted-foreground"> ・ {it.time ?? "—"} ・ {it.menu ?? "メニュー不明"}</span>
+                    <span className="text-[11px] text-muted-foreground"> ／ ext_id: {it.external_reservation_id ?? "—"}</span>
+                    {it.reason && <span className="text-[11px] text-muted-foreground"> ／ {it.reason}</span>}
+                  </div>
+                  {it.classification === "salonboard_only" && (
+                    <Button
+                      size="sm" className="rounded-none"
+                      disabled={importingKey === `${it.external_reservation_id ?? ""}|${it.customerName}|${it.time}`}
+                      onClick={() => importItem(it)}
+                    >
+                      <Download className="w-3 h-3 mr-1" />SalonBoost に取り込む
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
 
       {loading ? (
         <div className="text-center py-12 text-muted-foreground">読み込み中...</div>

@@ -10,6 +10,7 @@ import { cancelReservation } from "./salonboard/cancelReservation.js";
 import { fetchSalonboardStaff } from "./salonboard/fetchStaff.js";
 import { fetchSalonboardMenus } from "./salonboard/fetchMenus.js";
 import { findReservations } from "./salonboard/findReservation.js";
+import { listDayReservations } from "./salonboard/listDayReservations.js";
 import { WorkerError } from "./errorMapper.js";
 import { postCallback } from "./callback.js";
 import { fetchSession, saveSession } from "./sessionStore.js";
@@ -141,6 +142,29 @@ app.post("/api/salonboard/find-reservation", bearerAuth, async (req, res) => {
   } catch (e) {
     if (e instanceof WorkerError) res.json({ success: false, error_type: e.errorType, message: e.message });
     else { logger.error({ err: e }, "find-reservation failed"); res.json({ success: false, error_type: "unknown_error", message: e instanceof Error ? e.message : String(e) }); }
+  }
+});
+
+// ===== 当日のサロンボード予約一覧（手動差分チェック用） =====
+const ListDaySchema = z.object({
+  store_id: z.string().min(1),
+  location_id: z.string().nullable().optional(),
+  date: z.string().min(8),
+});
+
+app.post("/api/salonboard/list-day-reservations", bearerAuth, async (req, res) => {
+  const parsed = ListDaySchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ success: false, error_type: "unknown_error", message: "invalid_body" });
+  const p = parsed.data;
+  logger.info({ owner: p.store_id, location: p.location_id ?? null, date: p.date, type: "list_day_reservations" }, "job received");
+  try {
+    const items = await withSalonboardSession(p.store_id, p.location_id ?? null, (page) =>
+      listDayReservations(page, p.date),
+    );
+    res.json({ success: true, items });
+  } catch (e) {
+    if (e instanceof WorkerError) res.json({ success: false, error_type: e.errorType, message: e.message });
+    else { logger.error({ err: e }, "list-day-reservations failed"); res.json({ success: false, error_type: "unknown_error", message: e instanceof Error ? e.message : String(e) }); }
   }
 });
 
