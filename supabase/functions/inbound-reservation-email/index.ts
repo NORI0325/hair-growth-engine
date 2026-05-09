@@ -347,6 +347,14 @@ Deno.serve(async (req) => {
   text = decodeJapaneseIfNeeded(text);
   subject = decodeJapaneseIfNeeded(subject);
 
+  // === 冪等キー計算 (重複Webhook防止) ===
+  const headersObj: Record<string, string> = {};
+  for (const [k, v] of Object.entries(data.headers || {})) {
+    headersObj[String(k)] = String(v ?? "");
+  }
+  const inboundMessageId = extractInboundMessageId(data, headersObj);
+  const idempotencyKey = await computeIdempotencyKey(inboundMessageId, from, subject, text);
+
   const parsed = parseInboundAddress(to);
   if (!parsed) {
     await supabase.from("external_reservation_logs").insert({
