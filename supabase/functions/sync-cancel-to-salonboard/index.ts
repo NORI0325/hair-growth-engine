@@ -104,10 +104,14 @@ Deno.serve(async (req) => {
       if (m?.external_id) stylistId = String(m.external_id);
     }
 
+    const customerName = (booking as any).customers?.full_name ?? null;
+    const timeHHMM = (booking.booking_time ?? "").slice(0, 5).replace(":", "");
     const requestPayload = {
       external_reservation_id: booking.external_reservation_id,
       date: fmtDate(booking.booking_date),
+      time: timeHHMM || null,
       stylistId,
+      customerName,
       noShow: no_show,
     };
 
