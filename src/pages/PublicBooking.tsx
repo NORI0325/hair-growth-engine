@@ -27,12 +27,18 @@ interface MenuItem {
   price: number;
 }
 
+interface StaffOption {
+  id: string;
+  name: string;
+}
+
 const schema = z.object({
   full_name: z.string().trim().min(1, "お名前を入力してください").max(100),
   phone: z.string().trim().min(8, "正しい電話番号を入力してください").max(20),
   email: z.string().trim().email("正しいメールアドレス").max(255).optional().or(z.literal("")),
   date: z.string().min(1, "日付を選択してください"),
   time: z.string().min(1, "時間を選択してください"),
+  staff_id: z.string().optional(),
   notes: z.string().max(500).optional(),
 });
 
@@ -43,6 +49,7 @@ const PublicBooking = () => {
   const [salonName, setSalonName] = useState("Salon");
   const [salonExists, setSalonExists] = useState(false);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [staffOptions, setStaffOptions] = useState<StaffOption[]>([]);
   const [fallbackMenus, setFallbackMenus] = useState<string[]>([]);
   const [selectedMenus, setSelectedMenus] = useState<string[]>([]);
   const [completed, setCompleted] = useState(false);
@@ -53,7 +60,7 @@ const PublicBooking = () => {
   const [openTime, setOpenTime] = useState<string>("10:00");
   const [closeTime, setCloseTime] = useState<string>("19:00");
 
-  const [form, setForm] = useState({ full_name: "", phone: "", email: "", date: "", time: "", notes: "" });
+  const [form, setForm] = useState({ full_name: "", phone: "", email: "", date: "", time: "", staff_id: "", notes: "" });
 
   useEffect(() => {
     const load = async () => {
@@ -125,9 +132,20 @@ const PublicBooking = () => {
             .eq("bookable", true);
           setHasStaff((count || 0) > 0);
           setMaxStaffCount(Math.max(1, count || 1));
+
+          const { data: staff } = await supabase
+            .from("staff")
+            .select("id, name")
+            .eq("owner_id", ownerId)
+            .eq("location_id", locationId)
+            .eq("active", true)
+            .eq("bookable", true)
+            .order("sort_order", { ascending: true });
+          setStaffOptions((staff as StaffOption[]) || []);
         } else {
           // location_id 不明時は店舗共通(NULL)メニューや全店混在を避けるため、メニュー非表示
           setMenuItems([]);
+          setStaffOptions([]);
           setHasStaff(false);
           setMaxStaffCount(1);
         }
@@ -167,17 +185,24 @@ const PublicBooking = () => {
       if (!slug || !form.date || !hasStaff) { setAvailableSlots({}); return; }
       const duration = totalDuration > 0 ? totalDuration : 60;
       setSlotsLoading(true);
-      const { data, error } = await supabase.rpc("get_available_slots" as any, {
-        _salon_slug: slug,
-        _date: form.date,
-        _duration_minutes: duration,
-      });
+      const { data, error } = form.staff_id
+        ? await supabase.rpc("get_available_slots_by_staff" as any, {
+            _salon_slug: slug,
+            _date: form.date,
+            _duration_minutes: duration,
+            _staff_id: form.staff_id,
+          })
+        : await supabase.rpc("get_available_slots" as any, {
+            _salon_slug: slug,
+            _date: form.date,
+            _duration_minutes: duration,
+          });
       setSlotsLoading(false);
       if (error || !data) { setAvailableSlots({}); return; }
       const map: Record<string, number> = {};
       for (const row of data as any[]) {
         const t = String(row.slot_time).slice(0, 5);
-        map[t] = row.available_staff_count;
+        map[t] = form.staff_id ? (row.available_staff_ids?.length || 0) : row.available_staff_count;
       }
       setAvailableSlots(map);
       // 選択中の時刻が空きでなくなったらクリア
@@ -187,7 +212,7 @@ const PublicBooking = () => {
     };
     fetchSlots();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug, form.date, totalDuration, hasStaff]);
+  }, [slug, form.date, form.staff_id, totalDuration, hasStaff]);
 
   const handleSubmit = async () => {
     const parsed = schema.safeParse(form);
@@ -203,6 +228,7 @@ const PublicBooking = () => {
       _booking_time: parsed.data.time,
       _menus: selectedMenus,
       _notes: parsed.data.notes || "",
+      _staff_id: parsed.data.staff_id || null,
     };
     console.log("[PublicBooking] submit payload:", payload);
     const { data, error } = await supabase.rpc("public_create_booking_v3" as any, payload);
@@ -424,6 +450,34 @@ const PublicBooking = () => {
                 <p className="display text-2xl">¥{totalPrice.toLocaleString()}</p>
               </div>
             )}
+          </div>
+
+          <div>
+            <p className="eyebrow mb-3">No.07 — 担当者を選択 / Stylist</p>
+            <div className="space-y-px bg-border border border-border">
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, staff_id: "" })}
+                className={`w-full flex items-center justify-between px-4 py-4 text-left transition-all ${!form.staff_id ? "bg-primary text-primary-foreground" : "bg-card hover:bg-secondary"}`}
+              >
+                <span className="font-serif text-sm">指名なし / フリー</span>
+                {!form.staff_id && <Check className="w-4 h-4" />}
+              </button>
+              {staffOptions.map((staff) => {
+                const active = form.staff_id === staff.id;
+                return (
+                  <button
+                    key={staff.id}
+                    type="button"
+                    onClick={() => setForm({ ...form, staff_id: staff.id })}
+                    className={`w-full flex items-center justify-between px-4 py-4 text-left transition-all ${active ? "bg-primary text-primary-foreground" : "bg-card hover:bg-secondary"}`}
+                  >
+                    <span className="font-serif text-sm">{staff.name}</span>
+                    {active && <Check className="w-4 h-4" />}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           <div>

@@ -3947,6 +3947,7 @@ export type Database = {
           _notes: string
           _phone: string
           _salon_slug: string
+          _staff_id?: string
         }
         Returns: Json
       }
