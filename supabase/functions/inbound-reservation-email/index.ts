@@ -416,10 +416,36 @@ Deno.serve(async (req) => {
     locationId = loc?.id ?? null;
   }
 
+  // === 認証メール / Gmail転送確認メールの検出（予約以外メールも保存）===
+  const verifyHaystack = `${subject}\n${text}`;
+  const isGmailForwardConfirm = /forwarding-noreply@google\.com/i.test(from) || /Gmail の転送の確認/.test(subject);
+  const verifyKeywords = /(認証コード|確認コード|ワンタイムパスワード|verification code|confirm your email|本人確認|二段階認証|2段階認証|認証用|ログイン認証|サロンボード.*(認証|確認)|salon\s?board.*(verif|confirm))/i;
+  const isVerificationMail = isGmailForwardConfirm || verifyKeywords.test(verifyHaystack);
+  if (isVerificationMail) {
+    const urlMatch = text.match(/https?:\/\/\S+/g) || [];
+    const codeMatch = text.match(/(?:認証|確認|verification|verify)[^\d]{0,20}(\d{4,8})/i)
+      || text.match(/\b(\d{6})\b/);
+    const vstatus = isGmailForwardConfirm ? "other" : "verification";
+    await supabase.from("external_reservation_logs").insert({
+      owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject,
+      raw_text: text.slice(0, 8000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
+      status: vstatus, error: isGmailForwardConfirm ? "gmail_forward_confirm" : "verification_mail",
+      parsed_data: {
+        kind: vstatus,
+        verification_urls: urlMatch.slice(0, 5),
+        verification_code: codeMatch ? codeMatch[1] : null,
+      },
+    });
+    return new Response(JSON.stringify({ ok: true, kind: vstatus }), {
+      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   // AI解析
   let extracted: any;
   try {
     extracted = await aiExtractReservation(source, subject, text);
+
   } catch (e: any) {
     await supabase.from("external_reservation_logs").insert({
       owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
