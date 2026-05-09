@@ -66,7 +66,11 @@ Deno.serve(async (req) => {
 
     // キャンセル実行
     const { error: updErr } = await supabase
-      .from("bookings").update({ status: "cancelled" }).eq("id", booking.id);
+      .from("bookings").update({
+        status: "cancelled",
+        cancelled_source: "salonboost",
+        cancelled_at: new Date().toISOString(),
+      }).eq("id", booking.id);
     if (updErr) {
       return new Response(JSON.stringify({ error: "update_failed" }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },

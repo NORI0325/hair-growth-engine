@@ -106,6 +106,10 @@ const Bookings = () => {
       supabase.functions.invoke("notify-owner-booking", {
         body: { bookingId: id, eventType: "cancelled" },
       }).catch(() => {});
+      // サロンボード側にもキャンセル同期（external_reservation_id があれば）
+      supabase.functions.invoke("sync-cancel-to-salonboard", {
+        body: { booking_id: id },
+      }).catch((e) => console.error("[sync-cancel] error:", e));
     }
     load();
   };

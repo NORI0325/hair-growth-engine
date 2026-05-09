@@ -114,6 +114,11 @@ const CalendarPage = () => {
     const { error } = await supabase.from("bookings").update({ status }).eq("id", id);
     if (error) { toast.error("更新失敗: " + error.message); return; }
     toast.success("ステータスを更新しました");
+    if (status === "cancelled" || status === "no_show") {
+      supabase.functions.invoke("sync-cancel-to-salonboard", {
+        body: { booking_id: id, no_show: status === "no_show" },
+      }).catch((e) => console.error("[sync-cancel] error:", e));
+    }
     setSelected(null);
     load();
   };
