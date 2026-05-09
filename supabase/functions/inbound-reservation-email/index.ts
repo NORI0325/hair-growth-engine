@@ -105,19 +105,37 @@ function parseInboundAddress(toAddress: string): { source: string; inboundKey: s
   const local = toAddress.split("@")[0]?.toLowerCase().trim();
   if (!local) return null;
   // プレフィックス: hp / mn / rb
-  const m = local.match(/^(hp|mn|rb)-(.+)$/);
+  const m = local.match(/^(hp|mn|rb|sb)-(.+)$/);
   if (!m) return null;
-  const sourceMap: Record<string, string> = { hp: "hotpepper", mn: "minimo", rb: "rakuten_beauty" };
+  const sourceMap: Record<string, string> = { hp: "hotpepper", mn: "minimo", rb: "rakuten_beauty", sb: "salonboard" };
   return { source: sourceMap[m[1]], inboundKey: m[2] };
 }
 
 // 件名+本文からソースを補強推定（受信ドメインで判別できない場合の保険）
 function inferSourceFromContent(subject: string, text: string, fallback: string): string {
   const haystack = `${subject}\n${text}`.toLowerCase();
+  if (haystack.includes("salon board") || haystack.includes("salonboard") || haystack.includes("サロンボード")) return "salonboard";
   if (haystack.includes("ホットペッパー") || haystack.includes("hotpepper") || haystack.includes("hot pepper")) return "hotpepper";
   if (haystack.includes("minimo") || haystack.includes("ミニモ")) return "minimo";
   if (haystack.includes("楽天ビューティ") || haystack.includes("rakuten beauty")) return "rakuten_beauty";
   return fallback;
+}
+
+// 冪等キーの計算: 配信ID優先、なければ raw内容のSHA-256
+async function computeIdempotencyKey(inboundMessageId: string | null, from: string, subject: string, text: string): Promise<string> {
+  if (inboundMessageId) return `mid:${inboundMessageId}`;
+  const enc = new TextEncoder().encode([from, subject, text.slice(0, 4000)].join("\n"));
+  const buf = await crypto.subtle.digest("SHA-256", enc);
+  const hex = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+  return `hash:${hex}`;
+}
+
+// 配信ID抽出 (Resend / Mailgun / ImprovMX いずれにも対応)
+function extractInboundMessageId(data: any, headers: Record<string, string>): string | null {
+  return (
+    data.email_id || data.id || data.message_id || data["Message-Id"] ||
+    headers["message-id"] || headers["Message-Id"] || headers["X-Mailgun-Message-Id"] || null
+  ) || null;
 }
 
 async function aiExtractReservation(source: string, subject: string, text: string) {
