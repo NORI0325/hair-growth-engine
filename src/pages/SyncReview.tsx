@@ -111,6 +111,17 @@ export default function SyncReview() {
     }
 
     setItems(rows.map((r) => ({ ...r, latest_snapshot: snapMap[r.id] ?? null, latest_job: jobMap[r.id] ?? null })));
+
+    // 外部通知メール取り込みの needs_review もここに統合表示
+    const { data: logs } = await supabase
+      .from("external_reservation_logs" as any)
+      .select("id, source, raw_subject, raw_from, status, error, parsed_data, created_booking_id, created_at")
+      .eq("owner_id", user.id)
+      .eq("status", "needs_review")
+      .order("created_at", { ascending: false })
+      .limit(100);
+    setInboundLogs((logs as any) ?? []);
+
     setLoading(false);
   };
 
