@@ -336,7 +336,12 @@ export async function createReservation(page: Page, input: CreateReservationInpu
     const trulyCompleted = /予約を登録しました|予約が完了|登録が完了|登録を完了/.test(finalText)
       && !/不正な文字|使用できない文字列/.test(finalText);
     if (!trulyCompleted) {
-      logger.warn({ finalUrl, errLine }, "salonboard input validation error");
+      logger.warn({
+        finalUrl,
+        errLine,
+        page_body_error_snippet: finalText.slice(0, 800),
+        submit_values: await getCreateFormDiag(page, input, "validation error after submit"),
+      }, "salonboard input validation error");
       const isNameError = /不正な文字|使用できない文字列|氏名|カナ/.test(errLine);
       const msg = isNameError
         ? "[salonboard] 入力エラー: 氏名またはカナにサロンボードで使用できない文字が含まれています。数字入りのテスト名は使わず、カナはカタカナで入力してください。"
