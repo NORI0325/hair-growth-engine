@@ -10,51 +10,166 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") || "";
 
-// 日本語メールの文字コード自動判定 & デコード
-// SALON BOARD等は ISO-2022-JP で送信される。文字化けしたままAIに渡すとハルシネーションの温床。
-function decodeJapaneseIfNeeded(input: string): string {
-  if (!input) return input;
-  // ISO-2022-JP のエスケープシーケンスが含まれる場合
-  if (input.includes("\x1B$B") || input.includes("\x1b$B") || input.includes("$B") && input.includes("(B")) {
-    try {
-      // 文字列を一旦バイト列として解釈し直す（Latin-1 として byte-preserving）
-      const bytes = new Uint8Array(input.length);
-      for (let i = 0; i < input.length; i++) bytes[i] = input.charCodeAt(i) & 0xff;
-      const decoded = new TextDecoder("iso-2022-jp", { fatal: false }).decode(bytes);
-      // 化け文字（U+FFFD）が多すぎる場合はオリジナルを返す
-      const replacementCount = (decoded.match(/\uFFFD/g) || []).length;
-      if (replacementCount < decoded.length * 0.05) return decoded;
-    } catch (e) { console.warn("ISO-2022-JP decode failed:", e); }
-  }
-  return input;
+type DecodeMeta = {
+  detected_charset: string | null;
+  transfer_encoding: string | null;
+  decode_status: string;
+  content_type?: string | null;
+};
+
+const emptyDecodeMeta = (): DecodeMeta => ({
+  detected_charset: null,
+  transfer_encoding: null,
+  decode_status: "not_needed",
+  content_type: null,
+});
+
+function normalizeHeaders(headers: any): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(headers || {})) out[String(k).toLowerCase()] = String(v ?? "");
+  return out;
 }
 
-// charsetを明示指定して再デコード
-function decodeWithCharset(input: string, charset: string): string {
-  if (!input || !charset) return input;
-  const cs = charset.toLowerCase().replace(/[_-]/g, "");
-  const map: Record<string, string> = {
-    "iso2022jp": "iso-2022-jp",
-    "shiftjis": "shift_jis",
-    "sjis": "shift_jis",
-    "windows31j": "shift_jis",
-    "eucjp": "euc-jp",
-    "utf8": "utf-8",
-  };
-  const target = map[cs] || charset.toLowerCase();
-  if (target === "utf-8") return input;
-  try {
-    const bytes = new Uint8Array(input.length);
-    for (let i = 0; i < input.length; i++) bytes[i] = input.charCodeAt(i) & 0xff;
-    return new TextDecoder(target, { fatal: false }).decode(bytes);
-  } catch (e) {
-    console.warn(`decode ${target} failed:`, e);
-    return input;
+function normalizeCharset(charset: string | null | undefined): string | null {
+  if (!charset) return null;
+  const cs = charset.toLowerCase().trim().replace(/^['"]|['"]$/g, "").replace(/[_\s]/g, "-");
+  const compact = cs.replace(/-/g, "");
+  if (["iso2022jp", "jis"].includes(compact)) return "iso-2022-jp";
+  if (["shiftjis", "sjis", "windows31j", "cp932", "mskanji"].includes(compact)) return "shift_jis";
+  if (["eucjp"].includes(compact)) return "euc-jp";
+  if (["utf8", "unicode11utf8"].includes(compact)) return "utf-8";
+  return cs;
+}
+
+function extractCharset(contentType: string | null | undefined): string | null {
+  const m = String(contentType || "").match(/charset\s*=\s*["']?([^"';\s]+)/i);
+  return normalizeCharset(m?.[1]);
+}
+
+const hasReadableJapanese = (s: string) => /[ぁ-んァ-ヶ一-龠々〆ヵヶ]/.test(s);
+const hasIso2022JpEscape = (s: string) => /\x1b\$B|\x1b\(B/i.test(s);
+const hasStrippedIso2022JpMarkers = (s: string) => /(^|[^\x1b])\$B[!-~]{3,}/.test(s) && /(^|[^\x1b])\(B/.test(s);
+const looksQuotedPrintable = (s: string) => /=\r?\n/.test(s) || ((s.match(/=[0-9A-F]{2}/gi) || []).length >= 3);
+
+function repairStrippedIso2022JpEscapes(input: string): string {
+  return input
+    .replace(/(^|[^\x1b])\$B/g, (_m, p1) => `${p1}\x1B$B`)
+    .replace(/(^|[^\x1b])\(B/g, (_m, p1) => `${p1}\x1B(B`);
+}
+
+function binaryStringToBytes(input: string): Uint8Array {
+  const bytes = new Uint8Array(input.length);
+  for (let i = 0; i < input.length; i++) bytes[i] = input.charCodeAt(i) & 0xff;
+  return bytes;
+}
+
+function decodeBytes(bytes: Uint8Array, charset: string | null): string {
+  return new TextDecoder(charset || "utf-8", { fatal: false }).decode(bytes);
+}
+
+function decodeQuotedPrintableToBytes(input: string): Uint8Array {
+  const cleaned = input.replace(/=\r?\n/g, "");
+  const bytes: number[] = [];
+  for (let i = 0; i < cleaned.length; i++) {
+    if (cleaned[i] === "=" && /^[0-9A-Fa-f]{2}$/.test(cleaned.slice(i + 1, i + 3))) {
+      bytes.push(parseInt(cleaned.slice(i + 1, i + 3), 16));
+      i += 2;
+    } else {
+      bytes.push(cleaned.charCodeAt(i) & 0xff);
+    }
   }
+  return new Uint8Array(bytes);
+}
+
+function decodeBase64ToBytes(input: string): Uint8Array | null {
+  const cleaned = input.replace(/\s+/g, "");
+  if (!cleaned || cleaned.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(cleaned)) return null;
+  try {
+    const bin = atob(cleaned);
+    return binaryStringToBytes(bin);
+  } catch {
+    return null;
+  }
+}
+
+function decodeMimeWords(input: string): string {
+  return input.replace(/=\?([^?]+)\?([bqBQ])\?([^?]*)\?=/g, (_m, rawCharset, enc, value) => {
+    const charset = normalizeCharset(rawCharset) || "utf-8";
+    try {
+      const bytes = enc.toLowerCase() === "b"
+        ? decodeBase64ToBytes(value)
+        : decodeQuotedPrintableToBytes(value.replace(/_/g, " "));
+      return bytes ? decodeBytes(bytes, charset) : _m;
+    } catch {
+      return _m;
+    }
+  });
+}
+
+// 日本語メールの共通前処理: MIME encoded-word / Content-Transfer-Encoding / charset / ISO-2022-JP化けをUTF-8へ正規化
+function decodeEmailText(input: string, headers: Record<string, string> = {}, fallbackCharset?: string | null): { text: string; meta: DecodeMeta } {
+  const meta = emptyDecodeMeta();
+  if (!input) return { text: input, meta };
+
+  const contentType = headers["content-type"] || headers["content_type"] || "";
+  const charset = extractCharset(contentType) || normalizeCharset(fallbackCharset);
+  const transferEncoding = normalizeCharset(headers["content-transfer-encoding"] || headers["content_transfer_encoding"] || "");
+  meta.detected_charset = charset;
+  meta.transfer_encoding = headers["content-transfer-encoding"] || headers["content_transfer_encoding"] || null;
+  meta.content_type = contentType || null;
+
+  let text = decodeMimeWords(input);
+  const alreadyReadable = hasReadableJapanese(text) && !hasIso2022JpEscape(text) && !hasStrippedIso2022JpMarkers(text) && !looksQuotedPrintable(text);
+  if (alreadyReadable) {
+    meta.decode_status = "already_utf8";
+    return { text, meta };
+  }
+
+  try {
+    if (transferEncoding === "base64") {
+      const bytes = decodeBase64ToBytes(text);
+      if (bytes) {
+        text = decodeBytes(bytes, charset || "utf-8");
+        meta.decode_status = `decoded_base64_${charset || "utf-8"}`;
+        return { text, meta };
+      }
+    }
+
+    if (transferEncoding === "quoted-printable" || looksQuotedPrintable(text)) {
+      text = decodeBytes(decodeQuotedPrintableToBytes(text), charset || "utf-8");
+      meta.decode_status = `decoded_quoted_printable_${charset || "utf-8"}`;
+    } else if (hasIso2022JpEscape(text) || hasStrippedIso2022JpMarkers(text)) {
+      const repaired = hasStrippedIso2022JpMarkers(text) ? repairStrippedIso2022JpEscapes(text) : text;
+      text = decodeBytes(binaryStringToBytes(repaired), "iso-2022-jp");
+      meta.detected_charset = meta.detected_charset || "iso-2022-jp";
+      meta.decode_status = hasStrippedIso2022JpMarkers(input) ? "decoded_iso2022jp_repaired_esc" : "decoded_iso2022jp";
+    } else if (charset && charset !== "utf-8") {
+      text = decodeBytes(binaryStringToBytes(text), charset);
+      meta.decode_status = `decoded_${charset}`;
+    }
+  } catch (e) {
+    console.warn("email decode failed:", e);
+    meta.decode_status = `failed_${charset || "unknown"}`;
+  }
+
+  return { text, meta };
+}
+
+function withDecodeMeta(parsedData: any, meta: DecodeMeta, rawTextUtf8: string): any {
+  const base = parsedData && typeof parsedData === "object" && !Array.isArray(parsedData) ? parsedData : { value: parsedData };
+  return {
+    ...base,
+    _email_decode: {
+      detected_charset: meta.detected_charset,
+      transfer_encoding: meta.transfer_encoding,
+      decode_status: meta.decode_status,
+      raw_text_utf8: rawTextUtf8.slice(0, 8000),
+    },
+  };
 }
 
 // Resend Inbound API から本文を取得（webhookにはメタデータしか含まれないため）
-async function fetchInboundEmailBody(emailId: string): Promise<{ text: string; html: string; subject: string; from: string; to: string[] } | null> {
+async function fetchInboundEmailBody(emailId: string): Promise<{ text: string; html: string; subject: string; from: string; to: string[]; decodeMeta: DecodeMeta } | null> {
   if (!RESEND_API_KEY || !emailId) return null;
   try {
     const res = await fetch(`https://api.resend.com/emails/inbound/${emailId}`, {
@@ -65,26 +180,19 @@ async function fetchInboundEmailBody(emailId: string): Promise<{ text: string; h
       return null;
     }
     const data = await res.json();
-    // headersから charset を抽出
-    let charset = "";
-    const headers = data.headers || {};
-    const ct = headers["Content-Type"] || headers["content-type"] || "";
-    const m = String(ct).match(/charset=["']?([\w-]+)/i);
-    if (m) charset = m[1];
+    const headers = normalizeHeaders(data.headers || {});
+    const fallbackCharset = extractCharset(headers["content-type"] || "");
 
     let text = data.text || "";
     let html = data.html || "";
     let subject = data.subject || "";
 
-    if (charset) {
-      text = decodeWithCharset(text, charset);
-      html = decodeWithCharset(html, charset);
-      subject = decodeWithCharset(subject, charset);
-    }
-    // 補助: ISO-2022-JPエスケープが残っていれば追加デコード
-    text = decodeJapaneseIfNeeded(text);
-    html = decodeJapaneseIfNeeded(html);
-    subject = decodeJapaneseIfNeeded(subject);
+    const textDecoded = decodeEmailText(text, headers, fallbackCharset);
+    const htmlDecoded = decodeEmailText(html, headers, fallbackCharset);
+    const subjectDecoded = decodeEmailText(subject, headers, fallbackCharset);
+    text = textDecoded.text;
+    html = htmlDecoded.text;
+    subject = subjectDecoded.text;
 
     return {
       text,
@@ -92,6 +200,7 @@ async function fetchInboundEmailBody(emailId: string): Promise<{ text: string; h
       subject,
       from: typeof data.from === "string" ? data.from : (data.from?.email || ""),
       to: Array.isArray(data.to) ? data.to : (data.to ? [data.to] : []),
+      decodeMeta: textDecoded.meta.decode_status !== "not_needed" ? textDecoded.meta : subjectDecoded.meta,
     };
   } catch (e) {
     console.error("Resend inbound fetch exception:", e);
@@ -273,6 +382,7 @@ Deno.serve(async (req) => {
   // Webhook payload正規化
   // 対応: Resend Inbound (data.to/from) / ImprovMX (To, From, Subject) / Mailgun (recipient, sender)
   const data = payload.data || payload;
+  const dataHeaders = normalizeHeaders(data.headers || {});
   const pickStr = (...vals: any[]): string => {
     for (const v of vals) {
       if (typeof v === "string" && v.trim()) return v.trim();
@@ -292,6 +402,7 @@ Deno.serve(async (req) => {
   const to = pickStr(data.to, data.To, data.envelope?.to, data.recipient, data["X-Original-To"]);
   const from = pickStr(data.from, data.From, data.sender, data.envelope?.from);
   let subject: string = pickStr(data.subject, data.Subject, data.headers?.Subject);
+  let decodeMeta = emptyDecodeMeta();
 
   // 本文抽出: text → html(タグ除去) → body_plain → body_html → 全payloadフォールバック
   const htmlToText = (html: string) => html
@@ -340,18 +451,23 @@ Deno.serve(async (req) => {
       if (body) text = body;
       // メタデータも上書き（webhookに無い場合の保険）
       if (!subject && fetched.subject) subject = fetched.subject;
+      decodeMeta = fetched.decodeMeta;
     }
   }
 
-  // 文字コード判定 & デコード（ISO-2022-JPなど）
-  text = decodeJapaneseIfNeeded(text);
-  subject = decodeJapaneseIfNeeded(subject);
+  // 文字コード判定 & デコード（ISO-2022-JP / Shift_JIS / MIME encoded-word など）
+  const textDecoded = decodeEmailText(text, dataHeaders, decodeMeta.detected_charset);
+  const subjectDecoded = decodeEmailText(subject, dataHeaders, textDecoded.meta.detected_charset || decodeMeta.detected_charset);
+  text = textDecoded.text;
+  subject = subjectDecoded.text;
+  if (textDecoded.meta.decode_status !== "not_needed" && textDecoded.meta.decode_status !== "already_utf8") {
+    decodeMeta = textDecoded.meta;
+  } else if (decodeMeta.decode_status === "not_needed") {
+    decodeMeta = textDecoded.meta;
+  }
 
   // === 冪等キー計算 (重複Webhook防止) ===
-  const headersObj: Record<string, string> = {};
-  for (const [k, v] of Object.entries(data.headers || {})) {
-    headersObj[String(k)] = String(v ?? "");
-  }
+  const headersObj: Record<string, string> = dataHeaders;
   const inboundMessageId = extractInboundMessageId(data, headersObj);
   const idempotencyKey = await computeIdempotencyKey(inboundMessageId, from, subject, text);
 
@@ -359,7 +475,7 @@ Deno.serve(async (req) => {
   if (!parsed) {
     await supabase.from("external_reservation_logs").insert({
       source: "unknown", raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
-      status: "failed", error: "address_not_recognized",
+      status: "failed", error: "address_not_recognized", parsed_data: withDecodeMeta({ kind: "decode_info" }, decodeMeta, text),
     });
     return new Response(JSON.stringify({ ok: false, reason: "address_not_recognized" }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -367,16 +483,23 @@ Deno.serve(async (req) => {
   }
 
   // owner特定
+  const inboundKeyCandidates = Array.from(new Set([
+    parsed.inboundKey,
+    parsed.source === "salonboard" && !parsed.inboundKey.startsWith("sb-") ? `sb-${parsed.inboundKey}` : null,
+    parsed.inboundKey.startsWith("sb-") ? parsed.inboundKey.replace(/^sb-/, "") : null,
+  ].filter(Boolean))) as string[];
+
   const { data: profile } = await supabase
     .from("profiles")
     .select("id, salon_name, line_channel_access_token")
-    .eq("inbound_key", parsed.inboundKey)
+    .in("inbound_key", inboundKeyCandidates)
+    .limit(1)
     .maybeSingle();
 
   if (!profile) {
     await supabase.from("external_reservation_logs").insert({
       source: parsed.source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
-      status: "failed", error: "owner_not_found",
+      status: "failed", error: `owner_not_found: inbound_key=${parsed.inboundKey}`, parsed_data: withDecodeMeta({ inbound_key_candidates: inboundKeyCandidates }, decodeMeta, text),
     });
     return new Response(JSON.stringify({ ok: false, reason: "owner_not_found" }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -419,7 +542,7 @@ Deno.serve(async (req) => {
   // === 認証メール / Gmail転送確認メールの検出（予約以外メールも保存）===
   const verifyHaystack = `${subject}\n${text}`;
   const isGmailForwardConfirm = /forwarding-noreply@google\.com/i.test(from) || /Gmail の転送の確認/.test(subject);
-  const verifyKeywords = /(認証コード|確認コード|ワンタイムパスワード|verification code|confirm your email|本人確認|二段階認証|2段階認証|認証用|ログイン認証|サロンボード.*(認証|確認)|salon\s?board.*(verif|confirm))/i;
+  const verifyKeywords = /(認証コード|確認コード|ワンタイムパスワード|verification code|confirm your email|本人確認|二段階認証|2段階認証|認証用|ログイン認証|サロンボード.*(認証|確認|有効)|salon\s?board[\s\S]{0,200}(verif|confirm|認証|確認|有効)|メールアドレス[\s\S]{0,120}(確認|有効))/i;
   const isVerificationMail = isGmailForwardConfirm || verifyKeywords.test(verifyHaystack);
   if (isVerificationMail) {
     const urlMatch = text.match(/https?:\/\/\S+/g) || [];
@@ -430,11 +553,11 @@ Deno.serve(async (req) => {
       owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject,
       raw_text: text.slice(0, 8000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
       status: vstatus, error: isGmailForwardConfirm ? "gmail_forward_confirm" : "verification_mail",
-      parsed_data: {
+      parsed_data: withDecodeMeta({
         kind: vstatus,
         verification_urls: urlMatch.slice(0, 5),
         verification_code: codeMatch ? codeMatch[1] : null,
-      },
+      }, decodeMeta, text),
     });
     return new Response(JSON.stringify({ ok: true, kind: vstatus }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -509,7 +632,7 @@ Deno.serve(async (req) => {
         }).eq("id", target.id);
         await supabase.from("external_reservation_logs").insert({
           owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
-          parsed_data: extracted, status: "cancelled_booking", matched_customer_id: target.customer_id, created_booking_id: target.id,
+          parsed_data: withDecodeMeta(extracted, decodeMeta, text), status: "cancelled_booking", matched_customer_id: target.customer_id, created_booking_id: target.id,
         });
         try {
           await supabase.functions.invoke("notify-owner-booking", {
@@ -524,7 +647,7 @@ Deno.serve(async (req) => {
       await supabase.from("bookings").update({ sync_status: "needs_review" }).eq("id", target.id);
       await supabase.from("external_reservation_logs").insert({
         owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
-        parsed_data: extracted, status: "needs_review", matched_customer_id: target.customer_id, created_booking_id: target.id,
+        parsed_data: withDecodeMeta(extracted, decodeMeta, text), status: "needs_review", matched_customer_id: target.customer_id, created_booking_id: target.id,
         error: inFlight ? "cancel_during_sync_inflight" : "cancel_external_id_mismatch",
       });
       return new Response(JSON.stringify({ ok: true, needs_review: true, booking_id: target.id }), {
@@ -535,7 +658,7 @@ Deno.serve(async (req) => {
     // CRITICAL: オーナーに即時通知（放置すると無断キャンセルとして扱われクレーム化）
     const { data: logRow } = await supabase.from("external_reservation_logs").insert({
       owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
-      parsed_data: extracted, status: "needs_review", error: "cancel_target_not_found",
+      parsed_data: withDecodeMeta(extracted, decodeMeta, text), status: "needs_review", error: "cancel_target_not_found",
     }).select("id").single();
     try {
       await supabase.functions.invoke("notify-owner-booking", {
@@ -580,7 +703,7 @@ Deno.serve(async (req) => {
       await supabase.from("bookings").update(updates).eq("id", target.id);
       await supabase.from("external_reservation_logs").insert({
         owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
-        parsed_data: extracted, status: "updated", matched_customer_id: target.customer_id, created_booking_id: target.id,
+        parsed_data: withDecodeMeta(extracted, decodeMeta, text), status: "updated", matched_customer_id: target.customer_id, created_booking_id: target.id,
       });
       try { await supabase.functions.invoke("notify-owner-booking", { body: { bookingId: target.id, eventType: "changed" } }); } catch {}
       return new Response(JSON.stringify({ ok: true, updated: true, booking_id: target.id }), {
@@ -593,7 +716,7 @@ Deno.serve(async (req) => {
     }
     await supabase.from("external_reservation_logs").insert({
       owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
-      parsed_data: extracted, status: "needs_review",
+      parsed_data: withDecodeMeta(extracted, decodeMeta, text), status: "needs_review",
       created_booking_id: target?.id ?? null,
       error: !extId ? "changed_no_external_id" : !target ? "changed_target_not_found" : inFlight ? "changed_during_sync_inflight" : "changed_low_confidence",
     });
@@ -606,7 +729,7 @@ Deno.serve(async (req) => {
   if (!extracted.is_reservation || extracted.event_type !== "created") {
     await supabase.from("external_reservation_logs").insert({
       owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
-      parsed_data: extracted, status: "skipped", error: `event=${extracted.event_type}`,
+      parsed_data: withDecodeMeta(extracted, decodeMeta, text), status: "skipped", error: `event=${extracted.event_type}`,
     });
     return new Response(JSON.stringify({ ok: true, skipped: true }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -638,7 +761,7 @@ Deno.serve(async (req) => {
   if (confidence === "low" && !extracted.customer_name && !phone) {
     await supabase.from("external_reservation_logs").insert({
       owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
-      parsed_data: { ...extracted, _confidence: confidence, _garble_score: garbleScore },
+      parsed_data: withDecodeMeta({ ...extracted, _confidence: confidence, _garble_score: garbleScore }, decodeMeta, text),
       status: "needs_review", error: "low_confidence_no_identity",
     });
     return new Response(JSON.stringify({ ok: true, needs_review: true }), {
@@ -659,7 +782,7 @@ Deno.serve(async (req) => {
     if (missing.length > 0) {
       await supabase.from("external_reservation_logs").insert({
         owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
-        parsed_data: { ...extracted, _confidence: confidence, _garble_score: garbleScore, _missing: missing },
+        parsed_data: withDecodeMeta({ ...extracted, _confidence: confidence, _garble_score: garbleScore, _missing: missing }, decodeMeta, text),
         status: "needs_review", error: `salonboard_created_missing: ${missing.join(",")}`,
       });
       return new Response(JSON.stringify({ ok: true, needs_review: true, missing }), {
@@ -710,7 +833,7 @@ Deno.serve(async (req) => {
     if (custErr) {
       await supabase.from("external_reservation_logs").insert({
         owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
-        parsed_data: extracted, status: "failed", error: `customer_insert: ${custErr.message}`,
+        parsed_data: withDecodeMeta(extracted, decodeMeta, text), status: "failed", error: `customer_insert: ${custErr.message}`,
       });
       return new Response(JSON.stringify({ ok: false, reason: "customer_insert_failed" }), {
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -763,7 +886,7 @@ Deno.serve(async (req) => {
       }
       await supabase.from("external_reservation_logs").insert({
         owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
-        parsed_data: extracted, status: "updated", matched_customer_id: customerId, created_booking_id: existing.id,
+        parsed_data: withDecodeMeta(extracted, decodeMeta, text), status: "updated", matched_customer_id: customerId, created_booking_id: existing.id,
       });
       return new Response(JSON.stringify({ ok: true, updated: true, booking_id: existing.id }), {
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -794,7 +917,7 @@ Deno.serve(async (req) => {
     if (bookErr2) {
       await supabase.from("external_reservation_logs").insert({
         owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
-        parsed_data: extracted, status: "failed", matched_customer_id: customerId,
+        parsed_data: withDecodeMeta(extracted, decodeMeta, text), status: "failed", matched_customer_id: customerId,
         error: `booking_insert(conflict): ${bookErr2.message}`,
       });
       return new Response(JSON.stringify({ ok: false, reason: "booking_insert_failed" }), {
@@ -803,7 +926,7 @@ Deno.serve(async (req) => {
     }
     await supabase.from("external_reservation_logs").insert({
       owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
-      parsed_data: extracted, status: "needs_review", matched_customer_id: customerId,
+      parsed_data: withDecodeMeta(extracted, decodeMeta, text), status: "needs_review", matched_customer_id: customerId,
       created_booking_id: booking2.id, error: `same_external_id_different_person: existing=${existingName}`,
     });
     return new Response(JSON.stringify({ ok: true, conflict_resolved: true, booking_id: booking2.id }), {
@@ -856,7 +979,7 @@ Deno.serve(async (req) => {
   if (bookErr) {
     await supabase.from("external_reservation_logs").insert({
       owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
-      parsed_data: extracted, status: "failed", matched_customer_id: customerId,
+      parsed_data: withDecodeMeta(extracted, decodeMeta, text), status: "failed", matched_customer_id: customerId,
       error: `booking_insert: ${bookErr.message}`,
     });
     return new Response(JSON.stringify({ ok: false, reason: "booking_insert_failed" }), {
@@ -867,7 +990,7 @@ Deno.serve(async (req) => {
   // ログ記録
   await supabase.from("external_reservation_logs").insert({
     owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
-    parsed_data: extracted, status: sbIncomplete ? "needs_review" : "created",
+    parsed_data: withDecodeMeta(extracted, decodeMeta, text), status: sbIncomplete ? "needs_review" : "created",
     matched_customer_id: customerId, created_booking_id: booking.id,
     error: sbIncomplete ? `salonboard_partial: ${!hasExtId ? "no_ext_id " : ""}${!menuResolved ? "no_menu" : ""}`.trim() : null,
   });
