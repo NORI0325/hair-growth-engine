@@ -378,6 +378,28 @@ Deno.serve(async (req) => {
   const ownerId = profile.id as string;
   const source = inferSourceFromContent(subject, text, parsed.source);
 
+  // === 冪等チェック (重複Webhookを早期遮断) ===
+  const headersObj: Record<string, string> = {};
+  for (const [k, v] of Object.entries(data.headers || {})) {
+    headersObj[String(k)] = String(v ?? "");
+  }
+  const inboundMessageId = extractInboundMessageId(data, headersObj);
+  const idempotencyKey = await computeIdempotencyKey(inboundMessageId, from, subject, text);
+  {
+    const { data: dup } = await supabase
+      .from("external_reservation_logs")
+      .select("id, status, created_booking_id")
+      .eq("owner_id", ownerId)
+      .eq("idempotency_key", idempotencyKey)
+      .maybeSingle();
+    if (dup) {
+      console.log("inbound dedup hit:", { idempotencyKey, dupId: dup.id });
+      return new Response(JSON.stringify({ ok: true, deduped: true, log_id: dup.id, booking_id: dup.created_booking_id }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+  }
+
   // プライマリ店舗を取得（無ければ最古の店舗）
   let locationId: string | null = null;
   {
