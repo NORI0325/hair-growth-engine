@@ -358,7 +358,7 @@ Deno.serve(async (req) => {
   const parsed = parseInboundAddress(to);
   if (!parsed) {
     await supabase.from("external_reservation_logs").insert({
-      source: "unknown", raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000),
+      source: "unknown", raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
       status: "failed", error: "address_not_recognized",
     });
     return new Response(JSON.stringify({ ok: false, reason: "address_not_recognized" }), {
@@ -375,7 +375,7 @@ Deno.serve(async (req) => {
 
   if (!profile) {
     await supabase.from("external_reservation_logs").insert({
-      source: parsed.source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000),
+      source: parsed.source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
       status: "failed", error: "owner_not_found",
     });
     return new Response(JSON.stringify({ ok: false, reason: "owner_not_found" }), {
@@ -422,7 +422,7 @@ Deno.serve(async (req) => {
     extracted = await aiExtractReservation(source, subject, text);
   } catch (e: any) {
     await supabase.from("external_reservation_logs").insert({
-      owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000),
+      owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
       status: "failed", error: `ai_error: ${e.message}`,
     });
     return new Response(JSON.stringify({ ok: false, reason: "ai_failed" }), {
@@ -464,7 +464,7 @@ Deno.serve(async (req) => {
     if (target) {
       await supabase.from("bookings").update({ status: "cancelled" }).eq("id", target.id);
       await supabase.from("external_reservation_logs").insert({
-        owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000),
+        owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
         parsed_data: extracted, status: "cancelled_booking", matched_customer_id: target.customer_id, created_booking_id: target.id,
       });
       try {
@@ -479,7 +479,7 @@ Deno.serve(async (req) => {
     // マッチなし → needs_review（誤キャンセルを避けるため自動更新しない）
     // CRITICAL: オーナーに即時通知（放置すると無断キャンセルとして扱われクレーム化）
     const { data: logRow } = await supabase.from("external_reservation_logs").insert({
-      owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000),
+      owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
       parsed_data: extracted, status: "needs_review", error: "cancel_target_not_found",
     }).select("id").single();
     try {
@@ -505,7 +505,7 @@ Deno.serve(async (req) => {
   // 予約以外（変更・問い合わせ等）はログだけ残す
   if (!extracted.is_reservation || extracted.event_type !== "created") {
     await supabase.from("external_reservation_logs").insert({
-      owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000),
+      owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
       parsed_data: extracted, status: "skipped", error: `event=${extracted.event_type}`,
     });
     return new Response(JSON.stringify({ ok: true, skipped: true }), {
@@ -537,7 +537,7 @@ Deno.serve(async (req) => {
   // 信頼度lowで氏名なしなら、自動登録せず needs_review として人手確認に
   if (confidence === "low" && !extracted.customer_name && !phone) {
     await supabase.from("external_reservation_logs").insert({
-      owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000),
+      owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
       parsed_data: { ...extracted, _confidence: confidence, _garble_score: garbleScore },
       status: "needs_review", error: "low_confidence_no_identity",
     });
@@ -587,7 +587,7 @@ Deno.serve(async (req) => {
       .single();
     if (custErr) {
       await supabase.from("external_reservation_logs").insert({
-        owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000),
+        owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
         parsed_data: extracted, status: "failed", error: `customer_insert: ${custErr.message}`,
       });
       return new Response(JSON.stringify({ ok: false, reason: "customer_insert_failed" }), {
@@ -640,7 +640,7 @@ Deno.serve(async (req) => {
         await supabase.from("bookings").update(updates).eq("id", existing.id);
       }
       await supabase.from("external_reservation_logs").insert({
-        owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000),
+        owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
         parsed_data: extracted, status: "updated", matched_customer_id: customerId, created_booking_id: existing.id,
       });
       return new Response(JSON.stringify({ ok: true, updated: true, booking_id: existing.id }), {
@@ -671,7 +671,7 @@ Deno.serve(async (req) => {
       .single();
     if (bookErr2) {
       await supabase.from("external_reservation_logs").insert({
-        owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000),
+        owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
         parsed_data: extracted, status: "failed", matched_customer_id: customerId,
         error: `booking_insert(conflict): ${bookErr2.message}`,
       });
@@ -680,7 +680,7 @@ Deno.serve(async (req) => {
       });
     }
     await supabase.from("external_reservation_logs").insert({
-      owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000),
+      owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
       parsed_data: extracted, status: "needs_review", matched_customer_id: customerId,
       created_booking_id: booking2.id, error: `same_external_id_different_person: existing=${existingName}`,
     });
@@ -714,7 +714,7 @@ Deno.serve(async (req) => {
 
   if (bookErr) {
     await supabase.from("external_reservation_logs").insert({
-      owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000),
+      owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
       parsed_data: extracted, status: "failed", matched_customer_id: customerId,
       error: `booking_insert: ${bookErr.message}`,
     });
@@ -725,7 +725,7 @@ Deno.serve(async (req) => {
 
   // ログ記録
   await supabase.from("external_reservation_logs").insert({
-    owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000),
+    owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
     parsed_data: extracted, status: "created",
     matched_customer_id: customerId, created_booking_id: booking.id,
   });
