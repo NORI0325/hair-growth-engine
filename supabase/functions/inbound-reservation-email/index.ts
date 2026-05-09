@@ -620,6 +620,28 @@ Deno.serve(async (req) => {
     });
   }
 
+  // === source='salonboard' は確定予約として登録するための厳格な前提条件チェック ===
+  // 必須: customer_name / booking_date / booking_time / (menu or notes) / confidence!=low
+  // 不足する場合は bookings を作成せず needs_review として SyncReview に出す
+  if (source === "salonboard") {
+    const missing: string[] = [];
+    if (!extracted.customer_name) missing.push("customer_name");
+    if (!extracted.booking_date) missing.push("booking_date");
+    if (!extracted.booking_time || !/^\d{2}:\d{2}$/.test(extracted.booking_time)) missing.push("booking_time");
+    if (!extracted.menu && !extracted.notes) missing.push("menu_or_notes");
+    if (confidence === "low") missing.push("low_confidence");
+    if (missing.length > 0) {
+      await supabase.from("external_reservation_logs").insert({
+        owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
+        parsed_data: { ...extracted, _confidence: confidence, _garble_score: garbleScore, _missing: missing },
+        status: "needs_review", error: `salonboard_created_missing: ${missing.join(",")}`,
+      });
+      return new Response(JSON.stringify({ ok: true, needs_review: true, missing }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+  }
+
   const fullName = (extracted.customer_name || "お客様").toString().slice(0, 100);
 
   // 既存顧客マッチング（電話番号優先 → 氏名）。ただし氏名「お客様」では引かない
@@ -768,21 +790,40 @@ Deno.serve(async (req) => {
     ? extracted.booking_time + ":00"
     : "10:00:00";
 
+  // source='salonboard' は確定予約として登録（ダブルブッキング防止のため枠を必ずブロック）
+  // external_reservation_id が無い、もしくはメニュー解決が不完全な場合は枠は確保しつつ needs_review
+  const isSalonboard = source === "salonboard";
+  const hasExtId = !!(extracted.external_reservation_id && String(extracted.external_reservation_id).trim());
+  const menuResolved = !!extracted.menu;
+  const sbIncomplete = isSalonboard && (!hasExtId || !menuResolved);
+
+  const insertPayload: any = {
+    owner_id: ownerId,
+    location_id: locationId,
+    customer_id: customerId,
+    booking_date: extracted.booking_date,
+    booking_time: bookingTime,
+    menu: (extracted.menu || "メニュー未指定").toString().slice(0, 200),
+    notes: extracted.notes ? String(extracted.notes).slice(0, 500) : null,
+    revenue: extracted.revenue || 0,
+    external_reservation_id: externalId,
+  };
+
+  if (isSalonboard) {
+    insertPayload.status = "confirmed";
+    insertPayload.external_source = "salonboard_email";
+    insertPayload.source_channel = "salonboard";
+    insertPayload.sync_status = sbIncomplete ? "needs_review" : "success";
+    insertPayload.needs_manual_review = sbIncomplete;
+    insertPayload.last_synced_at = new Date().toISOString();
+  } else {
+    insertPayload.status = "pending";
+    insertPayload.external_source = source;
+  }
+
   const { data: booking, error: bookErr } = await supabase
     .from("bookings")
-    .insert({
-      owner_id: ownerId,
-      location_id: locationId,
-      customer_id: customerId,
-      booking_date: extracted.booking_date,
-      booking_time: bookingTime,
-      menu: (extracted.menu || "メニュー未指定").toString().slice(0, 200),
-      notes: extracted.notes ? String(extracted.notes).slice(0, 500) : null,
-      status: "pending",
-      revenue: extracted.revenue || 0,
-      external_source: source,
-      external_reservation_id: externalId,
-    })
+    .insert(insertPayload)
     .select("id")
     .single();
 
@@ -800,8 +841,9 @@ Deno.serve(async (req) => {
   // ログ記録
   await supabase.from("external_reservation_logs").insert({
     owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
-    parsed_data: extracted, status: "created",
+    parsed_data: extracted, status: sbIncomplete ? "needs_review" : "created",
     matched_customer_id: customerId, created_booking_id: booking.id,
+    error: sbIncomplete ? `salonboard_partial: ${!hasExtId ? "no_ext_id " : ""}${!menuResolved ? "no_menu" : ""}`.trim() : null,
   });
 
   // オーナー通知（メール）
