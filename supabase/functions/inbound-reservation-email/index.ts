@@ -175,6 +175,7 @@ ${text.slice(0, 8000)}`;
           booking_date: { type: "string", description: "予約日 YYYY-MM-DD" },
           booking_time: { type: "string", description: "予約時刻 HH:MM" },
           menu: { type: "string", description: "メニュー名" },
+          staff_name: { type: "string", description: "担当スタッフ名（本文に明示されているもののみ。未記載なら null）" },
           revenue: { type: "number", description: "予約金額（税込円）" },
           external_reservation_id: { type: "string", description: "サイト固有の予約番号" },
           notes: { type: "string", description: "備考・要望" },
