@@ -235,6 +235,7 @@ export async function createReservation(page: Page, input: CreateReservationInpu
   }
   if (input.setmenuId && await page.locator('select[name="setmenuId"]').count()) {
     await page.locator('select[name="setmenuId"]').selectOption({ value: toStr(input.setmenuId) });
+    await page.waitForLoadState("networkidle", { timeout: 3000 }).catch(() => {});
     logger.info(await getCreateFormDiag(page, input, "after setmenuId selection"), "salonboard create form diag");
   }
   if (input.menuCategoryCdList && await page.locator('select[name="menuCategoryCdList"]').count()) {
