@@ -369,6 +369,7 @@ Deno.serve(async (req) => {
   // Webhook payload正規化
   // 対応: Resend Inbound (data.to/from) / ImprovMX (To, From, Subject) / Mailgun (recipient, sender)
   const data = payload.data || payload;
+  const dataHeaders = normalizeHeaders(data.headers || {});
   const pickStr = (...vals: any[]): string => {
     for (const v of vals) {
       if (typeof v === "string" && v.trim()) return v.trim();
@@ -388,6 +389,7 @@ Deno.serve(async (req) => {
   const to = pickStr(data.to, data.To, data.envelope?.to, data.recipient, data["X-Original-To"]);
   const from = pickStr(data.from, data.From, data.sender, data.envelope?.from);
   let subject: string = pickStr(data.subject, data.Subject, data.headers?.Subject);
+  let decodeMeta = emptyDecodeMeta();
 
   // 本文抽出: text → html(タグ除去) → body_plain → body_html → 全payloadフォールバック
   const htmlToText = (html: string) => html
@@ -436,18 +438,23 @@ Deno.serve(async (req) => {
       if (body) text = body;
       // メタデータも上書き（webhookに無い場合の保険）
       if (!subject && fetched.subject) subject = fetched.subject;
+      decodeMeta = fetched.decodeMeta;
     }
   }
 
-  // 文字コード判定 & デコード（ISO-2022-JPなど）
-  text = decodeJapaneseIfNeeded(text);
-  subject = decodeJapaneseIfNeeded(subject);
+  // 文字コード判定 & デコード（ISO-2022-JP / Shift_JIS / MIME encoded-word など）
+  const textDecoded = decodeEmailText(text, dataHeaders, decodeMeta.detected_charset);
+  const subjectDecoded = decodeEmailText(subject, dataHeaders, textDecoded.meta.detected_charset || decodeMeta.detected_charset);
+  text = textDecoded.text;
+  subject = subjectDecoded.text;
+  if (textDecoded.meta.decode_status !== "not_needed" && textDecoded.meta.decode_status !== "already_utf8") {
+    decodeMeta = textDecoded.meta;
+  } else if (decodeMeta.decode_status === "not_needed") {
+    decodeMeta = textDecoded.meta;
+  }
 
   // === 冪等キー計算 (重複Webhook防止) ===
-  const headersObj: Record<string, string> = {};
-  for (const [k, v] of Object.entries(data.headers || {})) {
-    headersObj[String(k)] = String(v ?? "");
-  }
+  const headersObj: Record<string, string> = dataHeaders;
   const inboundMessageId = extractInboundMessageId(data, headersObj);
   const idempotencyKey = await computeIdempotencyKey(inboundMessageId, from, subject, text);
 
