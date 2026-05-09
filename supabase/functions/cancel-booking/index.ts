@@ -111,6 +111,13 @@ Deno.serve(async (req) => {
       });
     } catch (e) { console.error("owner notify error:", e); }
 
+    // サロンボード側にもキャンセル同期（external_reservation_id があれば）
+    try {
+      await supabase.functions.invoke("sync-cancel-to-salonboard", {
+        body: { booking_id: booking.id, internal_secret: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") },
+      });
+    } catch (e) { console.error("sync-cancel invoke error:", e); }
+
     return new Response(JSON.stringify({ success: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
