@@ -790,21 +790,40 @@ Deno.serve(async (req) => {
     ? extracted.booking_time + ":00"
     : "10:00:00";
 
+  // source='salonboard' は確定予約として登録（ダブルブッキング防止のため枠を必ずブロック）
+  // external_reservation_id が無い、もしくはメニュー解決が不完全な場合は枠は確保しつつ needs_review
+  const isSalonboard = source === "salonboard";
+  const hasExtId = !!(extracted.external_reservation_id && String(extracted.external_reservation_id).trim());
+  const menuResolved = !!extracted.menu;
+  const sbIncomplete = isSalonboard && (!hasExtId || !menuResolved);
+
+  const insertPayload: any = {
+    owner_id: ownerId,
+    location_id: locationId,
+    customer_id: customerId,
+    booking_date: extracted.booking_date,
+    booking_time: bookingTime,
+    menu: (extracted.menu || "メニュー未指定").toString().slice(0, 200),
+    notes: extracted.notes ? String(extracted.notes).slice(0, 500) : null,
+    revenue: extracted.revenue || 0,
+    external_reservation_id: externalId,
+  };
+
+  if (isSalonboard) {
+    insertPayload.status = "confirmed";
+    insertPayload.external_source = "salonboard_email";
+    insertPayload.source_channel = "salonboard";
+    insertPayload.sync_status = sbIncomplete ? "needs_review" : "success";
+    insertPayload.needs_manual_review = sbIncomplete;
+    insertPayload.last_synced_at = new Date().toISOString();
+  } else {
+    insertPayload.status = "pending";
+    insertPayload.external_source = source;
+  }
+
   const { data: booking, error: bookErr } = await supabase
     .from("bookings")
-    .insert({
-      owner_id: ownerId,
-      location_id: locationId,
-      customer_id: customerId,
-      booking_date: extracted.booking_date,
-      booking_time: bookingTime,
-      menu: (extracted.menu || "メニュー未指定").toString().slice(0, 200),
-      notes: extracted.notes ? String(extracted.notes).slice(0, 500) : null,
-      status: "pending",
-      revenue: extracted.revenue || 0,
-      external_source: source,
-      external_reservation_id: externalId,
-    })
+    .insert(insertPayload)
     .select("id")
     .single();
 
@@ -822,8 +841,9 @@ Deno.serve(async (req) => {
   // ログ記録
   await supabase.from("external_reservation_logs").insert({
     owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
-    parsed_data: extracted, status: "created",
+    parsed_data: extracted, status: sbIncomplete ? "needs_review" : "created",
     matched_customer_id: customerId, created_booking_id: booking.id,
+    error: sbIncomplete ? `salonboard_partial: ${!hasExtId ? "no_ext_id " : ""}${!menuResolved ? "no_menu" : ""}`.trim() : null,
   });
 
   // オーナー通知（メール）
