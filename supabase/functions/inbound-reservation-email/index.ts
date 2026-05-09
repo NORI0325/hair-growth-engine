@@ -156,7 +156,7 @@ function decodeEmailText(input: string, headers: Record<string, string> = {}, fa
 }
 
 // Resend Inbound API から本文を取得（webhookにはメタデータしか含まれないため）
-async function fetchInboundEmailBody(emailId: string): Promise<{ text: string; html: string; subject: string; from: string; to: string[] } | null> {
+async function fetchInboundEmailBody(emailId: string): Promise<{ text: string; html: string; subject: string; from: string; to: string[]; decodeMeta: DecodeMeta } | null> {
   if (!RESEND_API_KEY || !emailId) return null;
   try {
     const res = await fetch(`https://api.resend.com/emails/inbound/${emailId}`, {
@@ -167,26 +167,19 @@ async function fetchInboundEmailBody(emailId: string): Promise<{ text: string; h
       return null;
     }
     const data = await res.json();
-    // headersから charset を抽出
-    let charset = "";
-    const headers = data.headers || {};
-    const ct = headers["Content-Type"] || headers["content-type"] || "";
-    const m = String(ct).match(/charset=["']?([\w-]+)/i);
-    if (m) charset = m[1];
+    const headers = normalizeHeaders(data.headers || {});
+    const fallbackCharset = extractCharset(headers["content-type"] || "");
 
     let text = data.text || "";
     let html = data.html || "";
     let subject = data.subject || "";
 
-    if (charset) {
-      text = decodeWithCharset(text, charset);
-      html = decodeWithCharset(html, charset);
-      subject = decodeWithCharset(subject, charset);
-    }
-    // 補助: ISO-2022-JPエスケープが残っていれば追加デコード
-    text = decodeJapaneseIfNeeded(text);
-    html = decodeJapaneseIfNeeded(html);
-    subject = decodeJapaneseIfNeeded(subject);
+    const textDecoded = decodeEmailText(text, headers, fallbackCharset);
+    const htmlDecoded = decodeEmailText(html, headers, fallbackCharset);
+    const subjectDecoded = decodeEmailText(subject, headers, fallbackCharset);
+    text = textDecoded.text;
+    html = htmlDecoded.text;
+    subject = subjectDecoded.text;
 
     return {
       text,
@@ -194,6 +187,7 @@ async function fetchInboundEmailBody(emailId: string): Promise<{ text: string; h
       subject,
       from: typeof data.from === "string" ? data.from : (data.from?.email || ""),
       to: Array.isArray(data.to) ? data.to : (data.to ? [data.to] : []),
+      decodeMeta: textDecoded.meta.decode_status !== "not_needed" ? textDecoded.meta : subjectDecoded.meta,
     };
   } catch (e) {
     console.error("Resend inbound fetch exception:", e);
