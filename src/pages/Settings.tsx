@@ -887,7 +887,7 @@ const Settings = () => {
               ref={(el) => { if (el && highlightSection === "inbound") el.scrollIntoView({ behavior: "smooth", block: "start" }); }}
             >
               <SectionTitle icon={Inbox} title="外部予約サイト自動連携"
-                desc="ホットペッパー / minimo / 楽天Beautyの予約通知メールを下記アドレスへ転送するだけ。DNSや専門設定は一切不要、コピー＆ペーストで完了します。" />
+                desc="サロンボード / ホットペッパー / minimo / 楽天Beautyの予約通知メールを下記アドレスへ転送するだけ。DNSや専門設定は一切不要、コピー＆ペーストで完了します。" />
 
               <div className="border border-gold/40 bg-gradient-to-br from-gold/5 to-transparent p-5 rounded-sm">
                 <div className="flex items-start gap-3 mb-4">
@@ -899,6 +899,7 @@ const Settings = () => {
                 </div>
 
                 {[
+                  { code: "sb", label: "サロンボード", color: "text-emerald-500", desc: "サロンボードの予約お知らせメール（ネット予約・キャンセル等の通知メール）の転送先には、このアドレスを登録してください。" },
                   { code: "hp", label: "ホットペッパービューティー", color: "text-orange-500" },
                   { code: "mn", label: "minimo（ミニモ）", color: "text-pink-500" },
                   { code: "rb", label: "楽天ビューティ", color: "text-red-500" },
@@ -907,6 +908,7 @@ const Settings = () => {
                   return (
                     <div key={site.code} className="border border-border bg-background p-4 mb-3 last:mb-0">
                       <div className={`font-serif text-sm ${site.color} mb-2 font-medium`}>{site.label}</div>
+                      {site.desc && <p className="text-[11px] text-muted-foreground mb-2">{site.desc}</p>}
                       <div className="flex items-center gap-2">
                         <Input value={addr} readOnly className="rounded-none border-x-0 border-t-0 px-0 text-sm font-mono bg-transparent" />
                         <Button type="button" size="sm"
