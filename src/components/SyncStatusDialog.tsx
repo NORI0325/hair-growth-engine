@@ -227,6 +227,12 @@ export default function SyncStatusDialog({ bookingId, open, onOpenChange }: Prop
                     サロンボードへ再送信（直前照合あり）
                   </Button>
                 )}
+                {(result === "match" || result === "conflict") && data?.local?.external_reservation_id && (
+                  <Button variant="outline" className="rounded-none w-full" onClick={resendUpdateToSalonboard} disabled={!!acting}>
+                    {acting === "resend" ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
+                    サロンボードへ変更を再送（日時 / 担当 / 所要時間）
+                  </Button>
+                )}
                 {result === "external_only" && (
                   <Button className="rounded-none w-full" onClick={importFromSalonboard} disabled={!!acting}>
                     {acting === "import" ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
