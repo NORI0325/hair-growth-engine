@@ -110,6 +110,40 @@ const CalendarPage = () => {
     calRef.current?.getApi().changeView(v);
   };
 
+  // ドラッグ/リサイズ/担当変更を検知し、サロンボード側へ自動同期
+  const onEventChange = async (info: any) => {
+    const b: Booking | undefined = info.event.extendedProps?.booking;
+    if (!b) return;
+    if (b.status === "cancelled") { info.revert(); toast.warning("キャンセル済の予約は変更できません"); return; }
+
+    const start: Date = info.event.start;
+    const end: Date | null = info.event.end;
+    const newDate = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}-${String(start.getDate()).padStart(2, "0")}`;
+    const newTime = `${String(start.getHours()).padStart(2, "0")}:${String(start.getMinutes()).padStart(2, "0")}:00`;
+    const dur = end ? Math.max(15, Math.round((end.getTime() - start.getTime()) / 60000)) : (b.total_duration_minutes ?? 60);
+    const newResource = info.newResource ?? info.event.getResources()?.[0];
+    const newStaffId = newResource ? (newResource.id === "_unassigned" ? null : newResource.id) : b.staff_id;
+
+    const updates: any = { booking_date: newDate, booking_time: newTime, total_duration_minutes: dur, staff_id: newStaffId };
+    const { error } = await supabase.from("bookings").update(updates).eq("id", b.id);
+    if (error) { info.revert(); toast.error("更新失敗: " + error.message); return; }
+    toast.success("予約を更新しました");
+
+    // サロンボード反映（external_reservation_id がある予約のみ）
+    if (b.external_reservation_id || b.external_source) {
+      supabase.functions.invoke("sync-update-to-salonboard", {
+        body: { booking_id: b.id },
+      }).then(({ data, error: e }) => {
+        if (e) { toast.warning("サロンボード同期に失敗しました（再送可）"); return; }
+        const r: any = data;
+        if (r?.skipped && r?.reason === "no_external_reservation_id") toast.warning("サロンボード側予約IDが無いため要確認に登録しました");
+        else if (r?.skipped && r?.reason === "staff_mapping_missing") toast.warning("担当スタッフ未マッピングのため要確認に登録しました");
+        else if (r?.success) toast.success("サロンボードへ変更を送信しました");
+      }).catch((err) => { console.error("[sync-update] error:", err); });
+    }
+    load();
+  };
+
   const updateStatus = async (id: string, status: "pending" | "confirmed" | "completed" | "cancelled" | "no_show") => {
     const { error } = await supabase.from("bookings").update({ status }).eq("id", id);
     if (error) { toast.error("更新失敗: " + error.message); return; }
