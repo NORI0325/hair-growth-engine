@@ -977,9 +977,9 @@ Deno.serve(async (req) => {
   // source='salonboard' は確定予約として登録（ダブルブッキング防止のため枠を必ずブロック）
   // external_reservation_id が無い、もしくはメニュー解決が不完全な場合は枠は確保しつつ needs_review
   const isSalonboard = source === "salonboard";
-  const hasExtId = !!(extracted.external_reservation_id && String(extracted.external_reservation_id).trim());
+  const hasExtIdFinal = !!(extracted.external_reservation_id && String(extracted.external_reservation_id).trim());
   const menuResolved = !!extracted.menu;
-  const sbIncomplete = isSalonboard && (!hasExtId || !menuResolved);
+  const sbIncomplete = isSalonboard && (!hasExtIdFinal || !menuResolved);
 
   const insertPayload: any = {
     owner_id: ownerId,
