@@ -725,15 +725,37 @@ Deno.serve(async (req) => {
     });
   }
 
-  // 予約以外（問い合わせ等）はログだけ残す
+  // === ヒューリスティック・オーバーライド ===
+  // 文字化けでAIが is_reservation=false / event_type=other を返しても、
+  // 件名や本文に明確な予約シグナルがある場合は created 扱いにして needs_review へ流す。
+  // （予約通知メールが何も表示されずに消えるのを防ぐ）
   if (!extracted.is_reservation || extracted.event_type !== "created") {
-    await supabase.from("external_reservation_logs").insert({
-      owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
-      parsed_data: withDecodeMeta(extracted, decodeMeta, text), status: "skipped", error: `event=${extracted.event_type}`,
-    });
-    return new Response(JSON.stringify({ ok: true, skipped: true }), {
-      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    const haystack = `${subject}\n${text.slice(0, 2000)}`;
+    const reservationCue =
+      /予約連絡|予約のお知らせ|予約確定|新規ご予約|ご予約が入りました|ご予約のお知らせ|予約番号|来店予定|RESERVATION/i.test(haystack);
+    const cancelCue = /キャンセル|取消|予約解除/.test(haystack);
+    const changeCue = /変更|日時変更|内容変更/.test(haystack);
+    const hasExtId = !!(extracted.external_reservation_id && String(extracted.external_reservation_id).trim());
+    const hasDate = !!extracted.booking_date;
+    const hasTime = !!(extracted.booking_time && /^\d{2}:\d{2}$/.test(extracted.booking_time));
+
+    if (reservationCue && !cancelCue && !changeCue && (hasExtId || (hasDate && hasTime))) {
+      console.warn("event_type override: AI=", extracted.event_type, "→ created (reservation cue + identifiers present)");
+      extracted.event_type = "created";
+      extracted.is_reservation = true;
+      extracted._event_type_overridden = true;
+    } else {
+      await supabase.from("external_reservation_logs").insert({
+        owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
+        parsed_data: withDecodeMeta(extracted, decodeMeta, text),
+        // 予約シグナルがあるのに識別子が無いケースは needs_review、純粋な雑メールは skipped
+        status: reservationCue ? "needs_review" : "skipped",
+        error: reservationCue ? `reservation_cue_but_no_identifiers` : `event=${extracted.event_type}`,
+      });
+      return new Response(JSON.stringify({ ok: true, skipped: !reservationCue, needs_review: reservationCue }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
   }
 
   // 抽出結果の検証: AIがハルシネーションしていないか確認
