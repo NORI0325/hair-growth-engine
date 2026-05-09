@@ -58,10 +58,23 @@ export default function SyncStatusDialog({ bookingId, open, onOpenChange }: Prop
     else if (r?.action === "refused") toast.warning(r.message);
     else if (r?.action === "skipped") toast.info(r.message);
     else if (r?.error) toast.error(r.message ?? r.error);
+  };
+
+  const resendUpdateToSalonboard = async () => {
+    if (!confirm("SalonBoost側の最新内容（日時 / 担当 / 所要時間）でサロンボードを更新します。\nメニュー変更は対象外です。\n\n実行しますか？")) return;
+    setActing("resend");
+    const { data: res, error } = await supabase.functions.invoke("sync-update-to-salonboard", {
+      body: { booking_id: bookingId },
+    });
+    setActing(null);
+    if (error) { toast.error("変更同期失敗: " + error.message); return; }
+    const r: any = res;
+    if (r?.success && !r?.skipped) toast.success("サロンボードへ変更を送信しました");
+    else if (r?.skipped) toast.warning(r?.reason ?? "スキップしました");
+    else if (r?.error) toast.error(r?.message ?? r.error);
     await run();
   };
 
-  const importFromSalonboard = async () => {
     const ext = data?.external?.items?.[0];
     if (!ext?.external_reservation_id) { toast.error("external_reservation_id が取得できないため取り込みできません"); return; }
     if (!data?.local?.location_id_for_import && !confirm("location_id を SalonBoost 側の予約と同じにして取り込みます。よろしいですか？")) return;
