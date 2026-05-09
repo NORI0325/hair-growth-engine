@@ -185,17 +185,24 @@ const PublicBooking = () => {
       if (!slug || !form.date || !hasStaff) { setAvailableSlots({}); return; }
       const duration = totalDuration > 0 ? totalDuration : 60;
       setSlotsLoading(true);
-      const { data, error } = await supabase.rpc("get_available_slots" as any, {
-        _salon_slug: slug,
-        _date: form.date,
-        _duration_minutes: duration,
-      });
+      const { data, error } = form.staff_id
+        ? await supabase.rpc("get_available_slots_by_staff" as any, {
+            _salon_slug: slug,
+            _date: form.date,
+            _duration_minutes: duration,
+            _staff_id: form.staff_id,
+          })
+        : await supabase.rpc("get_available_slots" as any, {
+            _salon_slug: slug,
+            _date: form.date,
+            _duration_minutes: duration,
+          });
       setSlotsLoading(false);
       if (error || !data) { setAvailableSlots({}); return; }
       const map: Record<string, number> = {};
       for (const row of data as any[]) {
         const t = String(row.slot_time).slice(0, 5);
-        map[t] = row.available_staff_count;
+        map[t] = form.staff_id ? (row.available_staff_ids?.length || 0) : row.available_staff_count;
       }
       setAvailableSlots(map);
       // 選択中の時刻が空きでなくなったらクリア
@@ -205,7 +212,7 @@ const PublicBooking = () => {
     };
     fetchSlots();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug, form.date, totalDuration, hasStaff]);
+  }, [slug, form.date, form.staff_id, totalDuration, hasStaff]);
 
   const handleSubmit = async () => {
     const parsed = schema.safeParse(form);
