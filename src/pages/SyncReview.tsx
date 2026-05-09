@@ -41,13 +41,27 @@ interface Row {
   latest_job?: { id: string; status: string; error_type: string | null; error_message: string | null; updated_at: string; job_type: string } | null;
 }
 
+interface InboundLog {
+  id: string;
+  source: string;
+  raw_subject: string | null;
+  raw_from: string | null;
+  status: string;
+  error: string | null;
+  parsed_data: any;
+  created_booking_id: string | null;
+  created_at: string;
+}
+
 export default function SyncReview() {
   const { user } = useAuth();
   const [items, setItems] = useState<Row[]>([]);
+  const [inboundLogs, setInboundLogs] = useState<InboundLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncTarget, setSyncTarget] = useState<string | null>(null);
   const [diffTarget, setDiffTarget] = useState<Row | null>(null);
   const [errorTarget, setErrorTarget] = useState<Row | null>(null);
+  const [inboundDetail, setInboundDetail] = useState<InboundLog | null>(null);
 
   const load = async () => {
     if (!user) return;
