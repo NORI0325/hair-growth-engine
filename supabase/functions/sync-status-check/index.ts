@@ -117,9 +117,11 @@ Deno.serve(async (req) => {
 
     // 最新の sync_jobs
     const { data: lastJob } = await supabase.from("sync_jobs")
-      .select("id, status, error_type, error_message, updated_at, job_type")
+      .select("id, status, error_type, error_message, updated_at, created_at, job_type")
       .eq("reservation_id", b.id).eq("target_channel", "salonboard")
-      .order("updated_at", { ascending: false }).limit(1).maybeSingle();
+      .order("updated_at", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(1).maybeSingle();
 
     const local_payload = {
       booking_id: b.id,
@@ -313,6 +315,25 @@ Deno.serve(async (req) => {
       : null;
     if (newStatus) {
       await supabase.from("bookings").update({ sync_status: newStatus }).eq("id", b.id);
+    }
+
+    // match の場合、未完了のままになっている create_reservation ジョブを success として整合させる
+    // （Worker callback が失敗 / 取りこぼした場合の自己修復）
+    if (result === "match") {
+      await supabase.from("sync_jobs")
+        .update({
+          status: "success",
+          error_type: null,
+          error_message: null,
+          response_payload: {
+            success: true,
+            reconciled_by: "sync-status-check",
+            external_reservation_id: b.external_reservation_id,
+          },
+        })
+        .eq("reservation_id", b.id)
+        .eq("target_channel", "salonboard")
+        .in("status", ["pending", "processing"]);
     }
 
     return new Response(JSON.stringify({
