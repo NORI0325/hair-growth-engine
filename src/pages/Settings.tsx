@@ -923,7 +923,8 @@ const Settings = () => {
                       </div>
                     </div>
                   );
-                })}
+                  });
+                })()}
               </div>
 
               <details className="border border-border p-4 bg-secondary/10 rounded-sm" open>
