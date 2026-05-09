@@ -27,12 +27,18 @@ interface MenuItem {
   price: number;
 }
 
+interface StaffOption {
+  id: string;
+  name: string;
+}
+
 const schema = z.object({
   full_name: z.string().trim().min(1, "お名前を入力してください").max(100),
   phone: z.string().trim().min(8, "正しい電話番号を入力してください").max(20),
   email: z.string().trim().email("正しいメールアドレス").max(255).optional().or(z.literal("")),
   date: z.string().min(1, "日付を選択してください"),
   time: z.string().min(1, "時間を選択してください"),
+  staff_id: z.string().optional(),
   notes: z.string().max(500).optional(),
 });
 
@@ -43,6 +49,7 @@ const PublicBooking = () => {
   const [salonName, setSalonName] = useState("Salon");
   const [salonExists, setSalonExists] = useState(false);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [staffOptions, setStaffOptions] = useState<StaffOption[]>([]);
   const [fallbackMenus, setFallbackMenus] = useState<string[]>([]);
   const [selectedMenus, setSelectedMenus] = useState<string[]>([]);
   const [completed, setCompleted] = useState(false);
@@ -53,7 +60,7 @@ const PublicBooking = () => {
   const [openTime, setOpenTime] = useState<string>("10:00");
   const [closeTime, setCloseTime] = useState<string>("19:00");
 
-  const [form, setForm] = useState({ full_name: "", phone: "", email: "", date: "", time: "", notes: "" });
+  const [form, setForm] = useState({ full_name: "", phone: "", email: "", date: "", time: "", staff_id: "", notes: "" });
 
   useEffect(() => {
     const load = async () => {
@@ -125,9 +132,20 @@ const PublicBooking = () => {
             .eq("bookable", true);
           setHasStaff((count || 0) > 0);
           setMaxStaffCount(Math.max(1, count || 1));
+
+          const { data: staff } = await supabase
+            .from("staff")
+            .select("id, name")
+            .eq("owner_id", ownerId)
+            .eq("location_id", locationId)
+            .eq("active", true)
+            .eq("bookable", true)
+            .order("sort_order", { ascending: true });
+          setStaffOptions((staff as StaffOption[]) || []);
         } else {
           // location_id 不明時は店舗共通(NULL)メニューや全店混在を避けるため、メニュー非表示
           setMenuItems([]);
+          setStaffOptions([]);
           setHasStaff(false);
           setMaxStaffCount(1);
         }
