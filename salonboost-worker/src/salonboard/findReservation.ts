@@ -6,6 +6,8 @@ export interface FindReservationInput {
   time?: string | number;             // HHMM
   customerName?: string;
   stylistId?: string | number;
+  stylistName?: string;
+  menuName?: string;
 }
 
 export interface FoundReservation {
@@ -24,6 +26,12 @@ const SCHEDULE_URLS = [
   (d: string) => `https://salonboard.com/CLP/bt/schedule/salonScheduleDay/?date=${d}`,
 ];
 
+const ACTION_BUTTON_TEXTS = new Set([
+  "詳細", "変更", "予約登録", "キャンセル", "メモ編集",
+  "お客様情報", "カルテ", "受付チェック", "会計", "新規予約",
+  "予約", "コピー", "削除",
+]);
+
 function expectedDateLabel(yyyymmdd: string): string {
   const m = parseInt(yyyymmdd.slice(4, 6), 10);
   const d = parseInt(yyyymmdd.slice(6, 8), 10);
@@ -33,35 +41,15 @@ function expectedDateLabel(yyyymmdd: string): string {
 function isErrorPage(body: string): boolean {
   const lower = body.toLowerCase();
   return lower.includes("指定されたurlは存在しません") ||
-    lower.includes("エラー") ||
-    lower.includes("error") ||
-    lower.includes("not found") ||
-    lower.includes("ページが見つかりません");
-}
-
-function pageLooksValid(
-  body: string,
-  wantLabel: string,
-  wantTimeFmt: string | null,
-  wantName: string | null,
-): boolean {
-  if (isErrorPage(body)) return false;
-  if (body.includes(wantLabel)) return true;
-  if (wantTimeFmt && body.includes(wantTimeFmt)) return true;
-  if (wantName && body.includes(wantName)) return true;
-  // salonSchedule ページの特徴: 予約表らしい要素があるか
-  if (body.includes("予約") && body.includes(":")) return true;
-  return false;
+    lower.includes("ページが見つかりません") ||
+    lower.includes("not found");
 }
 
 async function navigateToDate(
   page: Page,
   date: string,
-  wantTimeFmt: string | null,
-  wantName: string | null,
 ): Promise<{ url: string; title: string; bodySnippet: string; matched: boolean }> {
   const want = expectedDateLabel(date);
-
   for (const build of SCHEDULE_URLS) {
     const url = build(date);
     try {
@@ -72,9 +60,9 @@ async function navigateToDate(
       }
       const title = await page.title().catch(() => "");
       const body = await page.locator("body").innerText().catch(() => "");
-      const matched = pageLooksValid(body, want, wantTimeFmt, wantName);
+      const matched = !isErrorPage(body) && (body.includes(want) || body.includes("予約"));
       logger.info({
-        tried: url, finalUrl: page.url(), title, matched, wantLabel: want,
+        tried: url, finalUrl: page.url(), title, matched,
         snippet: body.slice(0, 300), errorPage: isErrorPage(body),
       }, "findReservations: nav attempt");
       if (matched) return { url: page.url(), title, bodySnippet: body.slice(0, 600), matched: true };
@@ -82,118 +70,228 @@ async function navigateToDate(
       logger.warn({ url, e: e instanceof Error ? e.message : String(e) }, "findReservations: nav failed");
     }
   }
-
-  // フォーム送信フォールバック: salonSchedule の date input を直接書き換えて submit
-  try {
-    const fallbackUrl = SCHEDULE_URLS[0](date);
-    await page.goto(fallbackUrl, { waitUntil: "domcontentloaded" });
-    const submitted = await page.evaluate((d) => {
-      const forms = Array.from(document.querySelectorAll("form")) as HTMLFormElement[];
-      for (const f of forms) {
-        const inp = f.querySelector('input[name="date"], input[name="targetDate"]') as HTMLInputElement | null;
-        if (inp) {
-          inp.value = d;
-          f.submit();
-          return f.action || true;
-        }
-      }
-      return false;
-    }, date);
-    logger.info({ submitted }, "findReservations: form submit fallback");
-    if (submitted) {
-      await page.waitForLoadState("domcontentloaded", { timeout: 15000 }).catch(() => {});
-    }
-  } catch (e) {
-    logger.warn({ e: e instanceof Error ? e.message : String(e) }, "findReservations: form fallback failed");
-  }
-
   const title = await page.title().catch(() => "");
   const body = await page.locator("body").innerText().catch(() => "");
-  const matched = pageLooksValid(body, want, wantTimeFmt, wantName);
-  return { url: page.url(), title, bodySnippet: body.slice(0, 600), matched };
+  return { url: page.url(), title, bodySnippet: body.slice(0, 600), matched: !isErrorPage(body) };
 }
 
-async function dumpFrame(frame: Page | Frame, label: string, want: { time: string | null; name: string | null }) {
-  const counts = await frame.evaluate(() => ({
-    aTotal: document.querySelectorAll("a").length,
-    aWithHref: document.querySelectorAll("a[href]").length,
-    aReserveLike: document.querySelectorAll(
-      'a[href*="reserve" i], a[href*="rsv" i], a[href*="reservation" i], a[href*="detail" i], a[href*="edit" i]',
-    ).length,
-    onclickRsv: document.querySelectorAll('[onclick*="rsv" i], [onclick*="reserve" i]').length,
-    tdReserved: document.querySelectorAll("td.reserved, td.rsv, td.fcReserved, td.reservation").length,
-    table: document.querySelectorAll("table").length,
-    iframe: document.querySelectorAll("iframe").length,
-  })).catch(() => null);
-  logger.info({ label, counts }, "findReservations: frame counts");
+function normalize(s: string): string {
+  return s.replace(/[\s　]/g, "").toLowerCase();
+}
 
-  const allHrefs = await frame.evaluate(() => {
-    const arr = Array.from(document.querySelectorAll("a[href]")) as HTMLAnchorElement[];
-    return arr.map((a) => a.getAttribute("href") || "").filter((h) => /reserve|rsv|reservation|detail|edit/i.test(h)).slice(0, 30);
+function extractCustomerName(raw: string): string | null {
+  // "てすと太郎（テスト）様" → "てすと太郎"
+  const m = raw.match(/^([^（(]+?)(?:[（(][^）)]*[）)])?\s*様/);
+  if (m) return m[1].trim();
+  return raw.replace(/様$/, "").trim() || null;
+}
+
+/**
+ * スケジュール画面の予約枠を探してクリックし、ポップアップから情報を抽出する
+ */
+async function findSlotsAndExtractFromPopups(
+  page: Page,
+  input: FindReservationInput,
+  wantTimeFmt: string | null,
+  wantName: string | null,
+): Promise<FoundReservation[]> {
+  const results: FoundReservation[] = [];
+
+  // 候補となる予約セルを取得（td.reserved系、a[onclick*="reserve"]系）
+  const slots = await page.evaluate(() => {
+    const out: { idx: number; tag: string; text: string; html: string; hasOnclick: boolean }[] = [];
+    const sels = [
+      "td.reserved", "td.fcReserved", "td.rsv", "td.reservation",
+      'a[onclick*="reserve" i]', 'a[onclick*="rsv" i]',
+      '[class*="reserve" i][class*="cell" i]',
+      'div[class*="reserved" i]',
+    ];
+    const elems = new Set<Element>();
+    for (const s of sels) {
+      try { document.querySelectorAll(s).forEach((e) => elems.add(e)); } catch {}
+    }
+    let i = 0;
+    for (const el of elems) {
+      const text = ((el as HTMLElement).innerText || el.textContent || "").replace(/\s+/g, " ").trim();
+      // 操作ボタン単体は除外
+      if (text.length < 1) continue;
+      out.push({
+        idx: i++,
+        tag: el.tagName,
+        text: text.slice(0, 100),
+        html: (el as HTMLElement).outerHTML.slice(0, 200),
+        hasOnclick: !!el.getAttribute("onclick"),
+      });
+      (el as HTMLElement).setAttribute("data-sb-find-idx", String(i - 1));
+    }
+    return out;
   }).catch(() => []);
-  logger.info({ label, reserveLikeHrefs: allHrefs }, "findReservations: reserve-like hrefs");
 
-  if (want.name) {
-    const nameHits = await frame.evaluate((n) => {
-      const out: string[] = [];
-      const all = document.querySelectorAll("td, a, div, span, li");
-      for (const el of all) {
-        const t = ((el as HTMLElement).innerText || el.textContent || "").trim();
-        if (t && t.includes(n) && t.length < 200) {
-          out.push(t.replace(/\s+/g, " "));
-          if (out.length >= 8) break;
-        }
-      }
-      return out;
-    }, want.name).catch(() => []);
-    logger.info({ label, name: want.name, nameHits }, "findReservations: nameHits");
-  }
+  logger.info({ slotCount: slots.length, slotSample: slots.slice(0, 8) }, "findReservations: slots discovered");
 
-  if (want.time) {
-    const timeHits = await frame.evaluate((t) => {
-      const out: { tag: string; text: string; html: string }[] = [];
-      const all = document.querySelectorAll("td, a, div, span, li");
-      for (const el of all) {
-        const text = ((el as HTMLElement).innerText || el.textContent || "").trim();
-        if (text && text.includes(t) && text.length < 200) {
-          out.push({
-            tag: el.tagName,
-            text: text.replace(/\s+/g, " "),
-            html: (el as HTMLElement).outerHTML.slice(0, 200),
-          });
-          if (out.length >= 6) break;
-        }
-      }
-      return out;
-    }, want.time).catch(() => []);
-    logger.info({ label, time: want.time, timeHits }, "findReservations: timeHits");
-  }
-}
-
-async function extractCandidatesFromFrame(frame: Page | Frame): Promise<Array<{ reserveId: string | null; href: string | null; onclick: string | null; rowText: string; cellText: string }>> {
-  return await frame.evaluate(() => {
-    const results: Array<{ reserveId: string | null; href: string | null; onclick: string | null; rowText: string; cellText: string }> = [];
-    const seen = new Set<Element>();
-    const push = (el: Element) => {
-      if (seen.has(el)) return;
-      seen.add(el);
-      const href = (el as HTMLAnchorElement).getAttribute?.("href") || null;
-      const onclick = el.getAttribute("onclick") || null;
-      const combined = `${href || ""} ${onclick || ""}`;
-      const m = combined.match(/(?:rsvId|reserveId|reserve_id|reservationId)['"=:\s]+([A-Z0-9]+)/i)
-        || combined.match(/\/(BE\d{6,})/i);
-      const cellText = ((el as HTMLElement).innerText || el.textContent || "").replace(/\s+/g, " ").trim();
-      const row = el.closest("tr,td,div,li");
-      const rowText = ((row as HTMLElement | null)?.innerText || row?.textContent || "").replace(/\s+/g, " ").trim();
-      results.push({ reserveId: m?.[1] ?? null, href, onclick, rowText, cellText });
-    };
-    document.querySelectorAll(
-      'a[href*="reserve" i], a[href*="rsv" i], a[href*="reservation" i], a[href*="detail" i], a[href*="edit" i]'
-    ).forEach(push);
-    document.querySelectorAll('[onclick*="rsv" i], [onclick*="reserve" i], [onclick*="reservation" i]').forEach(push);
-    document.querySelectorAll("td.reserved, td.rsv, td.fcReserved, td.reservation").forEach(push);
+  if (slots.length === 0) {
     return results;
-  }).catch(() => []);
+  }
+
+  // 時刻フィルタで候補を絞る（あれば）
+  const candidateIdxs = slots
+    .filter((s) => {
+      if (!wantTimeFmt) return true;
+      // セルのテキストに時刻が含まれているか、含まれていなくても全部試す対象
+      return true;
+    })
+    .map((s) => s.idx)
+    .slice(0, 12); // 最大12件まで試行
+
+  for (const idx of candidateIdxs) {
+    try {
+      const slotInfo = slots.find((s) => s.idx === idx);
+      const sel = `[data-sb-find-idx="${idx}"]`;
+      const exists = await page.locator(sel).count();
+      if (!exists) continue;
+
+      // ポップアップを閉じる試行（前回のポップアップが残っている場合）
+      await page.keyboard.press("Escape").catch(() => {});
+      await page.waitForTimeout(150);
+
+      await page.locator(sel).first().click({ timeout: 3000 }).catch(() => {});
+      // ポップアップ要素を待つ
+      const popupAppeared = await page
+        .waitForSelector("#reserveItemName, .reserveCustomerName, #reserveItemUketsuke", { timeout: 2500, state: "visible" })
+        .then(() => true)
+        .catch(() => false);
+
+      if (!popupAppeared) {
+        logger.info({ idx, clickedSlotText: slotInfo?.text, popupVisible: false }, "findReservations: no popup after click");
+        continue;
+      }
+
+      const popupData = await page.evaluate(() => {
+        const q = (s: string) => document.querySelector(s);
+        const txt = (s: string) => {
+          const el = q(s) as HTMLElement | null;
+          return el ? (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim() : "";
+        };
+        const reserveCustomerName = txt(".reserveCustomerName") || txt("#reserveItemName");
+        // メニュー、スタッフ等は ID が不明のためポップアップ全体テキストから抽出も保険として
+        const popupRoot = q("#reserveItemName")?.closest(".mod_column02, .mod_box_01, .modalContents, .pop, [class*='popup' i]") as HTMLElement | null;
+        const popupOuterHTML = popupRoot ? popupRoot.outerHTML.slice(0, 2000) : "";
+        const popupText = popupRoot ? (popupRoot.innerText || "").replace(/\s+/g, " ").trim() : "";
+
+        // 詳細・変更ボタン
+        const findBtn = (label: string): { html: string; href: string; onclick: string } | null => {
+          const all = Array.from(document.querySelectorAll("a, button"));
+          for (const el of all) {
+            const t = ((el as HTMLElement).innerText || el.textContent || "").trim();
+            if (t === label) {
+              return {
+                html: (el as HTMLElement).outerHTML.slice(0, 300),
+                href: (el as HTMLAnchorElement).getAttribute("href") || "",
+                onclick: el.getAttribute("onclick") || "",
+              };
+            }
+          }
+          return null;
+        };
+        const detailBtn = findBtn("詳細");
+        const changeBtn = findBtn("変更");
+
+        // reserveId 抽出
+        const combined = `${detailBtn?.href || ""} ${detailBtn?.onclick || ""} ${changeBtn?.href || ""} ${changeBtn?.onclick || ""} ${popupOuterHTML}`;
+        const m = combined.match(/(?:rsvId|reserveId|reserve_id|reservationId)['"=:\s]+([A-Z0-9]+)/i)
+          || combined.match(/\/(BE\d{6,})/i)
+          || combined.match(/['"]([A-Z0-9]{8,})['"]/);
+        const extractedReserveId = m ? m[1] : null;
+
+        // hidden inputs
+        const hiddens: Record<string, string> = {};
+        document.querySelectorAll("input[type='hidden']").forEach((inp) => {
+          const name = (inp as HTMLInputElement).name;
+          const v = (inp as HTMLInputElement).value;
+          if (name && /reserve|rsv/i.test(name) && v) hiddens[name] = v;
+        });
+
+        return {
+          reserveCustomerName,
+          popupText: popupText.slice(0, 1000),
+          popupOuterHTML,
+          detailBtn,
+          changeBtn,
+          extractedReserveId,
+          hiddens,
+        };
+      }).catch(() => null);
+
+      logger.info({
+        idx,
+        clickedSlotText: slotInfo?.text,
+        popupVisible: true,
+        reserveCustomerName: popupData?.reserveCustomerName,
+        popupTextSnippet: popupData?.popupText?.slice(0, 300),
+        detailButton: popupData?.detailBtn?.html,
+        changeButton: popupData?.changeBtn?.html,
+        extractedReserveId: popupData?.extractedReserveId,
+        hiddens: popupData?.hiddens,
+      }, "findReservations: popup data");
+
+      if (!popupData || !popupData.reserveCustomerName) {
+        await page.keyboard.press("Escape").catch(() => {});
+        continue;
+      }
+
+      const customerName = extractCustomerName(popupData.reserveCustomerName);
+      const popupText = popupData.popupText || "";
+      const timeMatch = (slotInfo?.text || "").match(/(\d{1,2}):(\d{2})/) || popupText.match(/(\d{1,2}):(\d{2})/);
+      const time = timeMatch ? `${timeMatch[1].padStart(2, "0")}:${timeMatch[2]}` : null;
+
+      // 顧客名一致判定
+      let nameOk = true;
+      if (wantName && customerName) {
+        const a = normalize(customerName);
+        const b = normalize(wantName);
+        nameOk = a.includes(b) || b.includes(a);
+      }
+
+      // 時刻一致判定
+      let timeOk = true;
+      if (wantTimeFmt && time) {
+        timeOk = time === wantTimeFmt;
+      }
+
+      const reserveId = popupData.extractedReserveId
+        || Object.values(popupData.hiddens || {})[0]
+        || null;
+
+      // 最低条件: 顧客名が存在
+      if (!customerName) {
+        await page.keyboard.press("Escape").catch(() => {});
+        continue;
+      }
+
+      if (nameOk && timeOk) {
+        results.push({
+          external_reservation_id: reserveId,
+          date: input.date,
+          time,
+          stylistName: null,
+          customerName,
+          menu: null,
+          raw: (popupData.popupText || popupData.reserveCustomerName).slice(0, 300),
+        });
+        logger.info({ reserveId, customerName, time }, "findReservations: matched");
+      }
+
+      await page.keyboard.press("Escape").catch(() => {});
+      await page.waitForTimeout(120);
+
+      // 1件見つかれば早期return
+      if (results.length >= 1 && wantName) break;
+    } catch (e) {
+      logger.warn({ idx, e: e instanceof Error ? e.message : String(e) }, "findReservations: slot click failed");
+    }
+  }
+
+  return results;
 }
 
 export async function findReservations(
@@ -206,97 +304,26 @@ export async function findReservations(
   const wantTimeFmt = wantTime ? `${wantTime.slice(0, 2)}:${wantTime.slice(2, 4)}` : null;
   const wantName = input.customerName?.trim() || null;
 
-  const nav = await navigateToDate(page, input.date, wantTimeFmt, wantName);
+  const nav = await navigateToDate(page, input.date);
   if (/\/login/i.test(page.url())) throw new Error("session_expired_in_find");
   logger.info({
     finalUrl: nav.url, title: nav.title, bodySnippet: nav.bodySnippet,
-    expectedDateLabel: expectedDateLabel(input.date), dateLabelMatched: nav.matched,
+    expectedDateLabel: expectedDateLabel(input.date), matched: nav.matched,
   }, "findReservations: navigation result");
 
   if (!nav.matched) {
-    logger.warn({ finalUrl: nav.url }, "findReservations: page did not match expected date/time/name");
+    logger.warn({ finalUrl: nav.url }, "findReservations: page did not match expected date");
+    return [];
   }
 
-  // メインフレーム + 全iframe を走査
-  const frames: Array<{ name: string; frame: Page | Frame }> = [{ name: "main", frame: page }];
-  for (const f of page.frames()) {
-    if (f === page.mainFrame()) continue;
-    frames.push({ name: f.url() || "iframe", frame: f });
-  }
-  logger.info({ frameCount: frames.length, frames: frames.map((f) => f.name) }, "findReservations: frames");
-
-  const allCandidates: Array<{ reserveId: string | null; href: string | null; onclick: string | null; rowText: string; cellText: string }> = [];
-  for (const { name, frame } of frames) {
-    await dumpFrame(frame, name, { time: wantTimeFmt, name: wantName });
-    const cands = await extractCandidatesFromFrame(frame);
-    logger.info({ frame: name, candidateCount: cands.length }, "findReservations: frame candidates");
-    for (const [i, c] of cands.slice(0, 5).entries()) {
-      logger.info({
-        frame: name, idx: i, reserveId: c.reserveId,
-        href: c.href?.slice(0, 140),
-        onclick: c.onclick?.slice(0, 140),
-        cellText: c.cellText.slice(0, 100),
-        rowText: c.rowText.slice(0, 200),
-      }, "findReservations: candidate");
-    }
-    allCandidates.push(...cands);
-  }
-
-  // 重複除去
-  const seen = new Set<string>();
-  const unique = allCandidates.filter((it) => {
-    const k = it.reserveId || `${it.href || ""}|${it.rowText.slice(0, 40)}`;
-    if (seen.has(k)) return false;
-    seen.add(k);
-    return true;
-  });
-
-  const parsed: FoundReservation[] = unique.map((it) => ({
-    external_reservation_id: it.reserveId,
-    date: input.date,
-    time: extractTime(it.rowText) || extractTime(it.cellText),
-    stylistName: null,
-    customerName: extractName(it.rowText) || extractName(it.cellText),
-    menu: null,
-    raw: (it.rowText || it.cellText).slice(0, 300),
-  }));
+  const results = await findSlotsAndExtractFromPopups(page, input, wantTimeFmt, wantName);
 
   logger.info({
-    parsedCount: parsed.length,
-    extractedTimes: parsed.map((p) => p.time).slice(0, 8),
-    extractedNames: parsed.map((p) => p.customerName).slice(0, 8),
-    extractedIds: parsed.map((p) => p.external_reservation_id).slice(0, 8),
-  }, "findReservations: parsed");
+    count: results.length,
+    sample: results.slice(0, 3).map((r) => ({
+      id: r.external_reservation_id, name: r.customerName, time: r.time,
+    })),
+  }, "findReservations: done");
 
-  const filtered = parsed.filter((r) => {
-    if (wantTimeFmt && r.time && r.time !== wantTimeFmt) return false;
-    if (wantName && r.customerName) {
-      const a = normalize(r.customerName);
-      const b = normalize(wantName);
-      if (!a.includes(b) && !b.includes(a)) return false;
-    }
-    return true;
-  });
-
-  logger.info({ filteredCount: filtered.length, wantTimeFmt, wantName }, "findReservations: filtered");
-  return filtered;
-}
-
-function normalize(s: string): string {
-  return s.replace(/[\s　]/g, "").toLowerCase();
-}
-
-function extractTime(text: string): string | null {
-  const m = text.match(/(\d{1,2}):(\d{2})/);
-  return m ? `${m[1].padStart(2, "0")}:${m[2]}` : null;
-}
-
-function extractName(text: string): string | null {
-  const cleaned = text
-    .replace(/予約登録|キャンセル|変更|詳細|新規|空き|休み|休業|ブロック/g, "")
-    .replace(/\d{1,2}:\d{2}/g, "")
-    .trim();
-  if (!cleaned) return null;
-  if (cleaned.length > 60) return cleaned.slice(0, 60);
-  return cleaned;
+  return results;
 }
