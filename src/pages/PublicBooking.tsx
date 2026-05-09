@@ -221,6 +221,7 @@ const PublicBooking = () => {
       _booking_time: parsed.data.time,
       _menus: selectedMenus,
       _notes: parsed.data.notes || "",
+      _staff_id: parsed.data.staff_id || null,
     };
     console.log("[PublicBooking] submit payload:", payload);
     const { data, error } = await supabase.rpc("public_create_booking_v3" as any, payload);
