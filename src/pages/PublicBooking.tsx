@@ -446,6 +446,34 @@ const PublicBooking = () => {
           </div>
 
           <div>
+            <p className="eyebrow mb-3">No.07 — 担当者を選択 / Stylist</p>
+            <div className="space-y-px bg-border border border-border">
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, staff_id: "" })}
+                className={`w-full flex items-center justify-between px-4 py-4 text-left transition-all ${!form.staff_id ? "bg-primary text-primary-foreground" : "bg-card hover:bg-secondary"}`}
+              >
+                <span className="font-serif text-sm">指名なし / フリー</span>
+                {!form.staff_id && <Check className="w-4 h-4" />}
+              </button>
+              {staffOptions.map((staff) => {
+                const active = form.staff_id === staff.id;
+                return (
+                  <button
+                    key={staff.id}
+                    type="button"
+                    onClick={() => setForm({ ...form, staff_id: staff.id })}
+                    className={`w-full flex items-center justify-between px-4 py-4 text-left transition-all ${active ? "bg-primary text-primary-foreground" : "bg-card hover:bg-secondary"}`}
+                  >
+                    <span className="font-serif text-sm">{staff.name}</span>
+                    {active && <Check className="w-4 h-4" />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
             <Label className="eyebrow mb-3 block">ご要望 / Notes（任意）</Label>
             <Textarea rows={2} value={form.notes} onChange={e => setForm({...form, notes: e.target.value})}
               className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold resize-none" />
