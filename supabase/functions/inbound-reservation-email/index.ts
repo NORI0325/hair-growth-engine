@@ -542,7 +542,7 @@ Deno.serve(async (req) => {
   // === 認証メール / Gmail転送確認メールの検出（予約以外メールも保存）===
   const verifyHaystack = `${subject}\n${text}`;
   const isGmailForwardConfirm = /forwarding-noreply@google\.com/i.test(from) || /Gmail の転送の確認/.test(subject);
-  const verifyKeywords = /(認証コード|確認コード|ワンタイムパスワード|verification code|confirm your email|本人確認|二段階認証|2段階認証|認証用|ログイン認証|サロンボード.*(認証|確認)|salon\s?board.*(verif|confirm))/i;
+  const verifyKeywords = /(認証コード|確認コード|ワンタイムパスワード|verification code|confirm your email|本人確認|二段階認証|2段階認証|認証用|ログイン認証|サロンボード.*(認証|確認|有効)|salon\s?board[\s\S]{0,200}(verif|confirm|認証|確認|有効)|メールアドレス[\s\S]{0,120}(確認|有効))/i;
   const isVerificationMail = isGmailForwardConfirm || verifyKeywords.test(verifyHaystack);
   if (isVerificationMail) {
     const urlMatch = text.match(/https?:\/\/\S+/g) || [];
