@@ -3,9 +3,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { AlertTriangle, CheckCheck, FileSearch, GitCompare, AlertCircle, MapPinOff, Send, Download } from "lucide-react";
+import { AlertTriangle, CheckCheck, FileSearch, GitCompare, AlertCircle, MapPinOff, Send, Download, CalendarDays, RefreshCw } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { useCurrentLocationId } from "@/hooks/useLocations";
 import SyncStatusDialog from "@/components/SyncStatusDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
@@ -53,8 +55,21 @@ interface InboundLog {
   created_at: string;
 }
 
+interface DayItem {
+  external_reservation_id: string | null;
+  date: string;
+  time: string | null;
+  customerName: string | null;
+  menu: string | null;
+  stylistName: string | null;
+  classification: "matched" | "salonboard_only" | "conflict";
+  matched_booking_id?: string | null;
+  reason?: string;
+}
+
 export default function SyncReview() {
   const { user } = useAuth();
+  const currentLocationId = useCurrentLocationId();
   const [items, setItems] = useState<Row[]>([]);
   const [inboundLogs, setInboundLogs] = useState<InboundLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -62,6 +77,14 @@ export default function SyncReview() {
   const [diffTarget, setDiffTarget] = useState<Row | null>(null);
   const [errorTarget, setErrorTarget] = useState<Row | null>(null);
   const [inboundDetail, setInboundDetail] = useState<InboundLog | null>(null);
+
+  // サロンボード予約表チェック
+  const today = new Date().toISOString().slice(0, 10);
+  const [dayDate, setDayDate] = useState<string>(today);
+  const [dayLoading, setDayLoading] = useState(false);
+  const [dayItems, setDayItems] = useState<DayItem[] | null>(null);
+  const [dayMeta, setDayMeta] = useState<{ checked_at: string; total_external: number; total_local: number } | null>(null);
+  const [importingKey, setImportingKey] = useState<string | null>(null);
 
   const load = async () => {
     if (!user) return;
