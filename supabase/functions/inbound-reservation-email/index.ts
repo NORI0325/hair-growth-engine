@@ -620,6 +620,28 @@ Deno.serve(async (req) => {
     });
   }
 
+  // === source='salonboard' は確定予約として登録するための厳格な前提条件チェック ===
+  // 必須: customer_name / booking_date / booking_time / (menu or notes) / confidence!=low
+  // 不足する場合は bookings を作成せず needs_review として SyncReview に出す
+  if (source === "salonboard") {
+    const missing: string[] = [];
+    if (!extracted.customer_name) missing.push("customer_name");
+    if (!extracted.booking_date) missing.push("booking_date");
+    if (!extracted.booking_time || !/^\d{2}:\d{2}$/.test(extracted.booking_time)) missing.push("booking_time");
+    if (!extracted.menu && !extracted.notes) missing.push("menu_or_notes");
+    if (confidence === "low") missing.push("low_confidence");
+    if (missing.length > 0) {
+      await supabase.from("external_reservation_logs").insert({
+        owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
+        parsed_data: { ...extracted, _confidence: confidence, _garble_score: garbleScore, _missing: missing },
+        status: "needs_review", error: `salonboard_created_missing: ${missing.join(",")}`,
+      });
+      return new Response(JSON.stringify({ ok: true, needs_review: true, missing }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+  }
+
   const fullName = (extracted.customer_name || "お客様").toString().slice(0, 100);
 
   // 既存顧客マッチング（電話番号優先 → 氏名）。ただし氏名「お客様」では引かない
