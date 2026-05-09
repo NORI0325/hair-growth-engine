@@ -31,6 +31,7 @@ interface Booking {
   total_duration_minutes: number | null;
   customer_id: string;
   external_source: string | null;
+  external_reservation_id: string | null;
   customers: { full_name: string; phone: string | null } | null;
 }
 
