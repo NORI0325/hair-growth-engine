@@ -49,7 +49,7 @@ Deno.serve(async (req) => {
 
     const { data: booking } = await supabase
       .from("bookings")
-      .select("id, owner_id, location_id, booking_date, booking_time, status, external_reservation_id, staff_id, sync_status")
+      .select("id, owner_id, location_id, booking_date, booking_time, status, external_reservation_id, staff_id, sync_status, customer_id, customers(full_name)")
       .eq("id", booking_id).maybeSingle();
     if (!booking) {
       return new Response(JSON.stringify({ error: "booking_not_found" }), {
@@ -104,10 +104,14 @@ Deno.serve(async (req) => {
       if (m?.external_id) stylistId = String(m.external_id);
     }
 
+    const customerName = (booking as any).customers?.full_name ?? null;
+    const timeHHMM = (booking.booking_time ?? "").slice(0, 5).replace(":", "");
     const requestPayload = {
       external_reservation_id: booking.external_reservation_id,
       date: fmtDate(booking.booking_date),
+      time: timeHHMM || null,
       stylistId,
+      customerName,
       noShow: no_show,
     };
 
