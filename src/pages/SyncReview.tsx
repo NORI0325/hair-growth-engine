@@ -41,13 +41,27 @@ interface Row {
   latest_job?: { id: string; status: string; error_type: string | null; error_message: string | null; updated_at: string; job_type: string } | null;
 }
 
+interface InboundLog {
+  id: string;
+  source: string;
+  raw_subject: string | null;
+  raw_from: string | null;
+  status: string;
+  error: string | null;
+  parsed_data: any;
+  created_booking_id: string | null;
+  created_at: string;
+}
+
 export default function SyncReview() {
   const { user } = useAuth();
   const [items, setItems] = useState<Row[]>([]);
+  const [inboundLogs, setInboundLogs] = useState<InboundLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncTarget, setSyncTarget] = useState<string | null>(null);
   const [diffTarget, setDiffTarget] = useState<Row | null>(null);
   const [errorTarget, setErrorTarget] = useState<Row | null>(null);
+  const [inboundDetail, setInboundDetail] = useState<InboundLog | null>(null);
 
   const load = async () => {
     if (!user) return;
@@ -97,6 +111,17 @@ export default function SyncReview() {
     }
 
     setItems(rows.map((r) => ({ ...r, latest_snapshot: snapMap[r.id] ?? null, latest_job: jobMap[r.id] ?? null })));
+
+    // 外部通知メール取り込みの needs_review もここに統合表示
+    const { data: logs } = await supabase
+      .from("external_reservation_logs" as any)
+      .select("id, source, raw_subject, raw_from, status, error, parsed_data, created_booking_id, created_at")
+      .eq("owner_id", user.id)
+      .eq("status", "needs_review")
+      .order("created_at", { ascending: false })
+      .limit(100);
+    setInboundLogs((logs as any) ?? []);
+
     setLoading(false);
   };
 
@@ -224,6 +249,67 @@ export default function SyncReview() {
           })}
         </div>
       )}
+
+      {inboundLogs.length > 0 && (
+        <div className="mt-12">
+          <div className="text-[10px] tracking-luxury text-gold mb-2">INBOUND EMAIL — NEEDS REVIEW</div>
+          <h2 className="font-serif text-xl mb-4">外部通知メール取り込み（要確認）</h2>
+          <div className="space-y-2">
+            {inboundLogs.map((l) => (
+              <Card key={l.id} className="rounded-none border-l-4 border-l-amber-500 p-4">
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge variant="outline" className="rounded-none text-[10px]">{l.source}</Badge>
+                      {l.error && <Badge className="rounded-none bg-amber-50 text-amber-800 border-amber-200 text-[10px]">{l.error}</Badge>}
+                      <span className="text-[11px] text-muted-foreground">{new Date(l.created_at).toLocaleString("ja-JP")}</span>
+                    </div>
+                    <div className="text-sm font-serif truncate">{l.raw_subject ?? "(件名なし)"}</div>
+                    <div className="text-[11px] text-muted-foreground truncate">from: {l.raw_from ?? "—"}</div>
+                    {l.parsed_data && (
+                      <div className="text-[11px] text-muted-foreground">
+                        {l.parsed_data.customer_name ?? "—"} / {l.parsed_data.booking_date ?? "—"} {l.parsed_data.booking_time ?? ""} / ext_id: {l.parsed_data.external_reservation_id ?? "—"}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-2 shrink-0">
+                    <Button variant="outline" size="sm" className="rounded-none" onClick={() => setInboundDetail(l)}>
+                      <FileSearch className="w-3 h-3 mr-1" />詳細
+                    </Button>
+                    <Button variant="ghost" size="sm" className="rounded-none" onClick={async () => {
+                      if (!confirm("この通知を「確認済み」にします。よろしいですか？")) return;
+                      await supabase.from("external_reservation_logs" as any).update({ status: "reviewed" }).eq("id", l.id);
+                      toast.success("確認済みにしました");
+                      load();
+                    }}>
+                      <CheckCheck className="w-3 h-3 mr-1" />確認済みに
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <Dialog open={!!inboundDetail} onOpenChange={(o) => !o && setInboundDetail(null)}>
+        <DialogContent className="rounded-none max-w-2xl">
+          <DialogHeader><DialogTitle className="font-serif">通知メール詳細</DialogTitle></DialogHeader>
+          {inboundDetail && (
+            <div className="space-y-3 text-sm">
+              <Section title="メタ">
+                <div className="text-[11px]">source: {inboundDetail.source} / status: {inboundDetail.status}</div>
+                <div className="text-[11px]">from: {inboundDetail.raw_from} / 受信: {new Date(inboundDetail.created_at).toLocaleString("ja-JP")}</div>
+                <div className="text-[11px]">件名: {inboundDetail.raw_subject}</div>
+                {inboundDetail.error && <div className="text-[11px] text-amber-700">理由: {inboundDetail.error}</div>}
+              </Section>
+              <Section title="parsed_data (AI抽出)">
+                <pre className="text-[11px] bg-muted p-2 overflow-auto max-h-60">{JSON.stringify(inboundDetail.parsed_data, null, 2)}</pre>
+              </Section>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {syncTarget && (
         <SyncStatusDialog

@@ -143,6 +143,8 @@ export type Database = {
           booking_date: string
           booking_time: string
           campaign_id: string | null
+          cancelled_at: string | null
+          cancelled_source: string | null
           coupon_id: string | null
           created_at: string
           customer_id: string
@@ -176,6 +178,8 @@ export type Database = {
           booking_date: string
           booking_time: string
           campaign_id?: string | null
+          cancelled_at?: string | null
+          cancelled_source?: string | null
           coupon_id?: string | null
           created_at?: string
           customer_id: string
@@ -209,6 +213,8 @@ export type Database = {
           booking_date?: string
           booking_time?: string
           campaign_id?: string | null
+          cancelled_at?: string | null
+          cancelled_source?: string | null
           coupon_id?: string | null
           created_at?: string
           customer_id?: string
@@ -1309,6 +1315,8 @@ export type Database = {
           created_booking_id: string | null
           error: string | null
           id: string
+          idempotency_key: string | null
+          inbound_message_id: string | null
           location_id: string | null
           matched_customer_id: string | null
           owner_id: string | null
@@ -1325,6 +1333,8 @@ export type Database = {
           created_booking_id?: string | null
           error?: string | null
           id?: string
+          idempotency_key?: string | null
+          inbound_message_id?: string | null
           location_id?: string | null
           matched_customer_id?: string | null
           owner_id?: string | null
@@ -1341,6 +1351,8 @@ export type Database = {
           created_booking_id?: string | null
           error?: string | null
           id?: string
+          idempotency_key?: string | null
+          inbound_message_id?: string | null
           location_id?: string | null
           matched_customer_id?: string | null
           owner_id?: string | null
