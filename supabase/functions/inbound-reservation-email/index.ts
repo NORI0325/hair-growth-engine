@@ -1027,7 +1027,7 @@ Deno.serve(async (req) => {
     owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
     parsed_data: withDecodeMeta(extracted, decodeMeta, text), status: sbIncomplete ? "needs_review" : "created",
     matched_customer_id: customerId, created_booking_id: booking.id,
-    error: sbIncomplete ? `salonboard_partial: ${!hasExtId ? "no_ext_id " : ""}${!menuResolved ? "no_menu" : ""}`.trim() : null,
+    error: sbIncomplete ? `salonboard_partial: ${!hasExtIdFinal ? "no_ext_id " : ""}${!menuResolved ? "no_menu" : ""}`.trim() : null,
   });
 
   // オーナー通知（メール）
