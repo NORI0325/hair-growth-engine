@@ -62,7 +62,7 @@ const CalendarPage = () => {
     const [b, s, prof] = await Promise.all([
       supabase
         .from("bookings")
-        .select("id, booking_date, booking_time, menu, status, staff_id, total_duration_minutes, customer_id, external_source, customers(full_name, phone)")
+        .select("id, booking_date, booking_time, menu, status, staff_id, total_duration_minutes, customer_id, external_source, external_reservation_id, customers(full_name, phone)")
         .eq("location_id", locationId)
         .gte("booking_date", new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10))
         .order("booking_date"),
