@@ -887,7 +887,7 @@ const Settings = () => {
               ref={(el) => { if (el && highlightSection === "inbound") el.scrollIntoView({ behavior: "smooth", block: "start" }); }}
             >
               <SectionTitle icon={Inbox} title="外部予約サイト自動連携"
-                desc="ホットペッパー / minimo / 楽天Beautyの予約通知メールを下記アドレスへ転送するだけ。DNSや専門設定は一切不要、コピー＆ペーストで完了します。" />
+                desc="サロンボード / ホットペッパー / minimo / 楽天Beautyの予約通知メールを下記アドレスへ転送するだけ。DNSや専門設定は一切不要、コピー＆ペーストで完了します。" />
 
               <div className="border border-gold/40 bg-gradient-to-br from-gold/5 to-transparent p-5 rounded-sm">
                 <div className="flex items-start gap-3 mb-4">
