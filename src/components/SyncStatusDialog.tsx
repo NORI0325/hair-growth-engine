@@ -58,6 +58,20 @@ export default function SyncStatusDialog({ bookingId, open, onOpenChange }: Prop
     else if (r?.action === "refused") toast.warning(r.message);
     else if (r?.action === "skipped") toast.info(r.message);
     else if (r?.error) toast.error(r.message ?? r.error);
+  };
+
+  const resendUpdateToSalonboard = async () => {
+    if (!confirm("SalonBoost側の最新内容（日時 / 担当 / 所要時間）でサロンボードを更新します。\nメニュー変更は対象外です。\n\n実行しますか？")) return;
+    setActing("resend");
+    const { data: res, error } = await supabase.functions.invoke("sync-update-to-salonboard", {
+      body: { booking_id: bookingId },
+    });
+    setActing(null);
+    if (error) { toast.error("変更同期失敗: " + error.message); return; }
+    const r: any = res;
+    if (r?.success && !r?.skipped) toast.success("サロンボードへ変更を送信しました");
+    else if (r?.skipped) toast.warning(r?.reason ?? "スキップしました");
+    else if (r?.error) toast.error(r?.message ?? r.error);
     await run();
   };
 
@@ -211,6 +225,12 @@ export default function SyncStatusDialog({ bookingId, open, onOpenChange }: Prop
                   <Button className="rounded-none w-full" onClick={resendToSalonboard} disabled={!!acting}>
                     {acting === "resend" ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
                     サロンボードへ再送信（直前照合あり）
+                  </Button>
+                )}
+                {(result === "match" || result === "conflict") && data?.local?.external_reservation_id && (
+                  <Button variant="outline" className="rounded-none w-full" onClick={resendUpdateToSalonboard} disabled={!!acting}>
+                    {acting === "resend" ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
+                    サロンボードへ変更を再送（日時 / 担当 / 所要時間）
                   </Button>
                 )}
                 {result === "external_only" && (
