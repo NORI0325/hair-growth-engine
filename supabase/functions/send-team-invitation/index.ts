@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import React from "https://esm.sh/react@18.3.1";
 import { renderAsync } from "https://esm.sh/@react-email/components@0.0.22";
+import { sendTransactionalEmailInternal } from "../_shared/invoke-internal.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -83,24 +84,21 @@ Deno.serve(async (req) => {
     // フォールバック：マジックリンク発行失敗時は従来の招待ページURLを使う
     const inviteUrl = actionLink ?? redirectTo;
 
-    const { error: emailErr } = await supabase.functions.invoke("send-transactional-email", {
-      headers: { Authorization: auth },
-      body: {
-        templateName: "team-invitation",
-        recipientEmail: email,
-        idempotencyKey: `team-invite-${invite.id}`,
-        templateData: {
-          salonName: tenantProfile?.salon_name ?? "サロン",
-          inviterName: inviterProfile?.full_name ?? null,
-          role,
-          inviteUrl,
-        },
+    const er = await sendTransactionalEmailInternal({
+      templateName: "team-invitation",
+      recipientEmail: email,
+      idempotencyKey: `team-invite-${invite.id}`,
+      templateData: {
+        salonName: tenantProfile?.salon_name ?? "サロン",
+        inviterName: inviterProfile?.full_name ?? null,
+        role,
+        inviteUrl,
       },
     });
-    if (emailErr) {
-      console.error("send-team-invitation email error:", emailErr);
+    if (!er.ok) {
+      console.error("send-team-invitation email error:", er);
       await supabase.from("tenant_invitations").delete().eq("id", invite.id);
-      return new Response(JSON.stringify({ success: false, error: "email_send_failed", detail: String(emailErr?.message ?? emailErr) }), {
+      return new Response(JSON.stringify({ success: false, error: "email_send_failed", detail: er.errorBody ?? er.errorMessage ?? `status:${er.status}` }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

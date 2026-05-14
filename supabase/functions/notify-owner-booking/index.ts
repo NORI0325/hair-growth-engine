@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
 import { sendLinePush, getLineCredentials } from "../_shared/line-push.ts";
+import { sendTransactionalEmailInternal } from "../_shared/invoke-internal.ts";
 
 // 公開：予約変更（新規/更新/キャンセル）時にオーナー＋お客様へ通知
 //  - オーナー: メール（owner_notification_email）
@@ -24,26 +25,24 @@ Deno.serve(async (req) => {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      const { error } = await supabase.functions.invoke("send-transactional-email", {
-        body: {
-          templateName: "booking-alert-owner",
-          recipientEmail: recipient,
-          idempotencyKey: `owner-alert-test-${Date.now()}`,
-          templateData: {
-            eventType: "created",
-            customerName: "テスト 太郎",
-            customerPhone: "090-0000-0000",
-            bookingDate: new Date().toISOString().slice(0, 10),
-            bookingTime: "14:00",
-            menu: "カット＋カラー（テスト送信）",
-            notes: "これはテスト送信です。実際の予約は入っていません。",
-            salonName: body.salonName ?? undefined,
-          },
+      const r = await sendTransactionalEmailInternal({
+        templateName: "booking-alert-owner",
+        recipientEmail: recipient,
+        idempotencyKey: `owner-alert-test-${Date.now()}`,
+        templateData: {
+          eventType: "created",
+          customerName: "テスト 太郎",
+          customerPhone: "090-0000-0000",
+          bookingDate: new Date().toISOString().slice(0, 10),
+          bookingTime: "14:00",
+          menu: "カット＋カラー（テスト送信）",
+          notes: "これはテスト送信です。実際の予約は入っていません。",
+          salonName: body.salonName ?? undefined,
         },
       });
-      if (error) {
-        console.error("test send error:", error);
-        return new Response(JSON.stringify({ error: "send_failed" }), {
+      if (!r.ok) {
+        console.error("test send error:", r);
+        return new Response(JSON.stringify({ error: "send_failed", detail: r }), {
           status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
@@ -91,23 +90,21 @@ Deno.serve(async (req) => {
         }
         if (channels.includes("email") && r.email) {
           // シンプルにbooking-alert-ownerテンプレを流用（notes欄に警告内容）
-          await supabase.functions.invoke("send-transactional-email", {
-            body: {
-              templateName: "booking-alert-owner",
-              recipientEmail: r.email,
-              idempotencyKey: `cancel-review-${payload?.log_id ?? Date.now()}-${r.email}`,
-              templateData: {
-                eventType: "cancelled",
-                customerName: `⚠️要確認 ${payload?.customer_name ?? ""}`,
-                bookingDate: payload?.booking_date ?? "-",
-                bookingTime: payload?.booking_time ?? "-",
-                menu: "(キャンセルメール受信・該当予約特定不能)",
-                notes: `外部ID: ${payload?.external_reservation_id ?? "?"}\n受信ログから手動確認をお願いします。`,
-                salonName,
-              },
+          const er = await sendTransactionalEmailInternal({
+            templateName: "booking-alert-owner",
+            recipientEmail: r.email,
+            idempotencyKey: `cancel-review-${payload?.log_id ?? Date.now()}-${r.email}`,
+            templateData: {
+              eventType: "cancelled",
+              customerName: `⚠️要確認 ${payload?.customer_name ?? ""}`,
+              bookingDate: payload?.booking_date ?? "-",
+              bookingTime: payload?.booking_time ?? "-",
+              menu: "(キャンセルメール受信・該当予約特定不能)",
+              notes: `外部ID: ${payload?.external_reservation_id ?? "?"}\n受信ログから手動確認をお願いします。`,
+              salonName,
             },
           });
-          results.push(`email:${r.email}:sent`);
+          results.push(`email:${r.email}:${er.ok ? "sent" : `err:${er.status}`}`);
         }
       }
       return new Response(JSON.stringify({ success: true, results }), {
@@ -182,26 +179,24 @@ Deno.serve(async (req) => {
 
       // メール通知
       if (channels.includes("email") && r.email) {
-        const { error } = await supabase.functions.invoke("send-transactional-email", {
-          body: {
-            templateName: "booking-alert-owner",
-            recipientEmail: r.email,
-            idempotencyKey: `owner-alert-${eventType}-${bookingId}-${r.email}`,
-            templateData: {
-              eventType,
-              customerName,
-              customerPhone: customer?.phone ?? undefined,
-              bookingDate,
-              bookingTime,
-              menu,
-              notes: booking.notes ?? undefined,
-              salonName: profile?.salon_name ?? undefined,
-              recipientName: r.name ?? undefined,
-            },
+        const er = await sendTransactionalEmailInternal({
+          templateName: "booking-alert-owner",
+          recipientEmail: r.email,
+          idempotencyKey: `owner-alert-${eventType}-${bookingId}-${r.email}`,
+          templateData: {
+            eventType,
+            customerName,
+            customerPhone: customer?.phone ?? undefined,
+            bookingDate,
+            bookingTime,
+            menu,
+            notes: booking.notes ?? undefined,
+            salonName: profile?.salon_name ?? undefined,
+            recipientName: r.name ?? undefined,
           },
         });
-        ownerEmailResults.push(error ? `${r.email}: error` : `${r.email}: sent`);
-        if (error) console.error("owner email error:", r.email, error);
+        ownerEmailResults.push(er.ok ? `${r.email}: sent` : `${r.email}: error:${er.status}`);
+        if (!er.ok) console.error("owner email error:", r.email, er);
       }
 
       // LINE通知（オーナー/スタッフのLINE）
@@ -264,22 +259,20 @@ Deno.serve(async (req) => {
         eventType === "cancelled" || eventType === "cancelled_by_customer" ? "booking-cancelled"
           : eventType === "updated" ? "booking-updated"
             : "booking-confirmation";
-      const { error } = await supabase.functions.invoke("send-transactional-email", {
-        body: {
-          templateName,
-          recipientEmail: customer.email,
-          idempotencyKey: `customer-${eventType}-${bookingId}`,
-          templateData: {
-            customerName,
-            salonName,
-            bookingDate,
-            bookingTime,
-            menu,
-          },
+      const er = await sendTransactionalEmailInternal({
+        templateName,
+        recipientEmail: customer.email,
+        idempotencyKey: `customer-${eventType}-${bookingId}`,
+        templateData: {
+          customerName,
+          salonName,
+          bookingDate,
+          bookingTime,
+          menu,
         },
       });
-      results.customer_email = error ? `error: ${error.message}` : "sent";
-      if (error) console.error("customer email error:", error);
+      results.customer_email = er.ok ? "sent" : `error: ${er.status} ${er.errorMessage ?? er.errorBody ?? ""}`;
+      if (!er.ok) console.error("customer email error:", er);
     } else {
       results.customer_email = "skipped: no email";
     }

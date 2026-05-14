@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { corsHeaders } from "../_shared/cors.ts";
+import { invokeInternal } from "../_shared/invoke-internal.ts";
 
 // サポート問い合わせ送信
 // - tickets テーブルに保存
@@ -69,16 +70,14 @@ Deno.serve(async (req) => {
         <pre style="white-space:pre-wrap;font-family:inherit">${escapeHtml(message)}</pre>
         ${historyTxt ? `<hr/><p><b>AIチャット履歴:</b></p><pre style="white-space:pre-wrap;font-family:inherit;background:#f5f5f5;padding:8px">${escapeHtml(historyTxt)}</pre>` : ""}
       `;
-      await supabase.functions.invoke("send-transactional-email", {
-        body: {
-          to: "support@saronboost.com",
-          subject: `[サポート] ${subject}`,
-          html,
-          purpose: "transactional",
-          template_name: "support_ticket",
-          reply_to: user.email,
-        },
-      });
+      await invokeInternal("send-transactional-email", {
+        to: "support@saronboost.com",
+        subject: `[サポート] ${subject}`,
+        html,
+        purpose: "transactional",
+        template_name: "support_ticket",
+        reply_to: user.email,
+      }, { idempotencyKey: `support-ticket-${ticket.id}` });
     } catch (e) {
       console.error("notify email failed", e);
     }
