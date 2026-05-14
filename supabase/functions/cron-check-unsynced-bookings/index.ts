@@ -11,6 +11,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
 import { sendLinePush, getLineCredentials } from "../_shared/line-push.ts";
+import { sendTransactionalEmailInternal } from "../_shared/invoke-internal.ts";
 
 const RE_ALERT_URGENT_HOURS = 2;   // <24h案件: 2hおき再通知可
 const RE_ALERT_NORMAL_HOURS = 12;  // 通常: 12hおき再通知可
