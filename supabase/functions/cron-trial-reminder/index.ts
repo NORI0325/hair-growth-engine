@@ -29,11 +29,10 @@ Deno.serve(async (_req) => {
     const { data: user } = await supabase.auth.admin.getUserById(s.owner_id);
     if (!user.user?.email) continue;
 
-    await supabase.functions.invoke("send-transactional-email", {
-      body: {
-        to: user.user.email,
-        subject: `【Salon Boost】無料期間があと${sendDay}日で終了します`,
-        html: `
+    const er = await invokeInternal("send-transactional-email", {
+      to: user.user.email,
+      subject: `【Salon Boost】無料期間があと${sendDay}日で終了します`,
+      html: `
           <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:24px">
             <h2>${s.profiles?.salon_name ?? "サロン"} 様</h2>
             <p>いつもSalon Boostをご利用いただきありがとうございます。</p>
@@ -46,9 +45,8 @@ Deno.serve(async (_req) => {
             <p style="color:#666;font-size:12px">登録されない場合、トライアル終了時点でアプリは閲覧専用モードに移行します。データは保持されます。</p>
           </div>
         `,
-      },
-    });
-    results.push({ owner_id: s.owner_id, daysLeft });
+    }, { idempotencyKey: `trial-reminder-${s.owner_id}-${sendDay}d` });
+    results.push({ owner_id: s.owner_id, daysLeft, sent: er.ok, status: er.status });
   }
 
   return new Response(JSON.stringify({ ok: true, sent: results.length, results }), {
