@@ -101,12 +101,15 @@ Deno.serve(async (req) => {
           // supabase.functions.invoke だと内部認証で 401 になるケースがあるため
           // 直接 fetch で service_role を Bearer 送信する
           const url = `${Deno.env.get("SUPABASE_URL")}/functions/v1/send-transactional-email`;
+          // verify_jwt=true ゲートは sb_secret_* 形式の service_role を JWT として受け付けないため
+          // 公開可能な anon JWT を Authorization に、機能上のロールは apikey で渡す
+          const anon = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_PUBLISHABLE_KEY") || "";
           const srk = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
           const resp = await fetch(url, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              "Authorization": `Bearer ${srk}`,
+              "Authorization": `Bearer ${anon || srk}`,
               "apikey": srk,
             },
             body: JSON.stringify({
