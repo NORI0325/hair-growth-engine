@@ -1068,6 +1068,7 @@ export type Database = {
           line_unfollowed_at: string | null
           line_user_id: string | null
           location_id: string | null
+          name_kana: string | null
           notes: string | null
           opt_out_at: string | null
           opt_out_automation: boolean
@@ -1100,6 +1101,7 @@ export type Database = {
           line_unfollowed_at?: string | null
           line_user_id?: string | null
           location_id?: string | null
+          name_kana?: string | null
           notes?: string | null
           opt_out_at?: string | null
           opt_out_automation?: boolean
@@ -1132,6 +1134,7 @@ export type Database = {
           line_unfollowed_at?: string | null
           line_user_id?: string | null
           location_id?: string | null
+          name_kana?: string | null
           notes?: string | null
           opt_out_at?: string | null
           opt_out_automation?: boolean
@@ -3946,6 +3949,21 @@ export type Database = {
           _booking_time: string
           _email: string
           _full_name: string
+          _menus: string[]
+          _notes: string
+          _phone: string
+          _salon_slug: string
+          _staff_id?: string
+        }
+        Returns: Json
+      }
+      public_create_booking_v4: {
+        Args: {
+          _booking_date: string
+          _booking_time: string
+          _email: string
+          _full_name: string
+          _full_name_kana: string
           _menus: string[]
           _notes: string
           _phone: string

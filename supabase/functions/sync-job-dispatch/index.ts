@@ -202,7 +202,20 @@ Deno.serve(async (req) => {
         }
       }
       if (!preflightFail && job.target_channel === "salonboard" && job.job_type === "create_reservation" && looksAppFormat) {
-        const p2 = { ...job.request_payload, rsv_route_id: job.request_payload.rsv_route_id || defaultRsvRouteId };
+        // customer.name_kana を最優先で payload に流し込む（既に入っていれば尊重）
+        let injectedKana = (job.request_payload?.customer_kana || job.request_payload?.customer_name_kana || "").trim();
+        if (!injectedKana && job.reservation_id) {
+          const { data: bk } = await supabase.from("bookings").select("customer_id").eq("id", job.reservation_id).maybeSingle();
+          if (bk?.customer_id) {
+            const { data: cu } = await supabase.from("customers").select("name_kana").eq("id", bk.customer_id).maybeSingle();
+            if (cu?.name_kana) injectedKana = String(cu.name_kana).trim();
+          }
+        }
+        const p2 = {
+          ...job.request_payload,
+          rsv_route_id: job.request_payload.rsv_route_id || defaultRsvRouteId,
+          customer_kana: injectedKana || job.request_payload?.customer_kana || "",
+        };
         const conv = buildSalonboardCreatePayload(p2);
         if (conv.ok) {
           outboundPayload = conv.payload;

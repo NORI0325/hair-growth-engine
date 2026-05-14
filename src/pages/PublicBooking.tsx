@@ -32,8 +32,18 @@ interface StaffOption {
   name: string;
 }
 
+// ひらがな → カタカナ変換
+const hiraToKata = (s: string) =>
+  (s || "").replace(/[ぁ-ん]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0x60));
+
 const schema = z.object({
   full_name: z.string().trim().min(1, "お名前を入力してください").max(100),
+  full_name_kana: z
+    .string()
+    .trim()
+    .min(1, "フリガナを入力してください")
+    .max(100)
+    .regex(/^[ァ-ヶーぁ-ん\s　]+$/, "フリガナはカタカナでご入力ください（例：ワタナベ ユミ）"),
   phone: z.string().trim().min(8, "正しい電話番号を入力してください").max(20),
   email: z.string().trim().email("正しいメールアドレス").max(255).optional().or(z.literal("")),
   date: z.string().min(1, "日付を選択してください"),
@@ -60,7 +70,7 @@ const PublicBooking = () => {
   const [openTime, setOpenTime] = useState<string>("10:00");
   const [closeTime, setCloseTime] = useState<string>("19:00");
 
-  const [form, setForm] = useState({ full_name: "", phone: "", email: "", date: "", time: "", staff_id: "", notes: "" });
+  const [form, setForm] = useState({ full_name: "", full_name_kana: "", phone: "", email: "", date: "", time: "", staff_id: "", notes: "" });
 
   useEffect(() => {
     const load = async () => {
@@ -215,13 +225,17 @@ const PublicBooking = () => {
   }, [slug, form.date, form.staff_id, totalDuration, hasStaff]);
 
   const handleSubmit = async () => {
-    const parsed = schema.safeParse(form);
+    // ひらがな入力をカタカナへ自動変換してから検証
+    const normalizedKana = hiraToKata(form.full_name_kana || "").replace(/[\u3000]/g, " ").trim();
+    const candidate = { ...form, full_name_kana: normalizedKana };
+    const parsed = schema.safeParse(candidate);
     if (!parsed.success) { toast.error(parsed.error.errors[0].message); return; }
     if (selectedMenus.length === 0) { toast.error("メニューを1つ以上お選びください"); return; }
     setSubmitting(true);
     const payload = {
       _salon_slug: slug!,
       _full_name: parsed.data.full_name,
+      _full_name_kana: parsed.data.full_name_kana,
       _phone: parsed.data.phone,
       _email: parsed.data.email || "",
       _booking_date: parsed.data.date,
@@ -231,7 +245,7 @@ const PublicBooking = () => {
       _staff_id: parsed.data.staff_id || null,
     };
     console.log("[PublicBooking] submit payload:", payload);
-    const { data, error } = await supabase.rpc("public_create_booking_v3" as any, payload);
+    const { data, error } = await supabase.rpc("public_create_booking_v4" as any, payload);
     setSubmitting(false);
     console.log("[PublicBooking] response:", { data, error });
     const bookingId = (data as any)?.booking_id;
@@ -304,6 +318,20 @@ const PublicBooking = () => {
             <p className="eyebrow mb-3">No.01 — お名前 / Your Name</p>
             <Input value={form.full_name} onChange={e => setForm({...form, full_name: e.target.value})}
               placeholder="山田 花子" className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
+          </div>
+          <div>
+            <p className="eyebrow mb-3">No.01b — フリガナ（カタカナ）/ Kana</p>
+            <Input
+              value={form.full_name_kana}
+              onChange={e => setForm({ ...form, full_name_kana: e.target.value })}
+              onBlur={e => setForm({ ...form, full_name_kana: hiraToKata(e.target.value) })}
+              placeholder="ワタナベ ユミ"
+              className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold"
+            />
+            <p className="text-[10px] text-muted-foreground mt-2 leading-relaxed">
+              サロン側の予約管理に必要なため、カタカナでご入力ください。<br />
+              例：ワタナベ ユミ（ひらがなで入力された場合は自動でカタカナへ変換します）
+            </p>
           </div>
           <div>
             <p className="eyebrow mb-3">No.02 — 電話番号 / Phone</p>
