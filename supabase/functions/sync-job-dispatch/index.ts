@@ -349,6 +349,17 @@ Deno.serve(async (req) => {
       });
 
       results.push({ job_id: job.id, status: newJobStatus, error_type: finalErrorType });
+
+      // 失敗時はオーナー/管理者へ即時通知（メイン処理は止めない）
+      if (!success && job.reservation_id && (newJobStatus === "failed" || newJobStatus === "needs_review")) {
+        supabase.functions.invoke("notify-sync-failure", {
+          body: {
+            bookingId: job.reservation_id, ownerId: job.owner_id,
+            channel: job.target_channel || "salonboard",
+            errorMessage: finalErrorMessage || finalErrorType || "unknown_error",
+          },
+        }).catch((e: any) => console.error("[dispatch] notify-sync-failure invoke error:", e));
+      }
     }
 
     return new Response(JSON.stringify({ success: true, results }), {
