@@ -133,6 +133,31 @@ const Bookings = () => {
     setBookings((prev) => prev.filter((b) => b.id !== id));
   };
 
+  const resyncBooking = async (b: Booking) => {
+    const t = toast.loading("サロンボードへ再同期中…");
+    const { error } = await supabase.functions.invoke("sync-resend-to-salonboard", {
+      body: { booking_id: b.id },
+    });
+    toast.dismiss(t);
+    if (error) { toast.error("再同期失敗：" + error.message); return; }
+    toast.success("再同期キューに登録しました");
+    load();
+  };
+
+  const isUrgent = (b: Booking): boolean => {
+    if (b.status === "cancelled" || b.status === "completed") return false;
+    const failed = b.sync_status === "failed" || b.sync_status === "needs_review" || b.sync_status === "pending_sync";
+    const lineMissing = b.source_channel === "line" && !b.external_reservation_id && b.status !== "cancelled";
+    if (!failed && !lineMissing) return false;
+    const startMs = new Date(`${b.booking_date}T${b.booking_time}`).getTime();
+    const now = Date.now();
+    return startMs - now < 24 * 60 * 60 * 1000 && startMs > now - 60 * 60 * 1000;
+  };
+
+  const urgentBookings = bookings.filter(isUrgent).sort((a, b) =>
+    new Date(`${a.booking_date}T${a.booking_time}`).getTime() - new Date(`${b.booking_date}T${b.booking_time}`).getTime()
+  );
+
   const flatByReceived = [...bookings].sort((a, b) =>
     new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   );
