@@ -226,9 +226,14 @@ export default function Inbox() {
                         AI下書きで返信
                       </Button>
                     ) : (
-                      <span className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Phone className="w-3 h-3" />お客様情報と紐付け後に返信可
-                      </span>
+                      <Button
+                        size="sm"
+                        onClick={() => { setLinkTarget(m); setLinkOpen(true); }}
+                        className="rounded-none"
+                      >
+                        <Link2 className="w-3.5 h-3.5 mr-1.5" />
+                        お客様情報と紐付け
+                      </Button>
                     )}
                     <Button
                       size="sm"
