@@ -240,6 +240,15 @@ Deno.serve(async (req) => {
           metadata: { skipped: true, original_payload: maskSensitive(job.request_payload) },
         });
         results.push({ job_id: job.id, status: "needs_review", error_type: preflightFail.error_type });
+        if (job.reservation_id) {
+          supabase.functions.invoke("notify-sync-failure", {
+            body: {
+              bookingId: job.reservation_id, ownerId: job.owner_id,
+              channel: job.target_channel || "salonboard",
+              errorMessage: preflightFail.message,
+            },
+          }).catch((e: any) => console.error("[dispatch] notify-sync-failure invoke error:", e));
+        }
         continue;
       }
 
