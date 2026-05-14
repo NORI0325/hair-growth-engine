@@ -3,6 +3,7 @@ import { corsHeaders } from "../_shared/cors.ts";
 import { sendLinePush } from "../_shared/line-push.ts";
 import { sendSms } from "../_shared/twilio-sms.ts";
 import { applySegmentFilter, buildFilterContext, ageGroupOf, type SegmentInput } from "../_shared/segment-filter.ts";
+import { sendTransactionalEmailInternal } from "../_shared/invoke-internal.ts";
 
 const nextSuggestedMenu = (lastMenu: string | null): string => {
   const m = (lastMenu || "").toLowerCase();
