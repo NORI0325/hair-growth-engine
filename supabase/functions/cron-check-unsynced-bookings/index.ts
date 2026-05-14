@@ -165,25 +165,23 @@ Deno.serve(async (req) => {
         }
         if (channels.includes("email") && r.email) {
           try {
-            const { error: eErr } = await supabase.functions.invoke("send-transactional-email", {
-              body: {
-                templateName: "booking-alert-owner",
-                recipientEmail: r.email,
-                idempotencyKey: `unsynced-cron-${ownerId}-${now.toISOString().slice(0, 13)}`,
-                templateData: {
-                  eventType: "created",
-                  customerName: `🚨未反映予約 ${alertable.length}件`,
-                  bookingDate: alertable[0].b.booking_date,
-                  bookingTime: String(alertable[0].b.booking_time).slice(0, 5),
-                  menu: "（複数）",
-                  notes: `${triggers.join(" / ")}\n\n${lines}\n\n${reviewUrl}`,
-                  salonName,
-                  recipientName: r.name ?? undefined,
-                },
+            const er = await sendTransactionalEmailInternal({
+              templateName: "booking-alert-owner",
+              recipientEmail: r.email,
+              idempotencyKey: `unsynced-cron-${ownerId}-${now.toISOString().slice(0, 13)}`,
+              templateData: {
+                eventType: "created",
+                customerName: `🚨未反映予約 ${alertable.length}件`,
+                bookingDate: alertable[0].b.booking_date,
+                bookingTime: String(alertable[0].b.booking_time).slice(0, 5),
+                menu: "（複数）",
+                notes: `${triggers.join(" / ")}\n\n${lines}\n\n${reviewUrl}`,
+                salonName,
+                recipientName: r.name ?? undefined,
               },
             });
-            if (!eErr) anySent = true;
-            results.push(`email:${r.email}:${eErr ? "err" : "sent"}`);
+            if (er.ok) anySent = true;
+            results.push(`email:${r.email}:${er.ok ? "sent" : `err:${er.status}`}`);
           } catch (e) {
             results.push(`email:err:${(e as Error).message}`);
           }
