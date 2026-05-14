@@ -179,26 +179,24 @@ Deno.serve(async (req) => {
 
       // メール通知
       if (channels.includes("email") && r.email) {
-        const { error } = await supabase.functions.invoke("send-transactional-email", {
-          body: {
-            templateName: "booking-alert-owner",
-            recipientEmail: r.email,
-            idempotencyKey: `owner-alert-${eventType}-${bookingId}-${r.email}`,
-            templateData: {
-              eventType,
-              customerName,
-              customerPhone: customer?.phone ?? undefined,
-              bookingDate,
-              bookingTime,
-              menu,
-              notes: booking.notes ?? undefined,
-              salonName: profile?.salon_name ?? undefined,
-              recipientName: r.name ?? undefined,
-            },
+        const er = await sendTransactionalEmailInternal({
+          templateName: "booking-alert-owner",
+          recipientEmail: r.email,
+          idempotencyKey: `owner-alert-${eventType}-${bookingId}-${r.email}`,
+          templateData: {
+            eventType,
+            customerName,
+            customerPhone: customer?.phone ?? undefined,
+            bookingDate,
+            bookingTime,
+            menu,
+            notes: booking.notes ?? undefined,
+            salonName: profile?.salon_name ?? undefined,
+            recipientName: r.name ?? undefined,
           },
         });
-        ownerEmailResults.push(error ? `${r.email}: error` : `${r.email}: sent`);
-        if (error) console.error("owner email error:", r.email, error);
+        ownerEmailResults.push(er.ok ? `${r.email}: sent` : `${r.email}: error:${er.status}`);
+        if (!er.ok) console.error("owner email error:", r.email, er);
       }
 
       // LINE通知（オーナー/スタッフのLINE）
