@@ -52,7 +52,8 @@ export default function Inbox() {
   const [filter, setFilter] = useState<"unhandled" | "all" | "critical">("unhandled");
   const [replyOpen, setReplyOpen] = useState(false);
   const [replyTo, setReplyTo] = useState<InboundMsg | null>(null);
-
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [linkTarget, setLinkTarget] = useState<InboundMsg | null>(null);
   const load = async () => {
     if (!user) { setMessages([]); setLoading(false); return; }
     setLoading(true);
