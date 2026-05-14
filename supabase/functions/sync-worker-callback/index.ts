@@ -213,6 +213,21 @@ Deno.serve(async (req) => {
       metadata: { callback: true, message },
     });
 
+    // 失敗時はオーナー/管理者へ即時通知（通知失敗はメイン処理を止めない）
+    if (!success && job.reservation_id && (newJobStatus === "failed" || newJobStatus === "needs_review")) {
+      try {
+        await notifySyncFailure(
+          supabase,
+          job.reservation_id,
+          job.owner_id,
+          job.target_channel || "salonboard",
+          message || error_type || "unknown_error",
+        );
+      } catch (e) {
+        console.error("[sync-worker-callback] notifySyncFailure threw:", e);
+      }
+    }
+
     return new Response(JSON.stringify({ success: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
