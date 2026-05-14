@@ -99,41 +99,25 @@ Deno.serve(async (req) => {
       }
       if (channels.includes("email") && r.email) {
         try {
-          // supabase.functions.invoke だと内部認証で 401 になるケースがあるため
-          // 直接 fetch で service_role を Bearer 送信する
-          const url = `${Deno.env.get("SUPABASE_URL")}/functions/v1/send-transactional-email`;
-          // Lovable Cloud の新形式キー（sb_publishable_* / sb_secret_*）は
-          // verify_jwt=true ゲートに JWT として認められないため、公開可能な anon JWT を直書き
-          const ANON_JWT = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1peWVkaW9lbWt6aGV0cGhqenpnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczMDQ1NjgsImV4cCI6MjA5Mjg4MDU2OH0.Eol9UKE46E0TXJdw84ro3csac4ah3RVUsOhVGcT4HRc";
-          const srk = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-          const resp = await fetch(url, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${ANON_JWT}`,
-              "apikey": srk,
+          const er = await sendTransactionalEmailInternal({
+            templateName: "booking-alert-owner",
+            recipientEmail: r.email,
+            idempotencyKey: `sync-fail-${bookingId}-${r.email}`,
+            templateData: {
+              eventType: "created",
+              customerName: `🚨サロンボード未反映 ${customerName}`,
+              customerPhone: customerPhone ?? undefined,
+              bookingDate, bookingTime, menu,
+              notes: `【同期失敗】チャネル: ${ch}\nエラー: ${errMsg}\n担当: ${staffName} / 店舗: ${locationName}\n\n至急サロンボードへ手動登録、または再同期してください。\n${reviewUrl}`,
+              salonName,
+              recipientName: r.name ?? undefined,
             },
-            body: JSON.stringify({
-              templateName: "booking-alert-owner",
-              recipientEmail: r.email,
-              idempotencyKey: `sync-fail-${bookingId}-${r.email}`,
-              templateData: {
-                eventType: "created",
-                customerName: `🚨サロンボード未反映 ${customerName}`,
-                customerPhone: customerPhone ?? undefined,
-                bookingDate, bookingTime, menu,
-                notes: `【同期失敗】チャネル: ${ch}\nエラー: ${errMsg}\n担当: ${staffName} / 店舗: ${locationName}\n\n至急サロンボードへ手動登録、または再同期してください。\n${reviewUrl}`,
-                salonName,
-                recipientName: r.name ?? undefined,
-              },
-            }),
           });
-          const bodyText = await resp.text();
-          if (resp.ok) {
+          if (er.ok) {
             anySent = true;
             results.push(`email:${r.email}:sent`);
           } else {
-            results.push(`email:${r.email}:err:${resp.status}:${bodyText.slice(0, 200)}`);
+            results.push(`email:${r.email}:err:${er.status}:${(er.errorBody ?? er.errorMessage ?? "").slice(0, 200)}`);
           }
         } catch (e) {
           results.push(`email:${r.email}:err:exception:${(e as Error).message}`);
