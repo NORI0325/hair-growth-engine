@@ -259,22 +259,20 @@ Deno.serve(async (req) => {
         eventType === "cancelled" || eventType === "cancelled_by_customer" ? "booking-cancelled"
           : eventType === "updated" ? "booking-updated"
             : "booking-confirmation";
-      const { error } = await supabase.functions.invoke("send-transactional-email", {
-        body: {
-          templateName,
-          recipientEmail: customer.email,
-          idempotencyKey: `customer-${eventType}-${bookingId}`,
-          templateData: {
-            customerName,
-            salonName,
-            bookingDate,
-            bookingTime,
-            menu,
-          },
+      const er = await sendTransactionalEmailInternal({
+        templateName,
+        recipientEmail: customer.email,
+        idempotencyKey: `customer-${eventType}-${bookingId}`,
+        templateData: {
+          customerName,
+          salonName,
+          bookingDate,
+          bookingTime,
+          menu,
         },
       });
-      results.customer_email = error ? `error: ${error.message}` : "sent";
-      if (error) console.error("customer email error:", error);
+      results.customer_email = er.ok ? "sent" : `error: ${er.status} ${er.errorMessage ?? er.errorBody ?? ""}`;
+      if (!er.ok) console.error("customer email error:", er);
     } else {
       results.customer_email = "skipped: no email";
     }
