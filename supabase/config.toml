@@ -78,5 +78,3 @@ project_id = "miyedioemkzhetphjzzg"
   [functions.notify-sync-failure]
     verify_jwt = false
 
-  [functions.diag-envs]
-    verify_jwt = false
