@@ -317,7 +317,7 @@ const PublicBooking = () => {
           <div>
             <p className="eyebrow mb-3">No.01 — お名前 / Your Name</p>
             <Input value={form.full_name} onChange={e => setForm({...form, full_name: e.target.value})}
-              placeholder="山田 花子" className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
+              placeholder="例：ヤマダ ハナコ" className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
           </div>
           <div>
             <p className="eyebrow mb-3">No.01b — フリガナ（カタカナ）/ Kana</p>
