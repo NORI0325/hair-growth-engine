@@ -90,23 +90,21 @@ Deno.serve(async (req) => {
         }
         if (channels.includes("email") && r.email) {
           // シンプルにbooking-alert-ownerテンプレを流用（notes欄に警告内容）
-          await supabase.functions.invoke("send-transactional-email", {
-            body: {
-              templateName: "booking-alert-owner",
-              recipientEmail: r.email,
-              idempotencyKey: `cancel-review-${payload?.log_id ?? Date.now()}-${r.email}`,
-              templateData: {
-                eventType: "cancelled",
-                customerName: `⚠️要確認 ${payload?.customer_name ?? ""}`,
-                bookingDate: payload?.booking_date ?? "-",
-                bookingTime: payload?.booking_time ?? "-",
-                menu: "(キャンセルメール受信・該当予約特定不能)",
-                notes: `外部ID: ${payload?.external_reservation_id ?? "?"}\n受信ログから手動確認をお願いします。`,
-                salonName,
-              },
+          const er = await sendTransactionalEmailInternal({
+            templateName: "booking-alert-owner",
+            recipientEmail: r.email,
+            idempotencyKey: `cancel-review-${payload?.log_id ?? Date.now()}-${r.email}`,
+            templateData: {
+              eventType: "cancelled",
+              customerName: `⚠️要確認 ${payload?.customer_name ?? ""}`,
+              bookingDate: payload?.booking_date ?? "-",
+              bookingTime: payload?.booking_time ?? "-",
+              menu: "(キャンセルメール受信・該当予約特定不能)",
+              notes: `外部ID: ${payload?.external_reservation_id ?? "?"}\n受信ログから手動確認をお願いします。`,
+              salonName,
             },
           });
-          results.push(`email:${r.email}:sent`);
+          results.push(`email:${r.email}:${er.ok ? "sent" : `err:${er.status}`}`);
         }
       }
       return new Response(JSON.stringify({ success: true, results }), {
