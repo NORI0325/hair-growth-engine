@@ -101,15 +101,15 @@ Deno.serve(async (req) => {
           // supabase.functions.invoke だと内部認証で 401 になるケースがあるため
           // 直接 fetch で service_role を Bearer 送信する
           const url = `${Deno.env.get("SUPABASE_URL")}/functions/v1/send-transactional-email`;
-          // verify_jwt=true ゲートは sb_secret_* 形式の service_role を JWT として受け付けないため
-          // 公開可能な anon JWT を Authorization に、機能上のロールは apikey で渡す
-          const anon = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_PUBLISHABLE_KEY") || "";
+          // Lovable Cloud の新形式キー（sb_publishable_* / sb_secret_*）は
+          // verify_jwt=true ゲートに JWT として認められないため、公開可能な anon JWT を直書き
+          const ANON_JWT = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1peWVkaW9lbWt6aGV0cGhqenpnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczMDQ1NjgsImV4cCI6MjA5Mjg4MDU2OH0.Eol9UKE46E0TXJdw84ro3csac4ah3RVUsOhVGcT4HRc";
           const srk = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
           const resp = await fetch(url, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              "Authorization": `Bearer ${anon || srk}`,
+              "Authorization": `Bearer ${ANON_JWT}`,
               "apikey": srk,
             },
             body: JSON.stringify({
