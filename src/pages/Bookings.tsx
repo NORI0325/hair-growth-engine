@@ -199,6 +199,37 @@ const Bookings = () => {
         </div>
       </div>
 
+      {urgentBookings.length > 0 && (
+        <div className="mb-10 border-2 border-destructive bg-destructive/10 p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <AlertTriangle className="w-5 h-5 text-destructive" />
+            <span className="font-serif text-sm text-destructive">
+              緊急：サロンボード未反映の可能性がある予約 {urgentBookings.length} 件
+            </span>
+          </div>
+          <p className="text-xs text-muted-foreground mb-4">
+            来店24時間以内、または同期失敗中の予約です。至急サロンボードへ手動登録、または再同期してください。
+          </p>
+          <div className="space-y-2">
+            {urgentBookings.map((b) => (
+              <div key={b.id} className="flex items-center justify-between gap-3 bg-background/60 px-3 py-2 border border-destructive/30 text-xs">
+                <div className="flex-1 min-w-0">
+                  <div className="font-serif">
+                    {b.booking_date} {b.booking_time?.slice(0, 5)} / {b.customers?.full_name || "—"} / {b.menu}
+                  </div>
+                  {b.sync_error_message && (
+                    <div className="text-destructive/90 text-[11px] mt-0.5 truncate">⚠ {b.sync_error_message}</div>
+                  )}
+                </div>
+                <Button size="sm" className="rounded-none h-7 text-[11px] bg-destructive hover:bg-destructive/90" onClick={() => resyncBooking(b)}>
+                  <RefreshCw className="w-3 h-3 mr-1" /> 再同期
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="py-24 text-center">
           <Loader2 className="w-5 h-5 animate-spin mx-auto text-gold" />
