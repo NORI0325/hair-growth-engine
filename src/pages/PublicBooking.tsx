@@ -32,8 +32,18 @@ interface StaffOption {
   name: string;
 }
 
+// ひらがな → カタカナ変換
+const hiraToKata = (s: string) =>
+  (s || "").replace(/[ぁ-ん]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0x60));
+
 const schema = z.object({
   full_name: z.string().trim().min(1, "お名前を入力してください").max(100),
+  full_name_kana: z
+    .string()
+    .trim()
+    .min(1, "フリガナを入力してください")
+    .max(100)
+    .regex(/^[ァ-ヶーぁ-ん\s　]+$/, "フリガナはカタカナでご入力ください（例：ワタナベ ユミ）"),
   phone: z.string().trim().min(8, "正しい電話番号を入力してください").max(20),
   email: z.string().trim().email("正しいメールアドレス").max(255).optional().or(z.literal("")),
   date: z.string().min(1, "日付を選択してください"),
