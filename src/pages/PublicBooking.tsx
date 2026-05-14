@@ -325,12 +325,12 @@ const PublicBooking = () => {
               value={form.full_name_kana}
               onChange={e => setForm({ ...form, full_name_kana: e.target.value })}
               onBlur={e => setForm({ ...form, full_name_kana: hiraToKata(e.target.value) })}
-              placeholder="ワタナベ ユミ"
+              placeholder="例：ヤマダ ハナコ"
               className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold"
             />
             <p className="text-[10px] text-muted-foreground mt-2 leading-relaxed">
               サロン側の予約管理に必要なため、カタカナでご入力ください。<br />
-              例：ワタナベ ユミ（ひらがなで入力された場合は自動でカタカナへ変換します）
+              （ひらがなで入力された場合は自動でカタカナへ変換します）
             </p>
           </div>
           <div>
