@@ -271,8 +271,23 @@ const Bookings = () => {
                 <div className="border-t border-border">
                   {items.map(b => {
                     const status = statusInfo(b.status);
+                    const syncFailed = b.sync_status === "failed" || b.sync_status === "needs_review";
+                    const lineMissing = b.source_channel === "line" && !b.external_reservation_id && b.status !== "cancelled" && b.status !== "completed";
+                    const danger = syncFailed || lineMissing;
                     return (
-                      <div key={b.id} className="grid grid-cols-12 gap-4 py-6 border-b border-border/60 items-center hover:bg-secondary/30 transition-colors">
+                      <div key={b.id} className={`grid grid-cols-12 gap-4 py-6 border-b border-border/60 items-center transition-colors ${danger ? "bg-destructive/5 hover:bg-destructive/10 border-l-4 border-l-destructive pl-3" : "hover:bg-secondary/30"}`}>
+                        {danger && (
+                          <div className="col-span-12 -mt-2 mb-1 flex items-center gap-2 text-[11px] text-destructive">
+                            <AlertTriangle className="w-3.5 h-3.5" />
+                            <span className="font-serif">
+                              {syncFailed ? `サロンボード同期${b.sync_status === "needs_review" ? "要確認" : "失敗"}` : "サロンボード未反映の可能性"}
+                              {b.sync_error_message ? `：${b.sync_error_message}` : ""}
+                            </span>
+                            <Button size="sm" className="ml-auto rounded-none h-6 text-[10px] bg-destructive hover:bg-destructive/90" onClick={() => resyncBooking(b)}>
+                              <RefreshCw className="w-3 h-3 mr-1" /> サロンボードへ再同期
+                            </Button>
+                          </div>
+                        )}
                         <div className="col-span-2">
                           <div className="font-serif-en text-2xl">{b.booking_time.slice(0, 5)}</div>
                           {isReceivedMode && (
