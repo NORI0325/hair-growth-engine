@@ -70,7 +70,7 @@ const PublicBooking = () => {
   const [openTime, setOpenTime] = useState<string>("10:00");
   const [closeTime, setCloseTime] = useState<string>("19:00");
 
-  const [form, setForm] = useState({ full_name: "", phone: "", email: "", date: "", time: "", staff_id: "", notes: "" });
+  const [form, setForm] = useState({ full_name: "", full_name_kana: "", phone: "", email: "", date: "", time: "", staff_id: "", notes: "" });
 
   useEffect(() => {
     const load = async () => {
