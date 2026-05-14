@@ -225,13 +225,17 @@ const PublicBooking = () => {
   }, [slug, form.date, form.staff_id, totalDuration, hasStaff]);
 
   const handleSubmit = async () => {
-    const parsed = schema.safeParse(form);
+    // ひらがな入力をカタカナへ自動変換してから検証
+    const normalizedKana = hiraToKata(form.full_name_kana || "").replace(/[\u3000]/g, " ").trim();
+    const candidate = { ...form, full_name_kana: normalizedKana };
+    const parsed = schema.safeParse(candidate);
     if (!parsed.success) { toast.error(parsed.error.errors[0].message); return; }
     if (selectedMenus.length === 0) { toast.error("メニューを1つ以上お選びください"); return; }
     setSubmitting(true);
     const payload = {
       _salon_slug: slug!,
       _full_name: parsed.data.full_name,
+      _full_name_kana: parsed.data.full_name_kana,
       _phone: parsed.data.phone,
       _email: parsed.data.email || "",
       _booking_date: parsed.data.date,
@@ -241,7 +245,7 @@ const PublicBooking = () => {
       _staff_id: parsed.data.staff_id || null,
     };
     console.log("[PublicBooking] submit payload:", payload);
-    const { data, error } = await supabase.rpc("public_create_booking_v3" as any, payload);
+    const { data, error } = await supabase.rpc("public_create_booking_v4" as any, payload);
     setSubmitting(false);
     console.log("[PublicBooking] response:", { data, error });
     const bookingId = (data as any)?.booking_id;
