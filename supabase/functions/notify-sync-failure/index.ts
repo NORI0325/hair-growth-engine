@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
 import { sendLinePush, getLineCredentials } from "../_shared/line-push.ts";
+import { sendTransactionalEmailInternal } from "../_shared/invoke-internal.ts";
 
 // 同期失敗時、店舗オーナー/管理者へ即時通知（LINE優先・メールフォールバック）
 // 二重通知防止: bookings.salonboard_alert_sent_at
