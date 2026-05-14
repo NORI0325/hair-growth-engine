@@ -43,7 +43,7 @@ const schema = z.object({
     .trim()
     .min(1, "フリガナを入力してください")
     .max(100)
-    .regex(/^[ァ-ヶーぁ-ん\s　]+$/, "フリガナはカタカナでご入力ください（例：ワタナベ ユミ）"),
+    .regex(/^[ァ-ヶーぁ-ん\s　]+$/, "フリガナはカタカナでご入力ください（例：ヤマダ ハナコ）"),
   phone: z.string().trim().min(8, "正しい電話番号を入力してください").max(20),
   email: z.string().trim().email("正しいメールアドレス").max(255).optional().or(z.literal("")),
   date: z.string().min(1, "日付を選択してください"),
@@ -317,7 +317,7 @@ const PublicBooking = () => {
           <div>
             <p className="eyebrow mb-3">No.01 — お名前 / Your Name</p>
             <Input value={form.full_name} onChange={e => setForm({...form, full_name: e.target.value})}
-              placeholder="山田 花子" className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
+              placeholder="例：ヤマダ ハナコ" className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
           </div>
           <div>
             <p className="eyebrow mb-3">No.01b — フリガナ（カタカナ）/ Kana</p>
@@ -325,12 +325,12 @@ const PublicBooking = () => {
               value={form.full_name_kana}
               onChange={e => setForm({ ...form, full_name_kana: e.target.value })}
               onBlur={e => setForm({ ...form, full_name_kana: hiraToKata(e.target.value) })}
-              placeholder="ワタナベ ユミ"
+              placeholder="例：ヤマダ ハナコ"
               className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold"
             />
             <p className="text-[10px] text-muted-foreground mt-2 leading-relaxed">
               サロン側の予約管理に必要なため、カタカナでご入力ください。<br />
-              例：ワタナベ ユミ（ひらがなで入力された場合は自動でカタカナへ変換します）
+              （ひらがなで入力された場合は自動でカタカナへ変換します）
             </p>
           </div>
           <div>
