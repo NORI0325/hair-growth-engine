@@ -143,7 +143,8 @@ Deno.serve(async (req) => {
         meiKana = sanitizeNameKana(kp.slice(1).join(""));
       }
       if (!seiKana) seiKana = sanitizeNameKana(sei) || "オキャクサマ";
-      if (!meiKana) meiKana = sanitizeNameKana(mei);
+      if (!meiKana) meiKana = sanitizeNameKana(mei) || "ナシ";
+      // SalonBoard は nmSeiKana / nmMeiKana 両方必須。漢字のみ顧客名でも空欄を作らない。
       // 重要: time/date は RPC で生成された値(JSTのまま HHMM/YYYYMMDD)を優先する。
       // start_time/end_time は naive timestamp(JST想定)で来るため、Deno の new Date() で UTC扱いされ
       // fmtTime で +9h されてしまう。p.date/p.time/p.rsvTerm が既にあるならそれを使う。
