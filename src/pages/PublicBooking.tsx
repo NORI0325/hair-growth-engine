@@ -43,7 +43,7 @@ const schema = z.object({
     .trim()
     .min(1, "フリガナを入力してください")
     .max(100)
-    .regex(/^[ァ-ヶーぁ-ん\s　]+$/, "フリガナはカタカナでご入力ください（例：ワタナベ ユミ）"),
+    .regex(/^[ァ-ヶーぁ-ん\s　]+$/, "フリガナはカタカナでご入力ください（例：ヤマダ ハナコ）"),
   phone: z.string().trim().min(8, "正しい電話番号を入力してください").max(20),
   email: z.string().trim().email("正しいメールアドレス").max(255).optional().or(z.literal("")),
   date: z.string().min(1, "日付を選択してください"),
