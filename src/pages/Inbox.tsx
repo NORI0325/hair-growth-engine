@@ -9,6 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, MessageCircle, Check, AlertTriangle, Sparkles, Phone, Trash2 } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { CustomerMessageDialog } from "@/components/CustomerMessageDialog";
+import { LinkInboundCustomerDialog } from "@/components/LinkInboundCustomerDialog";
+import { Link2 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
