@@ -27,6 +27,10 @@ interface Booking {
   customer_id: string;
   created_at: string;
   external_source: string | null;
+  source_channel: string | null;
+  sync_status: string | null;
+  sync_error_message: string | null;
+  external_reservation_id: string | null;
   customers: { full_name: string; phone: string | null; line_user_id: string | null } | null;
 }
 
