@@ -98,8 +98,18 @@ Deno.serve(async (req) => {
       }
       if (channels.includes("email") && r.email) {
         try {
-          const { error } = await supabase.functions.invoke("send-transactional-email", {
-            body: {
+          // supabase.functions.invoke だと内部認証で 401 になるケースがあるため
+          // 直接 fetch で service_role を Bearer 送信する
+          const url = `${Deno.env.get("SUPABASE_URL")}/functions/v1/send-transactional-email`;
+          const srk = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+          const resp = await fetch(url, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${srk}`,
+              "apikey": srk,
+            },
+            body: JSON.stringify({
               templateName: "booking-alert-owner",
               recipientEmail: r.email,
               idempotencyKey: `sync-fail-${bookingId}-${r.email}`,
@@ -112,12 +122,17 @@ Deno.serve(async (req) => {
                 salonName,
                 recipientName: r.name ?? undefined,
               },
-            },
+            }),
           });
-          if (!error) anySent = true;
-          results.push(`email:${r.email}:${error ? "err" : "sent"}`);
+          const bodyText = await resp.text();
+          if (resp.ok) {
+            anySent = true;
+            results.push(`email:${r.email}:sent`);
+          } else {
+            results.push(`email:${r.email}:err:${resp.status}:${bodyText.slice(0, 200)}`);
+          }
         } catch (e) {
-          results.push(`email:err:${(e as Error).message}`);
+          results.push(`email:${r.email}:err:exception:${(e as Error).message}`);
         }
       }
     }
