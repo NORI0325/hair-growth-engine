@@ -53,9 +53,13 @@ export type InvokeInternalResult<T = unknown> = {
 export async function invokeInternal<T = unknown>(
   functionName: string,
   payload: Record<string, unknown>,
-  opts: { idempotencyKey?: string; timeoutMs?: number } = {},
+  opts: { idempotencyKey?: string; timeoutMs?: number; caller?: string; context?: Record<string, unknown> } = {},
 ): Promise<InvokeInternalResult<T>> {
   const url = `${SUPABASE_URL}/functions/v1/${functionName}`;
+  const idempotencyKey =
+    opts.idempotencyKey ?? (payload.idempotencyKey as string | undefined);
+  const caller = opts.caller ?? "unknown";
+  const ctx = opts.context ? JSON.stringify(opts.context) : "-";
   const idempotencyKey =
     opts.idempotencyKey ?? (payload.idempotencyKey as string | undefined);
   const anon = pickAnonJwt();
