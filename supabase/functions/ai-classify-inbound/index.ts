@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
+import { invokeInternal } from "../_shared/invoke-internal.ts";
 
 // 受信メッセージをAIで分類（バックグラウンドで line-webhook から非同期invoke）
 // 入力: { inbound_id }
