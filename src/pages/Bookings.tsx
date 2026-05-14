@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import AppLayout from "@/components/AppLayout";
 import PageHeader from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
-import { Loader2, CheckCircle2, XCircle, MessageCircle, Trash2, FileText } from "lucide-react";
+import { Loader2, CheckCircle2, XCircle, MessageCircle, Trash2, FileText, AlertTriangle, RefreshCw } from "lucide-react";
 import { Link } from "react-router-dom";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
