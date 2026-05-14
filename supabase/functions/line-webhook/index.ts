@@ -563,11 +563,10 @@ Deno.serve(async (req) => {
                 const notifyTo = prof?.owner_notification_email;
                 if (notifyTo) {
                   const urgencyLabel = cat.urgency === "high" ? "🚨 要対応" : "📩 お問い合わせ";
-                  await supabase.functions.invoke("send-transactional-email", {
-                    body: {
-                      to: notifyTo,
-                      subject: `${urgencyLabel} LINE: ${cat.label}${cust ? ` - ${cust.full_name}様` : ""}`,
-                      html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
+                  await invokeInternal("send-transactional-email", {
+                    to: notifyTo,
+                    subject: `${urgencyLabel} LINE: ${cat.label}${cust ? ` - ${cust.full_name}様` : ""}`,
+                    html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
   <h2 style="color:${cat.urgency === "high" ? "#c0392b" : "#1f6f8b"}">${urgencyLabel} LINE受信通知</h2>
   <p style="color:#555">${prof?.salon_name || "サロン"}</p>
   <table style="width:100%;border-collapse:collapse;margin:16px 0">
@@ -577,9 +576,8 @@ Deno.serve(async (req) => {
   </table>
   <p style="font-size:12px;color:#888">受信トレイから返信できます。</p>
 </div>`,
-                      template_name: "line_inquiry_alert",
-                    },
-                  });
+                    template_name: "line_inquiry_alert",
+                  }, { idempotencyKey: `line-inquiry-${ev.timestamp ?? Date.now()}-${userId ?? "anon"}` });
                 }
               } catch (e) { console.error("[line-webhook] inquiry notify failed:", e); }
             }
