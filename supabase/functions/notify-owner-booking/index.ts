@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
 import { sendLinePush, getLineCredentials } from "../_shared/line-push.ts";
+import { sendTransactionalEmailInternal } from "../_shared/invoke-internal.ts";
 
 // 公開：予約変更（新規/更新/キャンセル）時にオーナー＋お客様へ通知
 //  - オーナー: メール（owner_notification_email）
