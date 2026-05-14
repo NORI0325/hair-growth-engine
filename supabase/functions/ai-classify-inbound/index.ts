@@ -173,11 +173,10 @@ ${customerCtx || "（未連携の方）"}
           chitchat: "雑談", other: "その他",
         };
         try {
-          await supabase.functions.invoke("send-transactional-email", {
-            body: {
-              to: notifyTo,
-              subject: `${urgencyLabel} LINE: ${intentLabels[parsed.intent] || parsed.intent} - ${parsed.summary}`,
-              html: `
+          const r = await invokeInternal("send-transactional-email", {
+            to: notifyTo,
+            subject: `${urgencyLabel} LINE: ${intentLabels[parsed.intent] || parsed.intent} - ${parsed.summary}`,
+            html: `
 <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
   <h2 style="color:${parsed.urgency === "critical" ? "#c0392b" : "#d68910"}">${urgencyLabel} LINE受信通知</h2>
   <p style="color:#555">${prof?.salon_name || "サロン"}</p>
@@ -192,9 +191,9 @@ ${customerCtx || "（未連携の方）"}
   </div>
   <p style="font-size:12px;color:#888">管理画面の「受信トレイ」からAI下書きで返信できます。</p>
 </div>`,
-              template_name: "line_inbound_alert",
-            },
-          });
+            template_name: "line_inbound_alert",
+          }, { timeoutMs: 15000 });
+          if (!r.ok) console.error("[ai-classify-inbound] notify email fail", r);
         } catch (e) {
           console.error("notify email error:", e);
         }
