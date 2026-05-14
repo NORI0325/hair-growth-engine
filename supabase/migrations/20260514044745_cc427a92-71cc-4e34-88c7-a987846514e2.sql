@@ -1,0 +1,2 @@
+ALTER TABLE public.bookings ADD COLUMN IF NOT EXISTS salonboard_alert_sent_at timestamptz;
+CREATE INDEX IF NOT EXISTS idx_bookings_sync_failed_alert ON public.bookings (sync_status, salonboard_alert_sent_at) WHERE sync_status IN ('failed','needs_review');

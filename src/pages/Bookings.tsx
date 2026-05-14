@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import AppLayout from "@/components/AppLayout";
 import PageHeader from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
-import { Loader2, CheckCircle2, XCircle, MessageCircle, Trash2, FileText } from "lucide-react";
+import { Loader2, CheckCircle2, XCircle, MessageCircle, Trash2, FileText, AlertTriangle, RefreshCw } from "lucide-react";
 import { Link } from "react-router-dom";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
@@ -27,6 +27,10 @@ interface Booking {
   customer_id: string;
   created_at: string;
   external_source: string | null;
+  source_channel: string | null;
+  sync_status: string | null;
+  sync_error_message: string | null;
+  external_reservation_id: string | null;
   customers: { full_name: string; phone: string | null; line_user_id: string | null } | null;
 }
 
@@ -67,7 +71,7 @@ const Bookings = () => {
     const [b, s] = await Promise.all([
       supabase
         .from("bookings")
-        .select("id, customer_id, booking_date, booking_time, menu, notes, status, revenue, campaign_id, is_test, staff_id, created_at, external_source, customers(full_name, phone, line_user_id)")
+        .select("id, customer_id, booking_date, booking_time, menu, notes, status, revenue, campaign_id, is_test, staff_id, created_at, external_source, source_channel, sync_status, sync_error_message, external_reservation_id, customers(full_name, phone, line_user_id)")
         .eq("location_id", locationId)
         .order("booking_date", { ascending: true })
         .order("booking_time", { ascending: true }),
@@ -129,6 +133,31 @@ const Bookings = () => {
     setBookings((prev) => prev.filter((b) => b.id !== id));
   };
 
+  const resyncBooking = async (b: Booking) => {
+    const t = toast.loading("サロンボードへ再同期中…");
+    const { error } = await supabase.functions.invoke("sync-resend-to-salonboard", {
+      body: { booking_id: b.id },
+    });
+    toast.dismiss(t);
+    if (error) { toast.error("再同期失敗：" + error.message); return; }
+    toast.success("再同期キューに登録しました");
+    load();
+  };
+
+  const isUrgent = (b: Booking): boolean => {
+    if (b.status === "cancelled" || b.status === "completed") return false;
+    const failed = b.sync_status === "failed" || b.sync_status === "needs_review" || b.sync_status === "pending_sync";
+    const lineMissing = b.source_channel === "line" && !b.external_reservation_id && b.status !== "cancelled";
+    if (!failed && !lineMissing) return false;
+    const startMs = new Date(`${b.booking_date}T${b.booking_time}`).getTime();
+    const now = Date.now();
+    return startMs - now < 24 * 60 * 60 * 1000 && startMs > now - 60 * 60 * 1000;
+  };
+
+  const urgentBookings = bookings.filter(isUrgent).sort((a, b) =>
+    new Date(`${a.booking_date}T${a.booking_time}`).getTime() - new Date(`${b.booking_date}T${b.booking_time}`).getTime()
+  );
+
   const flatByReceived = [...bookings].sort((a, b) =>
     new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   );
@@ -169,6 +198,37 @@ const Bookings = () => {
           </button>
         </div>
       </div>
+
+      {urgentBookings.length > 0 && (
+        <div className="mb-10 border-2 border-destructive bg-destructive/10 p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <AlertTriangle className="w-5 h-5 text-destructive" />
+            <span className="font-serif text-sm text-destructive">
+              緊急：サロンボード未反映の可能性がある予約 {urgentBookings.length} 件
+            </span>
+          </div>
+          <p className="text-xs text-muted-foreground mb-4">
+            来店24時間以内、または同期失敗中の予約です。至急サロンボードへ手動登録、または再同期してください。
+          </p>
+          <div className="space-y-2">
+            {urgentBookings.map((b) => (
+              <div key={b.id} className="flex items-center justify-between gap-3 bg-background/60 px-3 py-2 border border-destructive/30 text-xs">
+                <div className="flex-1 min-w-0">
+                  <div className="font-serif">
+                    {b.booking_date} {b.booking_time?.slice(0, 5)} / {b.customers?.full_name || "—"} / {b.menu}
+                  </div>
+                  {b.sync_error_message && (
+                    <div className="text-destructive/90 text-[11px] mt-0.5 truncate">⚠ {b.sync_error_message}</div>
+                  )}
+                </div>
+                <Button size="sm" className="rounded-none h-7 text-[11px] bg-destructive hover:bg-destructive/90" onClick={() => resyncBooking(b)}>
+                  <RefreshCw className="w-3 h-3 mr-1" /> 再同期
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="py-24 text-center">
@@ -211,8 +271,23 @@ const Bookings = () => {
                 <div className="border-t border-border">
                   {items.map(b => {
                     const status = statusInfo(b.status);
+                    const syncFailed = b.sync_status === "failed" || b.sync_status === "needs_review";
+                    const lineMissing = b.source_channel === "line" && !b.external_reservation_id && b.status !== "cancelled" && b.status !== "completed";
+                    const danger = syncFailed || lineMissing;
                     return (
-                      <div key={b.id} className="grid grid-cols-12 gap-4 py-6 border-b border-border/60 items-center hover:bg-secondary/30 transition-colors">
+                      <div key={b.id} className={`grid grid-cols-12 gap-4 py-6 border-b border-border/60 items-center transition-colors ${danger ? "bg-destructive/5 hover:bg-destructive/10 border-l-4 border-l-destructive pl-3" : "hover:bg-secondary/30"}`}>
+                        {danger && (
+                          <div className="col-span-12 -mt-2 mb-1 flex items-center gap-2 text-[11px] text-destructive">
+                            <AlertTriangle className="w-3.5 h-3.5" />
+                            <span className="font-serif">
+                              {syncFailed ? `サロンボード同期${b.sync_status === "needs_review" ? "要確認" : "失敗"}` : "サロンボード未反映の可能性"}
+                              {b.sync_error_message ? `：${b.sync_error_message}` : ""}
+                            </span>
+                            <Button size="sm" className="ml-auto rounded-none h-6 text-[10px] bg-destructive hover:bg-destructive/90" onClick={() => resyncBooking(b)}>
+                              <RefreshCw className="w-3 h-3 mr-1" /> サロンボードへ再同期
+                            </Button>
+                          </div>
+                        )}
                         <div className="col-span-2">
                           <div className="font-serif-en text-2xl">{b.booking_time.slice(0, 5)}</div>
                           {isReceivedMode && (
