@@ -166,19 +166,18 @@ Deno.serve(async (req) => {
 
       // メール（送信キュー経由で実配信）
       if (campaign.send_email && c.email) {
-        const r = await supabase.functions.invoke("send-transactional-email", {
-          body: {
-            templateName: "thank-you",
-            recipientEmail: c.email,
-            idempotencyKey: `campaign-${campaign_id}-${c.id}`,
-            templateData: {
-              customerName: c.full_name,
-              salonName: ownerProfile?.salon_name || "サロン",
-              bookingLink,
-            },
+        const r = await sendTransactionalEmailInternal({
+          templateName: "thank-you",
+          recipientEmail: c.email,
+          idempotencyKey: `campaign-${campaign_id}-${c.id}`,
+          templateData: {
+            customerName: c.full_name,
+            salonName: ownerProfile?.salon_name || "サロン",
+            bookingLink,
           },
         });
-        if (!r.error) { send.email_sent = true; emailSuccess++; }
+        if (r.ok) { send.email_sent = true; emailSuccess++; }
+        else { console.error("[send-campaign] email fail", { campaign_id, customer_id: c.id, ...r }); }
       }
 
       // SMS
