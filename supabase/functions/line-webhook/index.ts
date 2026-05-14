@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
+import { invokeInternal } from "../_shared/invoke-internal.ts";
 import { replyLine, sendLinePush, normalizePhone } from "../_shared/line-push.ts";
 import { detectFields } from "../_shared/line-field-detector.ts";
 import {
