@@ -291,6 +291,17 @@ export default function Inbox() {
           hasLine={true}
         />
       )}
+
+      {linkTarget && (
+        <LinkInboundCustomerDialog
+          open={linkOpen}
+          onClose={() => { setLinkOpen(false); setLinkTarget(null); }}
+          inboundId={linkTarget.id}
+          lineUserId={linkTarget.line_user_id}
+          displayName={linkTarget.display_name}
+          onLinked={() => { load(); }}
+        />
+      )}
     </AppLayout>
   );
 }
