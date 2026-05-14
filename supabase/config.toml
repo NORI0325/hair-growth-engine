@@ -73,3 +73,7 @@ project_id = "miyedioemkzhetphjzzg"
     verify_jwt = false
   [functions.sync-job-retry]
     verify_jwt = false
+  [functions.cron-check-unsynced-bookings]
+    verify_jwt = false
+  [functions.notify-sync-failure]
+    verify_jwt = false
