@@ -9,6 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, MessageCircle, Check, AlertTriangle, Sparkles, Phone, Trash2 } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { CustomerMessageDialog } from "@/components/CustomerMessageDialog";
+import { LinkInboundCustomerDialog } from "@/components/LinkInboundCustomerDialog";
+import { Link2 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
@@ -50,7 +52,8 @@ export default function Inbox() {
   const [filter, setFilter] = useState<"unhandled" | "all" | "critical">("unhandled");
   const [replyOpen, setReplyOpen] = useState(false);
   const [replyTo, setReplyTo] = useState<InboundMsg | null>(null);
-
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [linkTarget, setLinkTarget] = useState<InboundMsg | null>(null);
   const load = async () => {
     if (!user) { setMessages([]); setLoading(false); return; }
     setLoading(true);
@@ -223,9 +226,14 @@ export default function Inbox() {
                         AI下書きで返信
                       </Button>
                     ) : (
-                      <span className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Phone className="w-3 h-3" />お客様情報と紐付け後に返信可
-                      </span>
+                      <Button
+                        size="sm"
+                        onClick={() => { setLinkTarget(m); setLinkOpen(true); }}
+                        className="rounded-none"
+                      >
+                        <Link2 className="w-3.5 h-3.5 mr-1.5" />
+                        お客様情報と紐付け
+                      </Button>
                     )}
                     <Button
                       size="sm"
@@ -281,6 +289,17 @@ export default function Inbox() {
           customerName={replyTo.display_name || "お客様"}
           customerPhone={null}
           hasLine={true}
+        />
+      )}
+
+      {linkTarget && (
+        <LinkInboundCustomerDialog
+          open={linkOpen}
+          onClose={() => { setLinkOpen(false); setLinkTarget(null); }}
+          inboundId={linkTarget.id}
+          lineUserId={linkTarget.line_user_id}
+          displayName={linkTarget.display_name}
+          onLinked={() => { load(); }}
         />
       )}
     </AppLayout>
