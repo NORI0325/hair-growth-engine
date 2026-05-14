@@ -162,6 +162,7 @@ export type Database = {
           notes: string | null
           owner_id: string
           revenue: number | null
+          salonboard_alert_sent_at: string | null
           source_channel: string | null
           source_job_id: string | null
           source_template: string | null
@@ -197,6 +198,7 @@ export type Database = {
           notes?: string | null
           owner_id: string
           revenue?: number | null
+          salonboard_alert_sent_at?: string | null
           source_channel?: string | null
           source_job_id?: string | null
           source_template?: string | null
@@ -232,6 +234,7 @@ export type Database = {
           notes?: string | null
           owner_id?: string
           revenue?: number | null
+          salonboard_alert_sent_at?: string | null
           source_channel?: string | null
           source_job_id?: string | null
           source_template?: string | null
