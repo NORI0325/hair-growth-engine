@@ -186,20 +186,18 @@ Deno.serve(async (req) => {
       if (useEmail) {
         if (!c.email) result.email.skipped++;
         else {
-          const r = await supabase.functions.invoke("send-transactional-email", {
-            body: {
-              templateName: "campaign-news",
-              recipientEmail: c.email,
-              idempotencyKey: `bulk-${Date.now()}-${c.id}`,
-              templateData: {
-                customerName: c.full_name || "お客様",
-                salonName,
-                subject,
-                bodyText: personalText,
-              },
+          const r = await sendTransactionalEmailInternal({
+            templateName: "campaign-news",
+            recipientEmail: c.email,
+            idempotencyKey: `bulk-${Date.now()}-${c.id}`,
+            templateData: {
+              customerName: c.full_name || "お客様",
+              salonName,
+              subject,
+              bodyText: personalText,
             },
           });
-          if (r.error) result.email.failed++;
+          if (!r.ok) { result.email.failed++; console.error("[bulk-broadcast] email fail", { customer_id: c.id, ...r }); }
           else { result.email.sent++; anySent = true; lastChannel = "email"; }
         }
       }
