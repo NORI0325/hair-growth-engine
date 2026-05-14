@@ -1,0 +1,1 @@
+UPDATE bookings SET salonboard_alert_sent_at = NULL WHERE id = 'd3fa181a-9460-41f7-a77c-1e55c0b3d510';

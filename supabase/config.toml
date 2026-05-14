@@ -77,3 +77,4 @@ project_id = "miyedioemkzhetphjzzg"
     verify_jwt = false
   [functions.notify-sync-failure]
     verify_jwt = false
+
