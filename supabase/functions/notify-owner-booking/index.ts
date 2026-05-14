@@ -25,26 +25,24 @@ Deno.serve(async (req) => {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      const { error } = await supabase.functions.invoke("send-transactional-email", {
-        body: {
-          templateName: "booking-alert-owner",
-          recipientEmail: recipient,
-          idempotencyKey: `owner-alert-test-${Date.now()}`,
-          templateData: {
-            eventType: "created",
-            customerName: "テスト 太郎",
-            customerPhone: "090-0000-0000",
-            bookingDate: new Date().toISOString().slice(0, 10),
-            bookingTime: "14:00",
-            menu: "カット＋カラー（テスト送信）",
-            notes: "これはテスト送信です。実際の予約は入っていません。",
-            salonName: body.salonName ?? undefined,
-          },
+      const r = await sendTransactionalEmailInternal({
+        templateName: "booking-alert-owner",
+        recipientEmail: recipient,
+        idempotencyKey: `owner-alert-test-${Date.now()}`,
+        templateData: {
+          eventType: "created",
+          customerName: "テスト 太郎",
+          customerPhone: "090-0000-0000",
+          bookingDate: new Date().toISOString().slice(0, 10),
+          bookingTime: "14:00",
+          menu: "カット＋カラー（テスト送信）",
+          notes: "これはテスト送信です。実際の予約は入っていません。",
+          salonName: body.salonName ?? undefined,
         },
       });
-      if (error) {
-        console.error("test send error:", error);
-        return new Response(JSON.stringify({ error: "send_failed" }), {
+      if (!r.ok) {
+        console.error("test send error:", r);
+        return new Response(JSON.stringify({ error: "send_failed", detail: r }), {
           status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
