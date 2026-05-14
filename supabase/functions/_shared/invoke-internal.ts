@@ -84,7 +84,7 @@ export async function invokeInternal<T = unknown>(
 
     if (!resp.ok) {
       console.error(
-        `[invokeInternal] FAIL target=${functionName} status=${resp.status} reqId=${requestId ?? "-"} idem=${idempotencyKey ?? "-"} body=${text.slice(0, 500)}`,
+        `[invokeInternal] FAIL caller=${caller} target=${functionName} status=${resp.status} reqId=${requestId ?? "-"} idem=${idempotencyKey ?? "-"} ctx=${ctx} body=${text.slice(0, 500)}`,
       );
       return {
         ok: false, status: resp.status, errorBody: text.slice(0, 2000),
@@ -97,7 +97,7 @@ export async function invokeInternal<T = unknown>(
   } catch (e) {
     const msg = (e as Error).message;
     console.error(
-      `[invokeInternal] EXCEPTION target=${functionName} idem=${idempotencyKey ?? "-"} err=${msg}`,
+      `[invokeInternal] EXCEPTION caller=${caller} target=${functionName} idem=${idempotencyKey ?? "-"} ctx=${ctx} err=${msg}`,
     );
     return {
       ok: false, status: 0, errorMessage: msg,
