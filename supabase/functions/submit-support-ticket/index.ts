@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { corsHeaders } from "../_shared/cors.ts";
+import { invokeInternal } from "../_shared/invoke-internal.ts";
 
 // サポート問い合わせ送信
 // - tickets テーブルに保存
