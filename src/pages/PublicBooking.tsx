@@ -256,14 +256,24 @@ const PublicBooking = () => {
       _staff_id: parsed.data.staff_id || null,
     };
     console.log("[PublicBooking] submit payload:", payload);
-    const { data, error } = await supabase.rpc("public_create_booking_v4" as any, payload);
+    const { data, error } = await supabase.rpc("public_create_booking_v5" as any, payload);
     setSubmitting(false);
     console.log("[PublicBooking] response:", { data, error });
     const bookingId = (data as any)?.booking_id;
     if (error || !(data as any)?.success || !bookingId) {
       const reason = (data as any)?.error || error?.message || "unknown";
       console.error("[PublicBooking] booking failed:", reason);
-      toast.error(`ご予約に失敗しました（${reason}）。お手数ですが再度お試しください。`);
+      if (reason === "slot_just_taken") {
+        toast.error("申し訳ありません。この時間は直前に埋まりました。別の時間を選択してください。");
+        // 空き枠を再取得させる
+        setForm(f => ({ ...f, time: "" }));
+      } else if (reason === "staff_unavailable") {
+        toast.error("ご指名のスタッフはこの時間ご予約いただけません。別のスタッフ・時間をお選びください。");
+      } else if (reason === "no_available_staff") {
+        toast.error("申し訳ありません。この時間は満席です。別の時間をお選びください。");
+      } else {
+        toast.error(`ご予約に失敗しました（${reason}）。お手数ですが再度お試しください。`);
+      }
       return;
     }
     if (bookingId) {
