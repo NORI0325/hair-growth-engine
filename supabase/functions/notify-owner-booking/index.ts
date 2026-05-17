@@ -3,6 +3,11 @@ import { corsHeaders } from "../_shared/cors.ts";
 import { sendLinePush, getLineCredentials } from "../_shared/line-push.ts";
 import { sendTransactionalEmailInternal } from "../_shared/invoke-internal.ts";
 
+function isPlaceholderReservationName(name: unknown, extId?: string | null): boolean {
+  const normalized = String(name || "").replace(/\s+/g, "").trim();
+  return !!extId && normalized === `予約${extId}`;
+}
+
 // 公開：予約変更（新規/更新/キャンセル）時にオーナー＋お客様へ通知
 //  - オーナー: メール（owner_notification_email）
 //  - お客様 : LINE連携済みなら LINE プッシュ、メール登録があればメール
@@ -120,7 +125,7 @@ Deno.serve(async (req) => {
 
     const { data: booking } = await supabase
       .from("bookings")
-      .select("id, owner_id, location_id, booking_date, booking_time, menu, notes, customer_id, sync_status, source_channel")
+      .select("id, owner_id, location_id, booking_date, booking_time, menu, notes, customer_id, sync_status, source_channel, external_reservation_id")
       .eq("id", bookingId)
       .maybeSingle();
 
@@ -148,8 +153,14 @@ Deno.serve(async (req) => {
     const creds = await getLineCredentials(supabase, booking.owner_id, bookingLocationId);
     const bookingDate = booking.booking_date;
     const bookingTime = String(booking.booking_time).slice(0, 5);
-    const menu = booking.menu;
+    const externalReservationId = (booking as any).external_reservation_id ?? null;
+    const isGarblePlaceholder = eventType === "created" && isPlaceholderReservationName(customer?.full_name, externalReservationId);
+    const menuMissingByGarble = eventType === "created" && String(booking.menu || "").includes("文字化け");
+    const menu = menuMissingByGarble ? "メニュー未取得（文字化け）" : booking.menu;
     const customerName = customer?.full_name ?? "お客様";
+    const ownerDisplayName = isGarblePlaceholder
+      ? `顧客名未取得（予約ID: ${externalReservationId}）`
+      : customerName;
 
     const isSyncing = eventType === "created" && (booking as any).sync_status === "pending";
     const eventLabel =
@@ -187,12 +198,14 @@ Deno.serve(async (req) => {
           idempotencyKey: `owner-alert-${eventType}-${bookingId}-${r.email}`,
           templateData: {
             eventType,
-            customerName,
+              customerName: ownerDisplayName,
             customerPhone: customer?.phone ?? undefined,
             bookingDate,
             bookingTime,
             menu,
-            notes: booking.notes ?? undefined,
+              notes: isGarblePlaceholder
+                ? `メール文字化けのため、顧客名を取得できませんでした。受信ログで確認してください。${booking.notes ? `\n${booking.notes}` : ""}`
+                : booking.notes ?? undefined,
             salonName: profile?.salon_name ?? undefined,
             recipientName: r.name ?? undefined,
           },
@@ -203,11 +216,13 @@ Deno.serve(async (req) => {
 
       // LINE通知（オーナー/スタッフのLINE）
       if (channels.includes("line") && r.line_user_id && creds) {
+        const customerLine = isGarblePlaceholder ? ownerDisplayName : `${customerName}様`;
         const lineMsg =
           `🔔 ${eventLabel}\n\n` +
-          `👤 ${customerName}様\n` +
+          `👤 ${customerLine}\n` +
           `📅 ${bookingDate} ${bookingTime}\n` +
           `💇 ${menu}\n` +
+          (isGarblePlaceholder ? `⚠️ メール文字化けのため、顧客名を取得できませんでした。受信ログで確認してください。\n` : "") +
           (customer?.phone ? `📞 ${customer.phone}\n` : "") +
           (booking.notes ? `📝 ${booking.notes}\n` : "") +
           (eventType === "created" || eventType === "updated"
