@@ -64,9 +64,15 @@ interface DayItem {
   customerName: string | null;
   menu: string | null;
   stylistName: string | null;
-  classification: "matched" | "salonboard_only" | "conflict";
+  classification: "matched" | "matched_with_diff" | "salonboard_only" | "conflict";
   matched_booking_id?: string | null;
   reason?: string;
+  diffs?: ("time" | "customer" | "time_unknown")[];
+  local_time?: string | null;
+  local_customer_name?: string | null;
+  local_menu?: string | null;
+  salonboard_time?: string | null;
+  salonboard_customer_name?: string | null;
 }
 
 export default function SyncReview() {
