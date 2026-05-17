@@ -2154,6 +2154,8 @@ export type Database = {
           info_collection_append_to_thanks: boolean
           info_collection_enabled: boolean
           line_add_friend_url: string | null
+          line_booking_paused: boolean
+          line_booking_paused_message: string | null
           line_channel_access_token: string | null
           line_channel_secret: string | null
           line_reservation_auto_reply: string | null
@@ -2205,6 +2207,8 @@ export type Database = {
           info_collection_append_to_thanks?: boolean
           info_collection_enabled?: boolean
           line_add_friend_url?: string | null
+          line_booking_paused?: boolean
+          line_booking_paused_message?: string | null
           line_channel_access_token?: string | null
           line_channel_secret?: string | null
           line_reservation_auto_reply?: string | null
@@ -2256,6 +2260,8 @@ export type Database = {
           info_collection_append_to_thanks?: boolean
           info_collection_enabled?: boolean
           line_add_friend_url?: string | null
+          line_booking_paused?: boolean
+          line_booking_paused_message?: string | null
           line_channel_access_token?: string | null
           line_channel_secret?: string | null
           line_reservation_auto_reply?: string | null
