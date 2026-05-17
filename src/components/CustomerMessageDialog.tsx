@@ -153,7 +153,24 @@ export const CustomerMessageDialog = ({
           </DialogTitle>
         </DialogHeader>
 
-        {!hasLine ? (
+        {lineUnfollowed ? (
+          <div className="py-8 text-center space-y-4">
+            <div className="w-12 h-12 rounded-full border border-destructive/40 mx-auto flex items-center justify-center">
+              <Ban className="w-5 h-5 text-destructive" />
+            </div>
+            <p className="text-sm text-foreground">
+              このお客様はLINEの友だちを解除済みです。<br />
+              LINE送信はできません。お電話・SMS等でご連絡くださいませ。
+            </p>
+            {customerPhone && (
+              <a href={`tel:${customerPhone}`} className="inline-block">
+                <Button className="rounded-none">
+                  <Phone className="w-3.5 h-3.5 mr-2" />{customerPhone} に電話
+                </Button>
+              </a>
+            )}
+          </div>
+        ) : !hasLine ? (
           <div className="py-8 text-center space-y-4">
             <div className="w-12 h-12 rounded-full border border-border mx-auto flex items-center justify-center">
               <Phone className="w-5 h-5 text-muted-foreground" />
@@ -176,6 +193,15 @@ export const CustomerMessageDialog = ({
           </div>
         ) : (
           <div className="space-y-5">
+            {optOutAutomation && (
+              <div className="border border-warning/50 bg-warning/10 px-3 py-2.5 flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
+                <div className="text-[11px] text-foreground/80">
+                  このお客様は<span className="font-serif text-warning">自動配信を停止</span>しています。<br />
+                  販促配信ではなく、必要な手動連絡であることをご確認のうえ送信してください。
+                </div>
+              </div>
+            )}
             {/* AI下書きアシスト */}
             <div className="border border-gold/30 bg-gradient-to-br from-secondary/20 to-transparent p-4 space-y-3">
               <div className="flex items-center justify-between">
