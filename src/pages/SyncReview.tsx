@@ -466,7 +466,8 @@ export default function SyncReview() {
                 const onlyCount = (r.items ?? []).filter((it) => it.classification === "salonboard_only").length;
                 const conflictCount = (r.items ?? []).filter((it) => it.classification === "conflict").length;
                 const matchedCount = (r.items ?? []).filter((it) => it.classification === "matched").length;
-                const needsAttention = onlyCount > 0 || conflictCount > 0 || r.state === "failed";
+                const diffCount = (r.items ?? []).filter((it) => it.classification === "matched_with_diff").length;
+                const needsAttention = onlyCount > 0 || conflictCount > 0 || diffCount > 0 || r.state === "failed";
                 const headerTone =
                   r.state === "failed" ? "border-l-red-500 bg-red-50/40" :
                   needsAttention ? "border-l-amber-500 bg-amber-50/40" :
@@ -474,6 +475,7 @@ export default function SyncReview() {
                   r.state === "running" ? "border-l-blue-500 bg-blue-50/30" :
                   "border-l-muted bg-muted/20";
                 const isOpen = !!expandedDates[r.date];
+                const sortedItems = sortItems(r.items ?? []);
                 return (
                   <Collapsible key={r.date} open={isOpen} onOpenChange={(o) => setExpandedDates((p) => ({ ...p, [r.date]: o }))}>
                     <CollapsibleTrigger asChild>
@@ -488,7 +490,7 @@ export default function SyncReview() {
                           {r.state === "done" && (
                             <span className="text-[11px] text-muted-foreground">
                               サロンボード {r.total_external ?? 0} ／ SalonBoost {r.total_local ?? 0}
-                              {(onlyCount + conflictCount + matchedCount) > 0 && ` ／ 一致${matchedCount}・SBのみ${onlyCount}・競合${conflictCount}`}
+                              {(onlyCount + conflictCount + matchedCount + diffCount) > 0 && ` ／ 一致${matchedCount}・差分${diffCount}・SBのみ${onlyCount}・競合${conflictCount}`}
                             </span>
                           )}
                         </div>
@@ -499,34 +501,58 @@ export default function SyncReview() {
                         {r.state === "failed" && (
                           <div className="text-xs text-red-700 bg-red-50 px-2 py-1">エラー: {r.error}</div>
                         )}
-                        {r.state === "done" && (r.items?.length ?? 0) === 0 && (
+                        {r.state === "done" && (sortedItems.length === 0) && (
                           <div className="text-sm text-muted-foreground py-2">サロンボード側の予約は見つかりませんでした</div>
                         )}
-                        {(r.items ?? []).map((it, idx) => {
+                        {sortedItems.map((it, idx) => {
                           const tone =
                             it.classification === "matched" ? "border-l-emerald-500 bg-emerald-50/30" :
+                            it.classification === "matched_with_diff" ? "border-l-amber-500 bg-amber-50/40" :
                             it.classification === "salonboard_only" ? "border-l-amber-500 bg-amber-50/30" :
                             "border-l-red-500 bg-red-50/30";
+                          const badgeTone =
+                            it.classification === "matched_with_diff" ? "bg-amber-100 text-amber-900 border-amber-300" :
+                            it.classification === "conflict" ? "bg-red-100 text-red-800 border-red-300" :
+                            it.classification === "salonboard_only" ? "bg-amber-50 text-amber-800 border-amber-200" :
+                            "bg-emerald-50 text-emerald-800 border-emerald-200";
                           const labelText =
                             it.classification === "matched" ? "一致" :
+                            it.classification === "matched_with_diff" ? "ID一致・内容差分あり" :
                             it.classification === "salonboard_only" ? "サロンボードのみ" : "競合";
                           const key = `${it.external_reservation_id ?? ""}|${it.customerName}|${it.time}|${idx}`;
                           const sbDetailUrl = it.external_reservation_id
                             ? `https://salonboard.com/CLP/bt/reserve/reserveDetail/?reserveId=${encodeURIComponent(it.external_reservation_id)}`
                             : null;
-                          const missingTimeOrName = !it.time || !it.customerName;
+                          const diffSet = new Set(it.diffs ?? []);
+                          const showTimeDiff = diffSet.has("time");
+                          const showTimeUnknown = diffSet.has("time_unknown");
+                          const showCustomerDiff = diffSet.has("customer");
                           return (
-                            <div key={key} className={`border-l-4 ${tone} px-3 py-2 flex items-center justify-between gap-3 flex-wrap`}>
+                            <div key={key} className={`border-l-4 ${tone} px-3 py-2 flex items-start justify-between gap-3 flex-wrap`}>
                               <div className="text-sm flex-1 min-w-0">
-                                <Badge className="rounded-none mr-2 text-[10px]" variant="outline">{labelText}</Badge>
+                                <Badge className={`rounded-none mr-2 text-[10px] border ${badgeTone}`} variant="outline">{labelText}</Badge>
                                 <span className="font-serif">{it.customerName ?? "顧客不明"}</span>
                                 <span className="text-muted-foreground"> ・ {it.time ?? "—"} ・ {it.menu ?? "メニュー不明"}</span>
                                 <span className="text-[11px] text-muted-foreground"> ／ ext_id: {it.external_reservation_id ?? "—"}</span>
                                 {it.reason && <span className="text-[11px] text-muted-foreground"> ／ {it.reason}</span>}
-                                {sbDetailUrl && missingTimeOrName && (
+                                {sbDetailUrl && (
                                   <a href={sbDetailUrl} target="_blank" rel="noopener noreferrer" className="ml-2 text-[11px] text-gold inline-flex items-center hover:underline">
                                     <ExternalLink className="w-3 h-3 mr-0.5" />サロンボード詳細を開く
                                   </a>
+                                )}
+                                {it.classification === "matched_with_diff" && (
+                                  <div className="mt-1 text-[11px] text-amber-900 bg-amber-50 border border-amber-200 px-2 py-1 space-y-0.5">
+                                    {showTimeDiff && (
+                                      <div>⚠ 時刻差分：サロンボード <b>{it.salonboard_time ?? "—"}</b> / SalonBoost <b>{it.local_time ?? "—"}</b></div>
+                                    )}
+                                    {showTimeUnknown && (
+                                      <div>⚠ サロンボード側の時刻が取得できませんでした（SalonBoost: <b>{it.local_time ?? "—"}</b>）。詳細ページで確認してください。</div>
+                                    )}
+                                    {showCustomerDiff && (
+                                      <div>⚠ 顧客名差分：サロンボード <b>{it.salonboard_customer_name ?? "—"}</b> / SalonBoost <b>{it.local_customer_name ?? "—"}</b></div>
+                                    )}
+                                    <div className="text-muted-foreground">自動上書きは行いません。管理者が確認してどちらを正とするか判断してください。</div>
+                                  </div>
                                 )}
                               </div>
                               {it.classification === "salonboard_only" && (
