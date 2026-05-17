@@ -293,6 +293,19 @@ const PublicBooking = () => {
     </div>
   );
 
+  if (bookingPaused) return (
+    <div className="min-h-screen flex items-center justify-center p-6 bg-background">
+      <div className="max-w-md w-full text-center">
+        <p className="eyebrow mb-4 text-gold">— Notice —</p>
+        <h2 className="display text-2xl mb-6">ただいまWeb予約を一時停止しております</h2>
+        <div className="hairline w-16 mx-auto my-6" />
+        <p className="text-sm text-muted-foreground leading-loose whitespace-pre-wrap">
+          {pausedMessage || "お手数をおかけいたしますが、お電話または公式サイトよりお問い合わせくださいませ。"}
+        </p>
+      </div>
+    </div>
+  );
+
   if (completed) return (
     <div className="min-h-screen flex items-center justify-center p-6 bg-background animate-fade-up">
       <div className="max-w-md w-full text-center">
