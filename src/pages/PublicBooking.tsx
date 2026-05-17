@@ -235,6 +235,7 @@ const PublicBooking = () => {
   }, [slug, form.date, form.staff_id, totalDuration, hasStaff]);
 
   const handleSubmit = async () => {
+    if (bookingPaused) { toast.error("ただいまWeb予約を一時停止しております"); return; }
     // ひらがな入力をカタカナへ自動変換してから検証
     const normalizedKana = hiraToKata(form.full_name_kana || "").replace(/[\u3000]/g, " ").trim();
     const candidate = { ...form, full_name_kana: normalizedKana };
