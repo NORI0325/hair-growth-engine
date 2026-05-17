@@ -329,6 +329,18 @@ function normalizePhone(phone: string | null | undefined): string | null {
   return digits;
 }
 
+function normalizeExternalReservationId(value: unknown): string | null {
+  const id = String(value || "").trim().toUpperCase();
+  return /^[A-Z]{1,4}\d{6,12}$/.test(id) ? id : null;
+}
+
+function isPlaceholderReservationName(name: unknown, extId?: string | null): boolean {
+  const normalized = String(name || "").replace(/\s+/g, "").trim();
+  if (!normalized) return true;
+  if (normalized === "お客様") return true;
+  return !!extId && normalized === `予約${extId}`;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") {
