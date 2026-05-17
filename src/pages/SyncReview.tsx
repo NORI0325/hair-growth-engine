@@ -61,6 +61,8 @@ interface DayItem {
   external_reservation_id: string | null;
   date: string;
   time: string | null;
+  end_time?: string | null;
+  duration_minutes?: number | null;
   customerName: string | null;
   menu: string | null;
   stylistName: string | null;
@@ -73,6 +75,10 @@ interface DayItem {
   local_menu?: string | null;
   salonboard_time?: string | null;
   salonboard_customer_name?: string | null;
+  detail_url?: string | null;
+  time_source?: "popup" | "detail" | "not_fetched_limit" | null;
+  detail_fetch_skipped_reason?: string | null;
+  detail_fetch_error?: string | null;
 }
 
 export default function SyncReview() {
