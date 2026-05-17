@@ -50,8 +50,6 @@ export const CustomerMessageDialog = ({
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
   const [confirmOptOutOpen, setConfirmOptOutOpen] = useState(false);
-  const [sending, setSending] = useState(false);
-  const [loading, setLoading] = useState(true);
 
   // AI下書き機能
   const [aiContext, setAiContext] = useState("");
