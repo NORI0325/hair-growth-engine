@@ -625,9 +625,11 @@ Deno.serve(async (req) => {
     }
 
     let target: any = null;
+    let externalIdMatchCount = 0;
     if (candidates && candidates.length > 0) {
       if (extId) {
         const exactIdMatches = candidates.filter((c: any) => c.external_reservation_id === extId);
+        externalIdMatchCount = exactIdMatches.length;
         if (exactIdMatches.length === 1) target = exactIdMatches[0];
         else if (exactIdMatches.length > 1) target = null;
       }
@@ -715,11 +717,13 @@ Deno.serve(async (req) => {
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    // マッチなし → needs_review（誤キャンセルを避けるため自動更新しない）
+    // マッチなし/複数一致 → needs_review（誤キャンセルを避けるため自動更新しない）
     // CRITICAL: オーナーに即時通知（放置すると無断キャンセルとして扱われクレーム化）
+    const cancelTargetError = externalIdMatchCount > 1 ? "cancel_external_id_multiple_matches" : "cancel_target_not_found";
     const { data: logRow } = await supabase.from("external_reservation_logs").insert({
       owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
-      parsed_data: withDecodeMeta(extracted, decodeMeta, text), status: "needs_review", error: "cancel_target_not_found",
+      parsed_data: withDecodeMeta({ ...extracted, _match_strategy: extId ? "external_reservation_id" : "fallback", _external_id_match_count: externalIdMatchCount }, decodeMeta, text),
+      status: "needs_review", error: cancelTargetError,
     }).select("id").single();
     try {
       await supabase.functions.invoke("notify-owner-booking", {
