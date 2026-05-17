@@ -33,6 +33,8 @@ interface Customer {
   visit_count: number;
   total_spent: number;
   line_user_id?: string | null;
+  line_unfollowed_at?: string | null;
+  opt_out_automation?: boolean | null;
   notes?: string | null;
   gender?: string | null;
 }
