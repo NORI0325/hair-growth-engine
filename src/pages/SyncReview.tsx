@@ -747,3 +747,9 @@ const Section = ({ title, children }: { title: string; children: React.ReactNode
     {children}
   </div>
 );
+const SummaryStat = ({ label, value, tone }: { label: string; value: number; tone?: "warn" | "alert" }) => (
+  <div className={`border px-2 py-1 ${tone === "alert" ? "border-red-200 bg-red-50 text-red-700" : tone === "warn" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-border bg-muted/20 text-foreground"}`}>
+    <div className="text-[10px] uppercase tracking-luxury opacity-70">{label}</div>
+    <div className="text-sm font-serif">{value}</div>
+  </div>
+);
