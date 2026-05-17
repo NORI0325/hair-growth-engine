@@ -421,7 +421,7 @@ const Customers = () => {
             rowComponent={CustomerRow}
             rowCount={filtered.length}
             rowHeight={68}
-            rowProps={{ customers: filtered, selected, toggle, onEdit: (c) => setEditTarget(c as any), onQr: (c) => setQrTarget({ id: c.id, name: c.full_name }) }}
+            rowProps={{ customers: filtered, selected, toggle, onEdit: (c) => setEditTarget(c as any), onQr: (c) => setQrTarget({ id: c.id, name: c.full_name }), onMessage: (c) => setMessageTarget(c) }}
             style={{ height: "calc(100vh - 480px)", minHeight: 400 }}
             overscanCount={5}
           />
