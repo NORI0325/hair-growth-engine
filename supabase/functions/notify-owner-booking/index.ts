@@ -231,8 +231,8 @@ Deno.serve(async (req) => {
     results.owner_email = ownerEmailResults.length ? ownerEmailResults : "skipped: no email recipient";
     results.owner_line = ownerLineResults.length ? ownerLineResults : "skipped: no line recipient";
 
-    // === ② お客様へ LINE プッシュ（連携済みなら）===
-    if (customer?.line_user_id && creds) {
+    // === ② お客様へ LINE プッシュ (sync_succeeded はオーナー専用なのでスキップ) ===
+    if (eventType !== "sync_succeeded" && customer?.line_user_id && creds) {
       const lineMsg =
         `🌸 ${customerName}様\n\n${eventLabel}。\n\n` +
         `📅 ${bookingDate}\n⏰ ${bookingTime}\n💇 ${menu}\n\n` +
@@ -252,11 +252,11 @@ Deno.serve(async (req) => {
         error: r.ok ? null : r.err,
       });
     } else {
-      results.customer_line = "skipped: not linked";
+      results.customer_line = eventType === "sync_succeeded" ? "skipped: owner-only event" : "skipped: not linked";
     }
 
-    // === ③ お客様へメール（メール登録があれば）===
-    if (customer?.email) {
+    // === ③ お客様へメール (sync_succeeded はスキップ) ===
+    if (eventType !== "sync_succeeded" && customer?.email) {
       const templateName =
         eventType === "cancelled" || eventType === "cancelled_by_customer" ? "booking-cancelled"
           : eventType === "updated" ? "booking-updated"
@@ -276,7 +276,7 @@ Deno.serve(async (req) => {
       results.customer_email = er.ok ? "sent" : `error: ${er.status} ${er.errorMessage ?? er.errorBody ?? ""}`;
       if (!er.ok) console.error("customer email error:", er);
     } else {
-      results.customer_email = "skipped: no email";
+      results.customer_email = eventType === "sync_succeeded" ? "skipped: owner-only event" : "skipped: no email";
     }
 
     return new Response(JSON.stringify({ success: true, results }), {
