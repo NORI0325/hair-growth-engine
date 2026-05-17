@@ -88,7 +88,7 @@ const CustomerChart = () => {
       </div>
 
       <Tabs defaultValue="treatments" className="mt-4">
-        <TabsList className="w-full grid grid-cols-3 rounded-none h-auto p-0 bg-transparent border-b border-border">
+        <TabsList className="w-full grid grid-cols-4 rounded-none h-auto p-0 bg-transparent border-b border-border">
           <TabsTrigger value="treatments" className="rounded-none data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-gold data-[state=active]:shadow-none py-3 text-xs">
             施術履歴
           </TabsTrigger>
@@ -98,6 +98,9 @@ const CustomerChart = () => {
           <TabsTrigger value="insights" className="rounded-none data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-gold data-[state=active]:shadow-none py-3 text-xs">
             分析
           </TabsTrigger>
+          <TabsTrigger value="delivery" className="rounded-none data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-gold data-[state=active]:shadow-none py-3 text-xs">
+            配信履歴
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="treatments" className="mt-6">
@@ -105,7 +108,6 @@ const CustomerChart = () => {
         </TabsContent>
         <TabsContent value="chart" className="mt-6">
           <CustomerChartPanel customerId={customer.id} onSaved={() => {
-            // refresh alert banner
             supabase.from("customer_charts").select("has_diamine_allergy, is_pregnant, allergies")
               .eq("customer_id", customer.id).maybeSingle().then(({ data }) => setAlert(data as any));
           }} />
@@ -113,7 +115,24 @@ const CustomerChart = () => {
         <TabsContent value="insights" className="mt-6">
           <CustomerInsightsPanel customerId={customer.id} />
         </TabsContent>
+        <TabsContent value="delivery" className="mt-6">
+          <p className="eyebrow mb-3">— 配信・連絡履歴 / Delivery Timeline —</p>
+          <CustomerDeliveryTimeline customerId={customer.id} />
+        </TabsContent>
       </Tabs>
+
+      {messageOpen && (
+        <CustomerMessageDialog
+          open={messageOpen}
+          onClose={() => setMessageOpen(false)}
+          customerId={customer.id}
+          customerName={customer.full_name}
+          customerPhone={customer.phone}
+          hasLine={!!customer.line_user_id}
+          optOutAutomation={!!customer.opt_out_automation}
+          lineUnfollowed={!!customer.line_unfollowed_at}
+        />
+      )}
     </AppLayout>
   );
 };
