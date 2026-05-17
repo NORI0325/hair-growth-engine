@@ -5,11 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { AlertTriangle, CheckCheck, FileSearch, GitCompare, AlertCircle, MapPinOff, Send, Download, CalendarDays, RefreshCw } from "lucide-react";
+import { AlertTriangle, CheckCheck, FileSearch, GitCompare, AlertCircle, MapPinOff, Send, Download, CalendarDays, RefreshCw, ExternalLink, ChevronDown, ChevronRight, StopCircle } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useCurrentLocationId } from "@/hooks/useLocations";
 import SyncStatusDialog from "@/components/SyncStatusDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 const STATUS_LABEL: Record<string, { text: string; tone: string }> = {
   external_missing: { text: "サロンボードに無い", tone: "bg-amber-50 text-amber-800 border-amber-200" },
