@@ -596,30 +596,53 @@ Deno.serve(async (req) => {
   if (extracted.event_type === "cancelled") {
     const phoneC = normalizePhone(extracted.customer_phone);
     const nameC = (extracted.customer_name || "").toString().trim();
+    const extId = normalizeExternalReservationId(extracted.external_reservation_id);
 
-    // 候補予約の検索：日付＋時刻＋（電話 or 名前）でマッチ
-    let query = supabase
-      .from("bookings")
-      .select("id, status, customer_id, customers(full_name, phone)")
-      .eq("owner_id", ownerId)
-      .eq("external_source", source)
-      .in("status", ["pending", "confirmed"]);
+    // 第1優先: external_reservation_id 完全一致。source表記差分（salonboard/salonboard_email）や氏名文字化けに依存しない。
+    let candidates: any[] = [];
+    if (extId) {
+      const { data } = await supabase
+        .from("bookings")
+        .select("id, status, customer_id, sync_status, external_reservation_id, customers(full_name, phone)")
+        .eq("owner_id", ownerId)
+        .eq("external_reservation_id", extId)
+        .in("status", ["pending", "confirmed"])
+        .limit(20);
+      candidates = data || [];
+    }
 
-    if (extracted.booking_date) query = query.eq("booking_date", extracted.booking_date);
-    const { data: candidates } = await query.limit(20);
+    // 第2以降: IDが無い/一致しない場合のみ、従来どおり日付＋氏名/電話で候補化
+    if (candidates.length === 0) {
+      let query = supabase
+        .from("bookings")
+        .select("id, status, customer_id, sync_status, external_reservation_id, customers(full_name, phone)")
+        .eq("owner_id", ownerId)
+        .in("status", ["pending", "confirmed"]);
+
+      if (extracted.booking_date) query = query.eq("booking_date", extracted.booking_date);
+      const { data } = await query.limit(20);
+      candidates = data || [];
+    }
 
     let target: any = null;
     if (candidates && candidates.length > 0) {
+      if (extId) {
+        const exactIdMatches = candidates.filter((c: any) => c.external_reservation_id === extId);
+        if (exactIdMatches.length === 1) target = exactIdMatches[0];
+        else if (exactIdMatches.length > 1) target = null;
+      }
       // 時刻一致を優先
       const timeMatch = extracted.booking_time && /^\d{2}:\d{2}$/.test(extracted.booking_time)
         ? extracted.booking_time + ":00" : null;
-      target = candidates.find((c: any) => {
-        const cp = (c.customers?.phone || "").trim();
-        const cn = (c.customers?.full_name || "").trim();
-        const phoneMatch = phoneC && cp && phoneC === cp;
-        const nameMatch = nameC && cn && (nameC === cn || nameC.includes(cn) || cn.includes(nameC));
-        return phoneMatch || nameMatch;
-      }) || (candidates.length === 1 ? candidates[0] : null);
+      if (!target && !extId) {
+        target = candidates.find((c: any) => {
+          const cp = (c.customers?.phone || "").trim();
+          const cn = (c.customers?.full_name || "").trim();
+          const phoneMatch = phoneC && cp && phoneC === cp;
+          const nameMatch = nameC && cn && (nameC === cn || nameC.includes(cn) || cn.includes(nameC));
+          return phoneMatch || nameMatch;
+        }) || (candidates.length === 1 ? candidates[0] : null);
+      }
     }
 
     if (target) {
