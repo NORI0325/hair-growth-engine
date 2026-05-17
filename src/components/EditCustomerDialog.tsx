@@ -135,7 +135,25 @@ const EditCustomerDialog = ({ customer, open, onOpenChange, onSaved }: Props) =>
           <CustomerInsightsPanel customerId={customer.id} />
         </div>
         <div className="mt-6">
-          <p className="eyebrow mb-3">— 配信履歴 / Delivery Timeline —</p>
+          <div className="flex items-center justify-between mb-3">
+            <p className="eyebrow">— 配信履歴 / Delivery Timeline —</p>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => setMessageOpen(true)}
+              disabled={!customer.line_user_id || !!customer.line_unfollowed_at}
+              className="rounded-none bg-[#06C755] hover:bg-[#06C755]/90 text-white text-[11px] tracking-wider"
+              title={
+                customer.line_unfollowed_at ? "LINE解除済み"
+                  : !customer.line_user_id ? "LINE未連携"
+                  : customer.opt_out_automation ? "自動配信停止中（手動連絡のみ）"
+                  : "LINE送信"
+              }
+            >
+              <MessageCircle className="w-3.5 h-3.5 mr-1.5" />
+              LINE送信
+            </Button>
+          </div>
           <CustomerDeliveryTimeline customerId={customer.id} />
         </div>
         <form onSubmit={handleSubmit} className="space-y-5 mt-4">
