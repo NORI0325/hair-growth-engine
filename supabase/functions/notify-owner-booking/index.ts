@@ -151,11 +151,13 @@ Deno.serve(async (req) => {
     const menu = booking.menu;
     const customerName = customer?.full_name ?? "お客様";
 
+    const isSyncing = eventType === "created" && (booking as any).sync_status === "pending";
     const eventLabel =
-      eventType === "created" ? "ご予約承りました"
-        : eventType === "updated" ? "ご予約内容を変更しました"
-          : eventType === "cancelled_by_customer" ? "🆘 お客様がオンラインからキャンセルされました"
-            : "ご予約をキャンセルしました";
+      eventType === "sync_succeeded" ? "サロンボードに反映されました"
+        : eventType === "created" ? (isSyncing ? "ご予約を受け付けました（サロンボードへ反映中）" : "ご予約承りました")
+          : eventType === "updated" ? "ご予約内容を変更しました"
+            : eventType === "cancelled_by_customer" ? "🆘 お客様がオンラインからキャンセルされました"
+              : "ご予約をキャンセルしました";
 
     const results: Record<string, unknown> = {};
 
