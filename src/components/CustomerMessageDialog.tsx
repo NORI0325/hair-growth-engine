@@ -323,6 +323,32 @@ export const CustomerMessageDialog = ({
           </div>
         )}
       </DialogContent>
+
+      <AlertDialog open={confirmOptOutOpen} onOpenChange={setConfirmOptOutOpen}>
+        <AlertDialogContent className="rounded-none">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-warning" />
+              自動配信停止中のお客様です
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2 text-left">
+              <span className="block">
+                {customerName} 様は自動配信（販促・キャンペーン）を停止しています。
+              </span>
+              <span className="block">
+                今回の送信が <span className="font-serif text-foreground">手動の必要連絡</span> である場合のみ続行してください。
+                販促目的の場合は送信をお控えください。
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="rounded-none">キャンセル</AlertDialogCancel>
+            <AlertDialogAction onClick={doSend} className="rounded-none">
+              手動連絡として送信する
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 };
