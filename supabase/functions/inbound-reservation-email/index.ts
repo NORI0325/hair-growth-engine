@@ -601,6 +601,7 @@ Deno.serve(async (req) => {
     // 第1優先: external_reservation_id 完全一致。source表記差分（salonboard/salonboard_email）や氏名文字化けに依存しない。
     let candidates: any[] = [];
     let searchedByExternalId = false;
+    let fallbackSearchUsed = false;
     if (extId) {
       const { data } = await supabase
         .from("bookings")
@@ -615,6 +616,7 @@ Deno.serve(async (req) => {
 
     // 第2以降: IDが無い/一致しない場合のみ、従来どおり日付＋氏名/電話で候補化
     if (candidates.length === 0) {
+      fallbackSearchUsed = true;
       let query = supabase
         .from("bookings")
         .select("id, status, customer_id, sync_status, external_reservation_id, customers(full_name, phone)")
@@ -628,7 +630,7 @@ Deno.serve(async (req) => {
 
     let target: any = null;
     let externalIdMatchCount = 0;
-    let usingFallbackCandidates = !searchedByExternalId || candidates.length === 0;
+    const usingFallbackCandidates = fallbackSearchUsed || !searchedByExternalId;
     if (candidates && candidates.length > 0) {
       if (extId) {
         const exactIdMatches = candidates.filter((c: any) => c.external_reservation_id === extId);
