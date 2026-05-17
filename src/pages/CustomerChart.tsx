@@ -5,11 +5,18 @@ import AppLayout from "@/components/AppLayout";
 import CustomerChartPanel from "@/components/CustomerChartPanel";
 import TreatmentHistoryPanel from "@/components/TreatmentHistoryPanel";
 import { CustomerInsightsPanel } from "@/components/CustomerInsightsPanel";
+import CustomerDeliveryTimeline from "@/components/CustomerDeliveryTimeline";
+import { CustomerMessageDialog } from "@/components/CustomerMessageDialog";
 import StaffSwitcher from "@/components/StaffSwitcher";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, ArrowLeft, AlertTriangle } from "lucide-react";
+import { Loader2, ArrowLeft, AlertTriangle, MessageCircle } from "lucide-react";
 
-interface Customer { id: string; full_name: string; email: string | null; phone: string | null; visit_count: number; total_spent: number }
+interface Customer {
+  id: string; full_name: string; email: string | null; phone: string | null;
+  visit_count: number; total_spent: number;
+  line_user_id: string | null; line_unfollowed_at: string | null; opt_out_automation: boolean | null;
+}
 interface ChartAlert { has_diamine_allergy: boolean; is_pregnant: boolean; allergies: string | null }
 
 const CustomerChart = () => {
