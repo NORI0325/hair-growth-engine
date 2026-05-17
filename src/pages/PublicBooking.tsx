@@ -63,6 +63,7 @@ const PublicBooking = () => {
   const [fallbackMenus, setFallbackMenus] = useState<string[]>([]);
   const [selectedMenus, setSelectedMenus] = useState<string[]>([]);
   const [completed, setCompleted] = useState(false);
+  const [syncRequired, setSyncRequired] = useState(false);
   const [availableSlots, setAvailableSlots] = useState<Record<string, number>>({});
   const [maxStaffCount, setMaxStaffCount] = useState(1);
   const [slotsLoading, setSlotsLoading] = useState(false);
