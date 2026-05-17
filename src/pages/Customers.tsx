@@ -78,7 +78,7 @@ interface RowData {
   onMessage: (c: Customer) => void;
 }
 
-const CustomerRow = ({ index, style, customers, selected, toggle, onEdit, onQr }: RowComponentProps<RowData>) => {
+const CustomerRow = ({ index, style, customers, selected, toggle, onEdit, onQr, onMessage }: RowComponentProps<RowData>) => {
   const c = customers[index];
   if (!c) return null;
   const seg = segmentOf(c.last_visit_date);
