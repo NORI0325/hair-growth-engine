@@ -46,9 +46,11 @@ Deno.serve(async (req) => {
     }
 
     const { data: targets } = await supabase.from("customers")
-      .select("id, full_name, email, phone, line_user_id, birthday, gender, last_visit_date, visit_count, total_spent")
+      .select("id, full_name, email, phone, line_user_id, line_unfollowed_at, opt_out_automation, birthday, gender, last_visit_date, visit_count, total_spent")
       .eq("owner_id", user.id)
       .eq("is_test", false)
+      // 販促配信: 配信停止顧客は除外
+      .or("opt_out_automation.is.null,opt_out_automation.eq.false")
       .in("id", customerIds);
     const allCustomers = (targets || []) as any[];
 
@@ -72,7 +74,8 @@ Deno.serve(async (req) => {
     }
 
     const isValidLineUserId = (s: string | null | undefined) => !!s && /^U[0-9a-f]{32}$/i.test(s);
-    const lineCount = finalList.filter((c) => isValidLineUserId(c.line_user_id)).length;
+    // LINE: 解除済みは除外
+    const lineCount = finalList.filter((c) => isValidLineUserId(c.line_user_id) && !c.line_unfollowed_at).length;
     const smsCount = finalList.filter((c) => !!c.phone).length;
     const emailCount = finalList.filter((c) => !!c.email).length;
 

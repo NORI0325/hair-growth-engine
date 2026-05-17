@@ -79,9 +79,11 @@ Deno.serve(async (req) => {
     const salonName = (profile as any)?.salon_name || "サロン";
 
     const { data: targets } = await supabase.from("customers")
-      .select("id, full_name, email, phone, line_user_id, birthday, gender, last_visit_date, visit_count, total_spent, location_id")
+      .select("id, full_name, email, phone, line_user_id, line_unfollowed_at, opt_out_automation, birthday, gender, last_visit_date, visit_count, total_spent, location_id")
       .eq("owner_id", user.id)
       .eq("is_test", false)
+      // 販促配信: 配信停止顧客は除外（LINE解除はLINEチャネルのみ後段で除外）
+      .or("opt_out_automation.is.null,opt_out_automation.eq.false")
       .in("id", customerIds);
 
     const allCustomers = (targets || []) as any[];
@@ -159,6 +161,7 @@ Deno.serve(async (req) => {
       if (useLine) {
         if (!lineToken) result.line.skipped++;
         else if (!isValidLineUserId(c.line_user_id)) result.line.skipped++;
+        else if (c.line_unfollowed_at) result.line.skipped++;
         else {
           const r = await sendLinePush(lineToken, c.line_user_id!, personalText);
           if (r.ok) { result.line.sent++; anySent = true; lastChannel = "line"; }

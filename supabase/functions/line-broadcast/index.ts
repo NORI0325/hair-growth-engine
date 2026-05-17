@@ -58,7 +58,10 @@ Deno.serve(async (req) => {
       .select("id, full_name, line_user_id, last_visit_date, location_id")
       .eq("owner_id", user.id)
       .not("line_user_id", "is", null)
-      .eq("is_test", false);
+      .eq("is_test", false)
+      // 販促配信: 配信停止・LINE解除済みは除外
+      .or("opt_out_automation.is.null,opt_out_automation.eq.false")
+      .is("line_unfollowed_at", null);
 
     if (customerIds.length > 0) {
       q = q.in("id", customerIds);
