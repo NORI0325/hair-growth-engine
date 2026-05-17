@@ -103,11 +103,39 @@ Deno.serve(async (req) => {
     const local = (localBookings as any[]) ?? [];
 
     // 分類
+    type DiffKind = "time" | "customer" | "time_unknown";
     type Classified = ExternalItem & {
-      classification: "matched" | "salonboard_only" | "conflict";
+      classification: "matched" | "matched_with_diff" | "salonboard_only" | "conflict";
       matched_booking_id?: string | null;
       reason?: string;
+      diffs?: DiffKind[];
+      local_time?: string | null;
+      local_customer_name?: string | null;
+      local_menu?: string | null;
+      salonboard_time?: string | null;
+      salonboard_customer_name?: string | null;
     };
+
+    const compareWithLocal = (it: ExternalItem, b: any): { diffs: DiffKind[]; local_time: string | null; local_customer_name: string | null; local_menu: string | null } => {
+      const localTime = (b.booking_time || "").slice(0, 5) || null;
+      const localName = b.customers?.full_name ?? null;
+      const localMenu = b.menu ?? null;
+      const diffs: DiffKind[] = [];
+      // 時刻差分判定
+      if (it.time && localTime) {
+        if (it.time !== localTime) diffs.push("time");
+      } else if (!it.time && localTime) {
+        diffs.push("time_unknown");
+      }
+      // 顧客名差分判定（部分一致なら差分なし扱い）
+      const wantName = normalize(it.customerName);
+      const haveName = normalize(localName);
+      if (wantName && haveName && !haveName.includes(wantName) && !wantName.includes(haveName)) {
+        diffs.push("customer");
+      }
+      return { diffs, local_time: localTime, local_customer_name: localName, local_menu: localMenu };
+    };
+
     const usedLocalIds = new Set<string>();
     const classified: Classified[] = externalItems.map((it) => {
       // 1) external_reservation_id 一致
@@ -116,7 +144,21 @@ Deno.serve(async (req) => {
           b.external_reservation_id && b.external_reservation_id === it.external_reservation_id);
         if (m) {
           usedLocalIds.add(m.id);
-          return { ...it, classification: "matched", matched_booking_id: m.id, reason: "external_reservation_id 一致" };
+          const { diffs, local_time, local_customer_name, local_menu } = compareWithLocal(it, m);
+          if (diffs.length === 0) {
+            return {
+              ...it, classification: "matched", matched_booking_id: m.id,
+              reason: "external_reservation_id 一致",
+              local_time, local_customer_name, local_menu,
+              salonboard_time: it.time, salonboard_customer_name: it.customerName,
+            };
+          }
+          return {
+            ...it, classification: "matched_with_diff", matched_booking_id: m.id,
+            reason: `ID一致だが内容差分あり: ${diffs.join(",")}`,
+            diffs, local_time, local_customer_name, local_menu,
+            salonboard_time: it.time, salonboard_customer_name: it.customerName,
+          };
         }
       }
       // 2) 顧客名 + 時刻 一致
@@ -130,12 +172,22 @@ Deno.serve(async (req) => {
         return tOk && nOk && !usedLocalIds.has(b.id);
       });
       if (candidates.length === 1) {
-        usedLocalIds.add(candidates[0].id);
+        const cand = candidates[0];
+        usedLocalIds.add(cand.id);
+        const { diffs, local_time, local_customer_name, local_menu } = compareWithLocal(it, cand);
+        if (diffs.length === 0) {
+          return {
+            ...it, classification: "matched", matched_booking_id: cand.id,
+            reason: "顧客名と時刻で1件一致",
+            local_time, local_customer_name, local_menu,
+            salonboard_time: it.time, salonboard_customer_name: it.customerName,
+          };
+        }
         return {
-          ...it,
-          classification: "matched",
-          matched_booking_id: candidates[0].id,
-          reason: "顧客名と時刻で1件一致",
+          ...it, classification: "matched_with_diff", matched_booking_id: cand.id,
+          reason: `候補1件・内容差分あり: ${diffs.join(",")}`,
+          diffs, local_time, local_customer_name, local_menu,
+          salonboard_time: it.time, salonboard_customer_name: it.customerName,
         };
       }
       if (candidates.length > 1) {
