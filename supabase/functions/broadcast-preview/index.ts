@@ -74,7 +74,8 @@ Deno.serve(async (req) => {
     }
 
     const isValidLineUserId = (s: string | null | undefined) => !!s && /^U[0-9a-f]{32}$/i.test(s);
-    const lineCount = finalList.filter((c) => isValidLineUserId(c.line_user_id)).length;
+    // LINE: 解除済みは除外
+    const lineCount = finalList.filter((c) => isValidLineUserId(c.line_user_id) && !c.line_unfollowed_at).length;
     const smsCount = finalList.filter((c) => !!c.phone).length;
     const emailCount = finalList.filter((c) => !!c.email).length;
 
