@@ -56,6 +56,21 @@ const CustomerChart = () => {
             <div className="font-serif text-base truncate">{customer.full_name}</div>
             <div className="text-[10px] text-muted-foreground">来店{customer.visit_count}回 / ¥{customer.total_spent.toLocaleString()}</div>
           </div>
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => setMessageOpen(true)}
+            disabled={!customer.line_user_id || !!customer.line_unfollowed_at}
+            className="rounded-none bg-[#06C755] hover:bg-[#06C755]/90 text-white text-[11px] tracking-wider shrink-0"
+            title={
+              customer.line_unfollowed_at ? "LINE解除済み"
+                : !customer.line_user_id ? "LINE未連携"
+                : customer.opt_out_automation ? "自動配信停止中（手動連絡のみ）"
+                : "LINE送信"
+            }
+          >
+            <MessageCircle className="w-3.5 h-3.5 mr-1.5" />LINE
+          </Button>
           <StaffSwitcher />
         </div>
 
