@@ -5,11 +5,21 @@ export interface DayReservation {
   external_reservation_id: string | null;
   date: string; // YYYYMMDD
   time: string | null; // HH:MM
+  end_time?: string | null;
+  duration_minutes?: number | null;
   customerName: string | null;
   menu: string | null;
   stylistName: string | null;
   raw: string;
+  detail_href?: string | null;
+  detail_url?: string | null;
+  time_source?: "popup" | "detail" | "not_fetched_limit" | null;
+  detail_fetch_skipped_reason?: string | null;
+  detail_fetch_error?: string | null;
 }
+
+// 1日あたりの詳細ページ展開上限（CAPTCHAリスク低減・サロンボード負荷軽減）
+const DETAIL_FETCH_DAILY_LIMIT = 10;
 
 const SCHEDULE_URLS = [
   (d: string) => `https://salonboard.com/CLP/bt/schedule/salonSchedule/?date=${d}`,
