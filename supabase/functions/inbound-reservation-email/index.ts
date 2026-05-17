@@ -603,6 +603,31 @@ Deno.serve(async (req) => {
     let searchedByExternalId = false;
     let fallbackSearchUsed = false;
     if (extId) {
+      // 二重キャンセル検出: 既に cancelled な予約があれば skipped/already_cancelled として終了
+      const { data: cancelledRow } = await supabase
+        .from("bookings")
+        .select("id, status, sync_status, needs_manual_review")
+        .eq("owner_id", ownerId)
+        .eq("external_reservation_id", extId)
+        .eq("status", "cancelled")
+        .limit(1)
+        .maybeSingle();
+      if (cancelledRow) {
+        // 既に手動などでキャンセル済み → 自動是正のうえ skipped 記録
+        if (cancelledRow.sync_status !== "success" || cancelledRow.needs_manual_review) {
+          await supabase.from("bookings").update({
+            sync_status: "success", needs_manual_review: false,
+          }).eq("id", cancelledRow.id);
+        }
+        await supabase.from("external_reservation_logs").insert({
+          owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
+          parsed_data: withDecodeMeta({ ...extracted, _match_strategy: "external_reservation_id", _already_cancelled: true }, decodeMeta, text),
+          status: "skipped", error: "already_cancelled", created_booking_id: cancelledRow.id,
+        });
+        return new Response(JSON.stringify({ ok: true, skipped: true, reason: "already_cancelled", booking_id: cancelledRow.id }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       const { data } = await supabase
         .from("bookings")
         .select("id, status, customer_id, booking_time, sync_status, external_reservation_id, customers(full_name, phone, notes)")
