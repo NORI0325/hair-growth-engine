@@ -653,21 +653,47 @@ Deno.serve(async (req) => {
         .eq("id", target.id)
         .maybeSingle();
       const inFlight = bk && (bk.sync_status === "pending" || bk.sync_status === "syncing");
-      // external_reservation_id 一致を確認（あれば優先一致条件）
-      const extId = (extracted.external_reservation_id || "").toString().trim();
+      // external_reservation_id 一致を確認（あれば最優先一致条件）
       const idMatches = extId && bk?.external_reservation_id && extId === bk.external_reservation_id;
       const safeAuto = !inFlight && (idMatches || !extId); // ID一致 or 元々ID無し → 自動許可
 
       if (safeAuto) {
+        const cancelSource = source === "salonboard" ? "salonboard_email" : source;
+        let nameCompletionNote: string | null = null;
+        let nameCompletionConflict = false;
+
+        if (nameC && target.customer_id && isPlaceholderReservationName(target.customers?.full_name, extId)) {
+          const { data: sameNameCustomer } = await supabase
+            .from("customers")
+            .select("id")
+            .eq("owner_id", ownerId)
+            .eq("full_name", nameC)
+            .limit(1)
+            .maybeSingle();
+          if (!sameNameCustomer || sameNameCustomer.id === target.customer_id) {
+            nameCompletionNote = "キャンセルメールから氏名補完";
+            await supabase.from("customers").update({
+              full_name: nameC.slice(0, 100),
+              notes: `[${nameCompletionNote}] ${target.customers?.full_name ?? ""} → ${nameC}`,
+            }).eq("id", target.customer_id);
+          } else {
+            nameCompletionConflict = true;
+            nameCompletionNote = `氏名補完候補が既存顧客と衝突: ${nameC}`;
+          }
+        }
+
         await supabase.from("bookings").update({
           status: "cancelled",
-          cancelled_source: source,
+          cancelled_source: cancelSource,
           cancelled_at: new Date().toISOString(),
-          sync_status: "success",
+          sync_status: nameCompletionConflict ? "needs_review" : "success",
+          needs_manual_review: nameCompletionConflict,
         }).eq("id", target.id);
         await supabase.from("external_reservation_logs").insert({
           owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
-          parsed_data: withDecodeMeta(extracted, decodeMeta, text), status: "cancelled_booking", matched_customer_id: target.customer_id, created_booking_id: target.id,
+          parsed_data: withDecodeMeta({ ...extracted, _match_strategy: idMatches ? "external_reservation_id" : "fallback", _name_completion_note: nameCompletionNote }, decodeMeta, text),
+          status: nameCompletionConflict ? "needs_review" : "cancelled_booking", matched_customer_id: target.customer_id, created_booking_id: target.id,
+          error: nameCompletionConflict ? "cancelled_by_external_id_name_completion_conflict" : null,
         });
         try {
           await supabase.functions.invoke("notify-owner-booking", {
