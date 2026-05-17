@@ -20,6 +20,7 @@ import { useCurrentLocationId } from "@/hooks/useLocations";
 import KpiStrip from "@/components/customers/KpiStrip";
 import BulkActionBar from "@/components/customers/BulkActionBar";
 import BulkLineDialog from "@/components/customers/BulkLineDialog";
+import { CustomerMessageDialog } from "@/components/CustomerMessageDialog";
 import { cn } from "@/lib/utils";
 
 interface Customer {
