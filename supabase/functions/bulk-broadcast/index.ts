@@ -161,6 +161,7 @@ Deno.serve(async (req) => {
       if (useLine) {
         if (!lineToken) result.line.skipped++;
         else if (!isValidLineUserId(c.line_user_id)) result.line.skipped++;
+        else if (c.line_unfollowed_at) result.line.skipped++;
         else {
           const r = await sendLinePush(lineToken, c.line_user_id!, personalText);
           if (r.ok) { result.line.sent++; anySent = true; lastChannel = "line"; }
