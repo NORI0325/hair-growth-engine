@@ -97,18 +97,22 @@ const PublicBooking = () => {
         if (location.open_time) setOpenTime(String(location.open_time).slice(0, 5));
         if (location.close_time) setCloseTime(String(location.close_time).slice(0, 5));
 
-        // tenant の public_menus フォールバック取得
+        // tenant の public_menus フォールバック取得 + 一時停止フラグ
         const { data: prof } = await supabase
           .from("profiles")
-          .select("public_menus")
+          .select("public_menus, line_booking_paused, line_booking_paused_message")
           .eq("id", location.tenant_id)
           .maybeSingle();
         pubMenus = prof?.public_menus || [];
+        if ((prof as any)?.line_booking_paused) {
+          setBookingPaused(true);
+          setPausedMessage((prof as any)?.line_booking_paused_message || "");
+        }
       } else {
         // 後方互換: profiles.public_slug で探す
         const { data: profile } = await supabase
           .from("profiles")
-          .select("id, salon_name, public_menus, open_time, close_time")
+          .select("id, salon_name, public_menus, open_time, close_time, line_booking_paused, line_booking_paused_message")
           .eq("public_slug", slug)
           .maybeSingle();
         if (profile) {
@@ -117,6 +121,10 @@ const PublicBooking = () => {
           pubMenus = profile.public_menus || [];
           if (profile.open_time) setOpenTime(String(profile.open_time).slice(0, 5));
           if (profile.close_time) setCloseTime(String(profile.close_time).slice(0, 5));
+          if ((profile as any).line_booking_paused) {
+            setBookingPaused(true);
+            setPausedMessage((profile as any).line_booking_paused_message || "");
+          }
         }
       }
 
