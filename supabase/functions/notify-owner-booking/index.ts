@@ -112,7 +112,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    if (!bookingId || !["created", "updated", "cancelled", "cancelled_by_customer"].includes(eventType)) {
+    if (!bookingId || !["created", "updated", "cancelled", "cancelled_by_customer", "sync_succeeded"].includes(eventType)) {
       return new Response(JSON.stringify({ error: "invalid_payload" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -120,7 +120,7 @@ Deno.serve(async (req) => {
 
     const { data: booking } = await supabase
       .from("bookings")
-      .select("id, owner_id, location_id, booking_date, booking_time, menu, notes, customer_id")
+      .select("id, owner_id, location_id, booking_date, booking_time, menu, notes, customer_id, sync_status, source_channel")
       .eq("id", bookingId)
       .maybeSingle();
 
