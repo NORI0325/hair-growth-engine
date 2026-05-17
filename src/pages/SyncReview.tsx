@@ -444,12 +444,13 @@ export default function SyncReview() {
 
         {rangeResults.length > 0 && (
           <>
-            <div className="mt-4 grid grid-cols-2 md:grid-cols-7 gap-2 text-[11px]">
+            <div className="mt-4 grid grid-cols-2 md:grid-cols-8 gap-2 text-[11px]">
               <SummaryStat label="成功日数" value={totals.doneDays} />
               <SummaryStat label="失敗日数" value={totals.failedDays} tone={totals.failedDays > 0 ? "warn" : undefined} />
               <SummaryStat label="サロンボード" value={totals.ext} />
               <SummaryStat label="SalonBoost" value={totals.loc} />
               <SummaryStat label="一致" value={totals.matched} />
+              <SummaryStat label="差分あり" value={totals.withDiff} tone={totals.withDiff > 0 ? "warn" : undefined} />
               <SummaryStat label="サロンボードのみ" value={totals.only} tone={totals.only > 0 ? "warn" : undefined} />
               <SummaryStat label="競合" value={totals.conflict} tone={totals.conflict > 0 ? "alert" : undefined} />
             </div>
