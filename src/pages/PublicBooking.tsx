@@ -333,6 +333,13 @@ const PublicBooking = () => {
           {new Date(form.date).toLocaleDateString("ja-JP", { year: "numeric", month: "long", day: "numeric", weekday: "long" })}<br />
           {form.time} のご来店をお待ちしております。
         </p>
+        {syncRequired && (
+          <p className="text-xs text-muted-foreground/80 mt-6 leading-relaxed">
+            ※ ただいまサロン側システムへ反映処理中です。<br />
+            正式確定までしばらくお待ちください。<br />
+            内容に不備がある場合のみサロンよりご連絡いたします。
+          </p>
+        )}
       </div>
     </div>
   );
