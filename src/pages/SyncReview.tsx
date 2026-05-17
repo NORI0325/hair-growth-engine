@@ -350,7 +350,7 @@ export default function SyncReview() {
   };
 
   const totals = (() => {
-    let ext = 0, loc = 0, matched = 0, only = 0, conflict = 0, doneDays = 0, failedDays = 0;
+    let ext = 0, loc = 0, matched = 0, withDiff = 0, only = 0, conflict = 0, doneDays = 0, failedDays = 0;
     for (const r of rangeResults) {
       if (r.state === "done") {
         doneDays++;
@@ -358,6 +358,7 @@ export default function SyncReview() {
         loc += r.total_local ?? 0;
         for (const it of (r.items ?? [])) {
           if (it.classification === "matched") matched++;
+          else if (it.classification === "matched_with_diff") withDiff++;
           else if (it.classification === "salonboard_only") only++;
           else if (it.classification === "conflict") conflict++;
         }
@@ -365,8 +366,16 @@ export default function SyncReview() {
         failedDays++;
       }
     }
-    return { ext, loc, matched, only, conflict, doneDays, failedDays };
+    return { ext, loc, matched, withDiff, only, conflict, doneDays, failedDays };
   })();
+
+  // ソート順: conflict > matched_with_diff > salonboard_only > matched
+  const sortItems = (items: DayItem[]): DayItem[] => {
+    const order: Record<DayItem["classification"], number> = {
+      conflict: 0, matched_with_diff: 1, salonboard_only: 2, matched: 3,
+    };
+    return [...items].sort((a, b) => order[a.classification] - order[b.classification]);
+  };
 
   return (
     <div className="container max-w-6xl py-12 px-6">
