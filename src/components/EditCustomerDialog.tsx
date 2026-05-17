@@ -316,6 +316,18 @@ const EditCustomerDialog = ({ customer, open, onOpenChange, onSaved }: Props) =>
           </div>
         </form>
       </DialogContent>
+      {messageOpen && (
+        <CustomerMessageDialog
+          open={messageOpen}
+          onClose={() => setMessageOpen(false)}
+          customerId={customer.id}
+          customerName={customer.full_name}
+          customerPhone={customer.phone}
+          hasLine={!!customer.line_user_id}
+          optOutAutomation={!!customer.opt_out_automation}
+          lineUnfollowed={!!customer.line_unfollowed_at}
+        />
+      )}
     </Dialog>
   );
 };
