@@ -5,11 +5,21 @@ export interface DayReservation {
   external_reservation_id: string | null;
   date: string; // YYYYMMDD
   time: string | null; // HH:MM
+  end_time?: string | null;
+  duration_minutes?: number | null;
   customerName: string | null;
   menu: string | null;
   stylistName: string | null;
   raw: string;
+  detail_href?: string | null;
+  detail_url?: string | null;
+  time_source?: "popup" | "detail" | "not_fetched_limit" | null;
+  detail_fetch_skipped_reason?: string | null;
+  detail_fetch_error?: string | null;
 }
+
+// 1日あたりの詳細ページ展開上限（CAPTCHAリスク低減・サロンボード負荷軽減）
+const DETAIL_FETCH_DAILY_LIMIT = 10;
 
 const SCHEDULE_URLS = [
   (d: string) => `https://salonboard.com/CLP/bt/schedule/salonSchedule/?date=${d}`,
@@ -152,6 +162,7 @@ export async function listDayReservations(page: Page, date: string): Promise<Day
           return null;
         };
         const detailBtn = findBtn("詳細");
+        const detailHref = detailBtn?.href || "";
         const changeBtn = findBtn("変更");
         const combined = `${detailBtn?.href || ""} ${detailBtn?.onclick || ""} ${changeBtn?.href || ""} ${changeBtn?.onclick || ""}`;
         const m =
@@ -160,7 +171,7 @@ export async function listDayReservations(page: Page, date: string): Promise<Day
           combined.match(/['"]([A-Z0-9]{8,})['"]/);
         const extractedReserveId = m ? m[1] : null;
 
-        return { reserveCustomerName, popupText: popupText.slice(0, 1000), extractedReserveId };
+        return { reserveCustomerName, popupText: popupText.slice(0, 1000), extractedReserveId, detailHref };
       }).catch(() => null);
 
       await page.keyboard.press("Escape").catch(() => {});
@@ -184,12 +195,71 @@ export async function listDayReservations(page: Page, date: string): Promise<Day
         menu: null,
         stylistName: null,
         raw: popupText.slice(0, 300),
+        detail_href: popupData.detailHref || null,
+        time_source: time ? "popup" : null,
       });
     } catch (e) {
       logger.warn({ idx: cand.idx, e: e instanceof Error ? e.message : String(e) }, "listDayReservations: cand failed");
     }
   }
 
-  logger.info({ count: results.length }, "listDayReservations: done");
+  // ===== P2: time === null の予約だけ詳細ページ (/net/reserveDetail) を直列で開き #rsvDate から補完 =====
+  // ext/extReserveDetail はサンプル未確認のため未対応。
+  let detailFetched = 0;
+  for (const r of results) {
+    if (r.time) continue;
+    const href = r.detail_href || "";
+    if (!href || !/\/net\/reserveDetail/.test(href)) continue;
+    if (detailFetched >= DETAIL_FETCH_DAILY_LIMIT) {
+      r.time_source = "not_fetched_limit";
+      r.detail_fetch_skipped_reason = "daily_detail_fetch_limit";
+      continue;
+    }
+    detailFetched += 1;
+    const detailUrl = href.startsWith("http") ? href : `https://salonboard.com${href}`;
+    r.detail_url = detailUrl;
+    try {
+      await page.goto(detailUrl, { waitUntil: "domcontentloaded", timeout: 20000 });
+      await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
+      if (/\/login/i.test(page.url())) {
+        r.detail_fetch_error = "session_expired";
+        break; // セッション切れ後は他も失敗するため打ち切り
+      }
+      const body = await page.locator("body").innerText().catch(() => "");
+      if (/画像認証|キャプチャ|captcha|reCAPTCHA/i.test(body)) {
+        r.detail_fetch_error = "captcha_required";
+        break; // 自動リトライしない
+      }
+      const rsvDateText = await page.locator("#rsvDate").first().innerText().catch(() => "");
+      if (!rsvDateText) {
+        r.detail_fetch_error = "rsvDate_not_found";
+        continue;
+      }
+      // 例: "2026年5月23日（土）12:00 ～ 14:30  施術時間[ 02:30 ]  施術目安時間[ 02:30 ]"
+      const timeRange = rsvDateText.match(/(\d{1,2}):(\d{2})\s*[～~〜\-]\s*(\d{1,2}):(\d{2})/);
+      const durMatch = rsvDateText.match(/施術時間\s*[\[［]\s*(\d{1,2}):(\d{2})\s*[\]］]/);
+      if (timeRange) {
+        const startT = `${timeRange[1].padStart(2, "0")}:${timeRange[2]}`;
+        const endT = `${timeRange[3].padStart(2, "0")}:${timeRange[4]}`;
+        r.time = startT;
+        r.end_time = endT;
+        r.time_source = "detail";
+        if (durMatch) r.duration_minutes = parseInt(durMatch[1], 10) * 60 + parseInt(durMatch[2], 10);
+        else {
+          const sh = parseInt(timeRange[1], 10), sm = parseInt(timeRange[2], 10);
+          const eh = parseInt(timeRange[3], 10), em = parseInt(timeRange[4], 10);
+          r.duration_minutes = (eh * 60 + em) - (sh * 60 + sm);
+        }
+      } else {
+        r.detail_fetch_error = "rsvDate_not_found";
+      }
+    } catch (e) {
+      r.detail_fetch_error = "detail_fetch_error";
+      logger.warn({ href, e: e instanceof Error ? e.message : String(e) }, "listDayReservations: detail fetch failed");
+    }
+    await page.waitForTimeout(500); // サロンボード負荷軽減
+  }
+
+  logger.info({ count: results.length, detailFetched }, "listDayReservations: done");
   return results;
 }
