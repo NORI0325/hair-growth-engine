@@ -278,6 +278,7 @@ const PublicBooking = () => {
       return;
     }
     if (bookingId) {
+      setSyncRequired(Boolean((data as any)?.sync_required));
       supabase.functions.invoke("notify-owner-booking", {
         body: { bookingId, eventType: "created" },
       }).catch(() => {});
