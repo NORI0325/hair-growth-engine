@@ -83,10 +83,25 @@ export default function SyncReview() {
   // サロンボード予約表チェック
   const today = new Date().toISOString().slice(0, 10);
   const [dayDate, setDayDate] = useState<string>(today);
+  const [rangeDays, setRangeDays] = useState<"1" | "7" | "14" | "30">("1");
   const [dayLoading, setDayLoading] = useState(false);
-  const [dayItems, setDayItems] = useState<DayItem[] | null>(null);
-  const [dayMeta, setDayMeta] = useState<{ checked_at: string; total_external: number; total_local: number } | null>(null);
   const [importingKey, setImportingKey] = useState<string | null>(null);
+
+  // 範囲取得の進捗（1日でも同じ構造で持つ）
+  type DayResult = {
+    date: string;
+    state: "pending" | "running" | "done" | "failed" | "skipped";
+    items?: DayItem[];
+    total_external?: number;
+    total_local?: number;
+    error?: string;
+    error_type?: string | null;
+  };
+  const [rangeResults, setRangeResults] = useState<DayResult[]>([]);
+  const [rangeProgress, setRangeProgress] = useState<{ current: number; total: number } | null>(null);
+  const [stopRequested, setStopRequested] = useState(false);
+  const [stopReason, setStopReason] = useState<string | null>(null);
+  const [expandedDates, setExpandedDates] = useState<Record<string, boolean>>({});
 
   const load = async () => {
     if (!user) return;
