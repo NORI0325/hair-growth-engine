@@ -3978,6 +3978,21 @@ export type Database = {
         }
         Returns: Json
       }
+      public_create_booking_v5: {
+        Args: {
+          _booking_date: string
+          _booking_time: string
+          _email: string
+          _full_name: string
+          _full_name_kana: string
+          _menus: string[]
+          _notes: string
+          _phone: string
+          _salon_slug: string
+          _staff_id?: string
+        }
+        Returns: Json
+      }
       read_email_batch: {
         Args: { batch_size: number; queue_name: string; vt: number }
         Returns: {
