@@ -605,7 +605,7 @@ Deno.serve(async (req) => {
     if (extId) {
       const { data } = await supabase
         .from("bookings")
-        .select("id, status, customer_id, sync_status, external_reservation_id, customers(full_name, phone, notes)")
+        .select("id, status, customer_id, booking_time, sync_status, external_reservation_id, customers(full_name, phone, notes)")
         .eq("owner_id", ownerId)
         .eq("external_reservation_id", extId)
         .in("status", ["pending", "confirmed"])
@@ -619,7 +619,7 @@ Deno.serve(async (req) => {
       fallbackSearchUsed = true;
       let query = supabase
         .from("bookings")
-        .select("id, status, customer_id, sync_status, external_reservation_id, customers(full_name, phone, notes)")
+        .select("id, status, customer_id, booking_time, sync_status, external_reservation_id, customers(full_name, phone, notes)")
         .eq("owner_id", ownerId)
         .in("status", ["pending", "confirmed"]);
 
