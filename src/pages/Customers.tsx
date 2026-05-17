@@ -476,6 +476,19 @@ const Customers = () => {
           lineAddFriendUrl={lineAddUrl}
         />
       )}
+
+      {messageTarget && (
+        <CustomerMessageDialog
+          open={!!messageTarget}
+          onClose={() => setMessageTarget(null)}
+          customerId={messageTarget.id}
+          customerName={messageTarget.full_name}
+          customerPhone={messageTarget.phone}
+          hasLine={!!messageTarget.line_user_id}
+          optOutAutomation={!!messageTarget.opt_out_automation}
+          lineUnfollowed={!!messageTarget.line_unfollowed_at}
+        />
+      )}
     </AppLayout>
   );
 };
