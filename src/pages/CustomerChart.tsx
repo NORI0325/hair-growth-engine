@@ -24,12 +24,13 @@ const CustomerChart = () => {
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [alert, setAlert] = useState<ChartAlert | null>(null);
   const [loading, setLoading] = useState(true);
+  const [messageOpen, setMessageOpen] = useState(false);
 
   useEffect(() => {
     if (!customerId) return;
     (async () => {
       const [c, ch] = await Promise.all([
-        supabase.from("customers").select("id, full_name, email, phone, visit_count, total_spent").eq("id", customerId).maybeSingle(),
+        supabase.from("customers").select("id, full_name, email, phone, visit_count, total_spent, line_user_id, line_unfollowed_at, opt_out_automation").eq("id", customerId).maybeSingle(),
         supabase.from("customer_charts").select("has_diamine_allergy, is_pregnant, allergies").eq("customer_id", customerId).maybeSingle(),
       ]);
       setCustomer(c.data as any);
