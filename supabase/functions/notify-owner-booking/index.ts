@@ -179,8 +179,8 @@ Deno.serve(async (req) => {
     for (const r of recipients) {
       const channels = r.channels?.length ? r.channels : ["email"];
 
-      // メール通知
-      if (channels.includes("email") && r.email) {
+      // メール通知 (sync_succeeded はLINEのみで通知数を抑える)
+      if (eventType !== "sync_succeeded" && channels.includes("email") && r.email) {
         const er = await sendTransactionalEmailInternal({
           templateName: "booking-alert-owner",
           recipientEmail: r.email,
