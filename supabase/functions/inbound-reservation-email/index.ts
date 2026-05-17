@@ -605,7 +605,7 @@ Deno.serve(async (req) => {
     if (extId) {
       const { data } = await supabase
         .from("bookings")
-        .select("id, status, customer_id, sync_status, external_reservation_id, customers(full_name, phone)")
+        .select("id, status, customer_id, sync_status, external_reservation_id, customers(full_name, phone, notes)")
         .eq("owner_id", ownerId)
         .eq("external_reservation_id", extId)
         .in("status", ["pending", "confirmed"])
@@ -619,7 +619,7 @@ Deno.serve(async (req) => {
       fallbackSearchUsed = true;
       let query = supabase
         .from("bookings")
-        .select("id, status, customer_id, sync_status, external_reservation_id, customers(full_name, phone)")
+        .select("id, status, customer_id, sync_status, external_reservation_id, customers(full_name, phone, notes)")
         .eq("owner_id", ownerId)
         .in("status", ["pending", "confirmed"]);
 
@@ -643,11 +643,13 @@ Deno.serve(async (req) => {
         ? extracted.booking_time + ":00" : null;
       if (!target && (usingFallbackCandidates || !extId)) {
         target = candidates.find((c: any) => {
+          const bt = c.booking_time ? String(c.booking_time).slice(0, 5) : "";
+          const sameTime = !timeMatch || bt === timeMatch.slice(0, 5);
           const cp = (c.customers?.phone || "").trim();
           const cn = (c.customers?.full_name || "").trim();
           const phoneMatch = phoneC && cp && phoneC === cp;
           const nameMatch = nameC && cn && (nameC === cn || nameC.includes(cn) || cn.includes(nameC));
-          return phoneMatch || nameMatch;
+          return sameTime && (nameMatch || phoneMatch);
         }) || (candidates.length === 1 ? candidates[0] : null);
       }
     }
