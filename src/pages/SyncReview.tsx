@@ -5,11 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { AlertTriangle, CheckCheck, FileSearch, GitCompare, AlertCircle, MapPinOff, Send, Download, CalendarDays, RefreshCw } from "lucide-react";
+import { AlertTriangle, CheckCheck, FileSearch, GitCompare, AlertCircle, MapPinOff, Send, Download, CalendarDays, RefreshCw, ExternalLink, ChevronDown, ChevronRight, StopCircle } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useCurrentLocationId } from "@/hooks/useLocations";
 import SyncStatusDialog from "@/components/SyncStatusDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 const STATUS_LABEL: Record<string, { text: string; tone: string }> = {
   external_missing: { text: "サロンボードに無い", tone: "bg-amber-50 text-amber-800 border-amber-200" },
@@ -81,10 +83,25 @@ export default function SyncReview() {
   // サロンボード予約表チェック
   const today = new Date().toISOString().slice(0, 10);
   const [dayDate, setDayDate] = useState<string>(today);
+  const [rangeDays, setRangeDays] = useState<"1" | "7" | "14" | "30">("1");
   const [dayLoading, setDayLoading] = useState(false);
-  const [dayItems, setDayItems] = useState<DayItem[] | null>(null);
-  const [dayMeta, setDayMeta] = useState<{ checked_at: string; total_external: number; total_local: number } | null>(null);
   const [importingKey, setImportingKey] = useState<string | null>(null);
+
+  // 範囲取得の進捗（1日でも同じ構造で持つ）
+  type DayResult = {
+    date: string;
+    state: "pending" | "running" | "done" | "failed" | "skipped";
+    items?: DayItem[];
+    total_external?: number;
+    total_local?: number;
+    error?: string;
+    error_type?: string | null;
+  };
+  const [rangeResults, setRangeResults] = useState<DayResult[]>([]);
+  const [rangeProgress, setRangeProgress] = useState<{ current: number; total: number } | null>(null);
+  const [stopRequested, setStopRequested] = useState(false);
+  const [stopReason, setStopReason] = useState<string | null>(null);
+  const [expandedDates, setExpandedDates] = useState<Record<string, boolean>>({});
 
   const load = async () => {
     if (!user) return;
@@ -175,36 +192,123 @@ export default function SyncReview() {
     load();
   };
 
-  const fetchDay = async () => {
-    if (!dayDate) return;
-    setDayLoading(true);
-    setDayItems(null);
+  // 1日分を取得（既存Edgeを呼び出すだけ・破壊変更なし）
+  const fetchOneDay = async (date: string): Promise<DayResult> => {
     try {
       const { data, error } = await supabase.functions.invoke("salonboard-fetch-day-reservations", {
-        body: { date: dayDate, location_id: currentLocationId },
+        body: { date, location_id: currentLocationId },
       });
       if (error) {
-        toast.error("予約表取得に失敗しました: " + error.message);
-        return;
+        return { date, state: "failed", error: error.message, error_type: "invoke_error" };
       }
       const r: any = data;
       if (!r?.success) {
-        toast.error("予約表取得に失敗しました: " + (r?.message || r?.error || "unknown"));
-        return;
+        const msg: string = r?.message || r?.error || "unknown";
+        const looksCaptcha = /captcha/i.test(msg) || r?.error === "captcha_required" || /captcha/i.test(r?.error_type || "");
+        return {
+          date, state: "failed",
+          error: msg,
+          error_type: looksCaptcha ? "captcha_required" : (r?.error || "worker_failed"),
+        };
       }
-      setDayItems(r.items as DayItem[]);
-      setDayMeta({ checked_at: new Date().toISOString(), total_external: r.total_external, total_local: r.total_local });
-      toast.success(`サロンボードから ${r.total_external} 件取得しました`);
+      return {
+        date, state: "done",
+        items: r.items as DayItem[],
+        total_external: r.total_external,
+        total_local: r.total_local,
+      };
     } catch (e: any) {
-      toast.error("予約表取得に失敗しました: " + (e?.message || String(e)));
-    } finally {
-      setDayLoading(false);
+      return { date, state: "failed", error: e?.message || String(e), error_type: "exception" };
     }
   };
 
-  const importItem = async (it: DayItem) => {
-    if (!it.customerName || !it.time) {
-      toast.error("顧客名または時刻が不足しているため取り込めません");
+  const addDays = (yyyymmdd: string, n: number): string => {
+    const d = new Date(yyyymmdd + "T00:00:00");
+    d.setDate(d.getDate() + n);
+    return d.toISOString().slice(0, 10);
+  };
+
+  const fetchRange = async () => {
+    if (!dayDate) return;
+    const total = parseInt(rangeDays, 10);
+    const dates: string[] = [];
+    for (let i = 0; i < total; i++) dates.push(addDays(dayDate, i));
+
+    setDayLoading(true);
+    setStopRequested(false);
+    setStopReason(null);
+    setRangeProgress({ current: 0, total });
+    setExpandedDates({ [dates[0]]: true });
+    setRangeResults(dates.map((d) => ({ date: d, state: "pending" })));
+
+    let consecutiveFailures = 0;
+    let stoppedEarly = false;
+    let stopMsg: string | null = null;
+
+    for (let i = 0; i < dates.length; i++) {
+      // 最新の stopRequested を関数 setter 経由で取り出す（closure 古値対策）
+      let latestStop = false;
+      setStopRequested((s) => { latestStop = s; return s; });
+      if (latestStop) {
+        stoppedEarly = true;
+        stopMsg = "ユーザーが取得を停止しました。";
+        break;
+      }
+
+      const d = dates[i];
+      setRangeResults((prev) => prev.map((r) => r.date === d ? { ...r, state: "running" } : r));
+      setRangeProgress({ current: i + 1, total });
+
+      const result = await fetchOneDay(d);
+      setRangeResults((prev) => prev.map((r) => r.date === d ? result : r));
+
+      if (result.state === "failed") {
+        consecutiveFailures += 1;
+        if (result.error_type === "captcha_required") {
+          stoppedEarly = true;
+          stopMsg = "サロンボード側で確認が必要な可能性があります（captcha_required）。残りの日付の取得を中止しました。";
+          break;
+        }
+        if (consecutiveFailures >= 2) {
+          stoppedEarly = true;
+          stopMsg = "連続2日取得に失敗したため、残りの日付の取得を中止しました。";
+          break;
+        }
+      } else {
+        consecutiveFailures = 0;
+      }
+
+      // サロンボード負荷軽減のため800ms待機（最終日は不要）
+      if (i < dates.length - 1) {
+        await new Promise((r) => setTimeout(r, 800));
+      }
+    }
+
+    setRangeResults((prev) => prev.map((r) => (r.state === "pending" || r.state === "running") ? { ...r, state: "skipped" } : r));
+    setDayLoading(false);
+    setRangeProgress(null);
+    if (stoppedEarly && stopMsg) setStopReason(stopMsg);
+
+    setRangeResults((prev) => {
+      const done = prev.filter((r) => r.state === "done").length;
+      const failed = prev.filter((r) => r.state === "failed").length;
+      if (stoppedEarly) toast.warning(`取得を中止しました（成功${done}日 / 失敗${failed}日）`);
+      else if (failed > 0) toast.warning(`取得完了：成功${done}日 / 失敗${failed}日`);
+      else toast.success(`${done}日分の予約表を取得しました`);
+      return prev;
+    });
+  };
+
+  const importItem = async (it: DayItem, sourceDate: string) => {
+    if (!it.customerName) {
+      toast.error("顧客名が取得できなかったため取り込めません。");
+      return;
+    }
+    if (!it.time) {
+      toast.error(
+        "時刻が取得できなかったため取り込めません。サロンボード画面で時刻表示が変則の可能性があります。サロンボードを開いて時刻を確認後、SalonBoostでは手動予約として登録してください。",
+        { duration: 8000 },
+      );
       return;
     }
     const key = `${it.external_reservation_id ?? ""}|${it.customerName}|${it.time}`;
@@ -212,7 +316,7 @@ export default function SyncReview() {
     try {
       const { data, error } = await supabase.functions.invoke("salonboard-import-reservation", {
         body: {
-          date: dayDate,
+          date: sourceDate,
           time: it.time,
           customer_name: it.customerName,
           menu: it.menu,
@@ -225,7 +329,9 @@ export default function SyncReview() {
       if (r?.success) {
         if (r.action === "skipped") toast.info(r.message || "既に存在するためスキップしました");
         else toast.success("SalonBoost に取り込みました");
-        await fetchDay();
+        // 対象日のみ再取得
+        const refreshed = await fetchOneDay(sourceDate);
+        setRangeResults((prev) => prev.map((x) => x.date === sourceDate ? refreshed : x));
         await load();
       } else {
         toast.error("取り込み失敗: " + (r?.message || r?.error || "unknown"));
@@ -236,6 +342,25 @@ export default function SyncReview() {
       setImportingKey(null);
     }
   };
+
+  const totals = (() => {
+    let ext = 0, loc = 0, matched = 0, only = 0, conflict = 0, doneDays = 0, failedDays = 0;
+    for (const r of rangeResults) {
+      if (r.state === "done") {
+        doneDays++;
+        ext += r.total_external ?? 0;
+        loc += r.total_local ?? 0;
+        for (const it of (r.items ?? [])) {
+          if (it.classification === "matched") matched++;
+          else if (it.classification === "salonboard_only") only++;
+          else if (it.classification === "conflict") conflict++;
+        }
+      } else if (r.state === "failed") {
+        failedDays++;
+      }
+    }
+    return { ext, loc, matched, only, conflict, doneDays, failedDays };
+  })();
 
   return (
     <div className="container max-w-6xl py-12 px-6">
@@ -255,61 +380,161 @@ export default function SyncReview() {
             <div className="text-[10px] tracking-luxury text-gold mb-1">SALONBOARD DAILY CHECK</div>
             <h2 className="font-serif text-lg">サロンボード予約表を確認</h2>
             <p className="text-xs text-muted-foreground mt-1">
-              サロンボードに直接入力された予約（メール通知では拾えない予約）を、日付指定で取得し SalonBoost と差分照合します。
+              サロンボードに直接入力された予約（メール通知では拾えない予約）を、指定日から最大1ヶ月分まで日別に取得し SalonBoost と差分照合します。サロンボード負荷軽減のため1日ずつ直列取得します。
             </p>
           </div>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <CalendarDays className="w-4 h-4 text-muted-foreground" />
-          <Input type="date" value={dayDate} onChange={(e) => setDayDate(e.target.value)} className="w-44 rounded-none" />
-          <Button onClick={fetchDay} disabled={dayLoading || !dayDate} className="rounded-none">
+          <Input type="date" value={dayDate} onChange={(e) => setDayDate(e.target.value)} className="w-44 rounded-none" disabled={dayLoading} />
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-muted-foreground">取得範囲</span>
+            <Select value={rangeDays} onValueChange={(v) => setRangeDays(v as any)} disabled={dayLoading}>
+              <SelectTrigger className="w-40 rounded-none h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1">1日</SelectItem>
+                <SelectItem value="7">7日間（推奨）</SelectItem>
+                <SelectItem value="14">14日間</SelectItem>
+                <SelectItem value="30">1ヶ月</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Button onClick={fetchRange} disabled={dayLoading || !dayDate} className="rounded-none">
             {dayLoading ? <RefreshCw className="w-3 h-3 mr-1 animate-spin" /> : <FileSearch className="w-3 h-3 mr-1" />}
             予約表を取得
           </Button>
-          {dayMeta && (
-            <span className="text-[11px] text-muted-foreground">
-              取得: {new Date(dayMeta.checked_at).toLocaleString("ja-JP")} ／ サロンボード {dayMeta.total_external} 件 ／ SalonBoost {dayMeta.total_local} 件
-            </span>
+          {dayLoading && (
+            <Button variant="outline" size="sm" className="rounded-none" onClick={() => setStopRequested(true)}>
+              <StopCircle className="w-3 h-3 mr-1" />停止
+            </Button>
           )}
         </div>
 
-        {dayItems && (
-          <div className="mt-4 space-y-2">
-            {dayItems.length === 0 ? (
-              <div className="text-sm text-muted-foreground py-4 text-center">サロンボード側の予約は見つかりませんでした</div>
-            ) : dayItems.map((it, idx) => {
-              const tone =
-                it.classification === "matched" ? "border-l-emerald-500 bg-emerald-50/30" :
-                it.classification === "salonboard_only" ? "border-l-amber-500 bg-amber-50/30" :
-                "border-l-red-500 bg-red-50/30";
-              const labelText =
-                it.classification === "matched" ? "一致" :
-                it.classification === "salonboard_only" ? "サロンボードのみ" : "競合";
-              const key = `${it.external_reservation_id ?? ""}|${it.customerName}|${it.time}|${idx}`;
-              return (
-                <div key={key} className={`border-l-4 ${tone} px-3 py-2 flex items-center justify-between gap-3 flex-wrap`}>
-                  <div className="text-sm flex-1 min-w-0">
-                    <Badge className="rounded-none mr-2 text-[10px]" variant="outline">{labelText}</Badge>
-                    <span className="font-serif">{it.customerName ?? "顧客不明"}</span>
-                    <span className="text-muted-foreground"> ・ {it.time ?? "—"} ・ {it.menu ?? "メニュー不明"}</span>
-                    <span className="text-[11px] text-muted-foreground"> ／ ext_id: {it.external_reservation_id ?? "—"}</span>
-                    {it.reason && <span className="text-[11px] text-muted-foreground"> ／ {it.reason}</span>}
-                  </div>
-                  {it.classification === "salonboard_only" && (
-                    <Button
-                      size="sm" className="rounded-none"
-                      disabled={importingKey === `${it.external_reservation_id ?? ""}|${it.customerName}|${it.time}`}
-                      onClick={() => importItem(it)}
-                    >
-                      <Download className="w-3 h-3 mr-1" />SalonBoost に取り込む
-                    </Button>
-                  )}
-                </div>
-              );
-            })}
+        {rangeDays === "30" && (
+          <div className="mt-3 text-[11px] text-amber-800 bg-amber-50 border border-amber-200 px-3 py-2">
+            1ヶ月取得はサロンボード側の確認画面やCAPTCHAが出る可能性があります。まずは7日間取得を推奨します。
           </div>
         )}
+        {rangeDays === "14" && (
+          <div className="mt-3 text-[11px] text-amber-700">
+            14日間は7日間より時間がかかります。途中で停止できます。
+          </div>
+        )}
+
+        {rangeProgress && (
+          <div className="mt-3 text-[11px] text-muted-foreground">
+            取得中: {rangeProgress.current} / {rangeProgress.total} 日目
+          </div>
+        )}
+
+        {rangeResults.length > 0 && (
+          <>
+            <div className="mt-4 grid grid-cols-2 md:grid-cols-7 gap-2 text-[11px]">
+              <SummaryStat label="成功日数" value={totals.doneDays} />
+              <SummaryStat label="失敗日数" value={totals.failedDays} tone={totals.failedDays > 0 ? "warn" : undefined} />
+              <SummaryStat label="サロンボード" value={totals.ext} />
+              <SummaryStat label="SalonBoost" value={totals.loc} />
+              <SummaryStat label="一致" value={totals.matched} />
+              <SummaryStat label="サロンボードのみ" value={totals.only} tone={totals.only > 0 ? "warn" : undefined} />
+              <SummaryStat label="競合" value={totals.conflict} tone={totals.conflict > 0 ? "alert" : undefined} />
+            </div>
+
+            {stopReason && (
+              <div className="mt-3 text-[11px] text-red-700 bg-red-50 border border-red-200 px-3 py-2">
+                {stopReason}
+              </div>
+            )}
+
+            <div className="mt-4 space-y-2">
+              {rangeResults.map((r) => {
+                const onlyCount = (r.items ?? []).filter((it) => it.classification === "salonboard_only").length;
+                const conflictCount = (r.items ?? []).filter((it) => it.classification === "conflict").length;
+                const matchedCount = (r.items ?? []).filter((it) => it.classification === "matched").length;
+                const needsAttention = onlyCount > 0 || conflictCount > 0 || r.state === "failed";
+                const headerTone =
+                  r.state === "failed" ? "border-l-red-500 bg-red-50/40" :
+                  needsAttention ? "border-l-amber-500 bg-amber-50/40" :
+                  r.state === "done" ? "border-l-emerald-500 bg-emerald-50/30" :
+                  r.state === "running" ? "border-l-blue-500 bg-blue-50/30" :
+                  "border-l-muted bg-muted/20";
+                const isOpen = !!expandedDates[r.date];
+                return (
+                  <Collapsible key={r.date} open={isOpen} onOpenChange={(o) => setExpandedDates((p) => ({ ...p, [r.date]: o }))}>
+                    <CollapsibleTrigger asChild>
+                      <button className={`w-full text-left border-l-4 ${headerTone} px-3 py-2 flex items-center justify-between gap-3 flex-wrap hover:bg-muted/30`}>
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          {isOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                          <span className="font-serif text-sm">{r.date}</span>
+                          {r.state === "running" && <Badge className="rounded-none text-[10px]" variant="outline"><RefreshCw className="w-3 h-3 mr-1 animate-spin" />取得中</Badge>}
+                          {r.state === "pending" && <Badge className="rounded-none text-[10px]" variant="outline">待機</Badge>}
+                          {r.state === "skipped" && <Badge className="rounded-none text-[10px]" variant="outline">スキップ</Badge>}
+                          {r.state === "failed" && <Badge className="rounded-none text-[10px] bg-red-50 text-red-700 border-red-200">失敗{r.error_type ? ` / ${r.error_type}` : ""}</Badge>}
+                          {r.state === "done" && (
+                            <span className="text-[11px] text-muted-foreground">
+                              サロンボード {r.total_external ?? 0} ／ SalonBoost {r.total_local ?? 0}
+                              {(onlyCount + conflictCount + matchedCount) > 0 && ` ／ 一致${matchedCount}・SBのみ${onlyCount}・競合${conflictCount}`}
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <div className="px-3 py-2 space-y-2">
+                        {r.state === "failed" && (
+                          <div className="text-xs text-red-700 bg-red-50 px-2 py-1">エラー: {r.error}</div>
+                        )}
+                        {r.state === "done" && (r.items?.length ?? 0) === 0 && (
+                          <div className="text-sm text-muted-foreground py-2">サロンボード側の予約は見つかりませんでした</div>
+                        )}
+                        {(r.items ?? []).map((it, idx) => {
+                          const tone =
+                            it.classification === "matched" ? "border-l-emerald-500 bg-emerald-50/30" :
+                            it.classification === "salonboard_only" ? "border-l-amber-500 bg-amber-50/30" :
+                            "border-l-red-500 bg-red-50/30";
+                          const labelText =
+                            it.classification === "matched" ? "一致" :
+                            it.classification === "salonboard_only" ? "サロンボードのみ" : "競合";
+                          const key = `${it.external_reservation_id ?? ""}|${it.customerName}|${it.time}|${idx}`;
+                          const sbDetailUrl = it.external_reservation_id
+                            ? `https://salonboard.com/CLP/bt/reserve/reserveDetail/?reserveId=${encodeURIComponent(it.external_reservation_id)}`
+                            : null;
+                          const missingTimeOrName = !it.time || !it.customerName;
+                          return (
+                            <div key={key} className={`border-l-4 ${tone} px-3 py-2 flex items-center justify-between gap-3 flex-wrap`}>
+                              <div className="text-sm flex-1 min-w-0">
+                                <Badge className="rounded-none mr-2 text-[10px]" variant="outline">{labelText}</Badge>
+                                <span className="font-serif">{it.customerName ?? "顧客不明"}</span>
+                                <span className="text-muted-foreground"> ・ {it.time ?? "—"} ・ {it.menu ?? "メニュー不明"}</span>
+                                <span className="text-[11px] text-muted-foreground"> ／ ext_id: {it.external_reservation_id ?? "—"}</span>
+                                {it.reason && <span className="text-[11px] text-muted-foreground"> ／ {it.reason}</span>}
+                                {sbDetailUrl && missingTimeOrName && (
+                                  <a href={sbDetailUrl} target="_blank" rel="noopener noreferrer" className="ml-2 text-[11px] text-gold inline-flex items-center hover:underline">
+                                    <ExternalLink className="w-3 h-3 mr-0.5" />サロンボード詳細を開く
+                                  </a>
+                                )}
+                              </div>
+                              {it.classification === "salonboard_only" && (
+                                <Button
+                                  size="sm" className="rounded-none"
+                                  disabled={importingKey === `${it.external_reservation_id ?? ""}|${it.customerName}|${it.time}`}
+                                  onClick={() => importItem(it, r.date)}
+                                >
+                                  <Download className="w-3 h-3 mr-1" />SalonBoost に取り込む
+                                </Button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
+                );
+              })}
+            </div>
+          </>
+        )}
       </Card>
+
 
       {loading ? (
         <div className="text-center py-12 text-muted-foreground">読み込み中...</div>
@@ -520,5 +745,11 @@ const Section = ({ title, children }: { title: string; children: React.ReactNode
   <div className="border border-border p-2">
     <div className="eyebrow text-[10px] text-muted-foreground mb-1">{title}</div>
     {children}
+  </div>
+);
+const SummaryStat = ({ label, value, tone }: { label: string; value: number; tone?: "warn" | "alert" }) => (
+  <div className={`border px-2 py-1 ${tone === "alert" ? "border-red-200 bg-red-50 text-red-700" : tone === "warn" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-border bg-muted/20 text-foreground"}`}>
+    <div className="text-[10px] uppercase tracking-luxury opacity-70">{label}</div>
+    <div className="text-sm font-serif">{value}</div>
   </div>
 );
