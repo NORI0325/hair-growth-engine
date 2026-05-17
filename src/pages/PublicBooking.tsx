@@ -63,6 +63,7 @@ const PublicBooking = () => {
   const [fallbackMenus, setFallbackMenus] = useState<string[]>([]);
   const [selectedMenus, setSelectedMenus] = useState<string[]>([]);
   const [completed, setCompleted] = useState(false);
+  const [syncRequired, setSyncRequired] = useState(false);
   const [availableSlots, setAvailableSlots] = useState<Record<string, number>>({});
   const [maxStaffCount, setMaxStaffCount] = useState(1);
   const [slotsLoading, setSlotsLoading] = useState(false);
@@ -277,6 +278,7 @@ const PublicBooking = () => {
       return;
     }
     if (bookingId) {
+      setSyncRequired(Boolean((data as any)?.sync_required));
       supabase.functions.invoke("notify-owner-booking", {
         body: { bookingId, eventType: "created" },
       }).catch(() => {});
@@ -331,6 +333,13 @@ const PublicBooking = () => {
           {new Date(form.date).toLocaleDateString("ja-JP", { year: "numeric", month: "long", day: "numeric", weekday: "long" })}<br />
           {form.time} のご来店をお待ちしております。
         </p>
+        {syncRequired && (
+          <p className="text-xs text-muted-foreground/80 mt-6 leading-relaxed">
+            ※ ただいまサロン側システムへ反映処理中です。<br />
+            正式確定までしばらくお待ちください。<br />
+            内容に不備がある場合のみサロンよりご連絡いたします。
+          </p>
+        )}
       </div>
     </div>
   );

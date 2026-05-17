@@ -112,7 +112,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    if (!bookingId || !["created", "updated", "cancelled", "cancelled_by_customer"].includes(eventType)) {
+    if (!bookingId || !["created", "updated", "cancelled", "cancelled_by_customer", "sync_succeeded"].includes(eventType)) {
       return new Response(JSON.stringify({ error: "invalid_payload" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -120,7 +120,7 @@ Deno.serve(async (req) => {
 
     const { data: booking } = await supabase
       .from("bookings")
-      .select("id, owner_id, location_id, booking_date, booking_time, menu, notes, customer_id")
+      .select("id, owner_id, location_id, booking_date, booking_time, menu, notes, customer_id, sync_status, source_channel")
       .eq("id", bookingId)
       .maybeSingle();
 
@@ -151,11 +151,13 @@ Deno.serve(async (req) => {
     const menu = booking.menu;
     const customerName = customer?.full_name ?? "お客様";
 
+    const isSyncing = eventType === "created" && (booking as any).sync_status === "pending";
     const eventLabel =
-      eventType === "created" ? "ご予約承りました"
-        : eventType === "updated" ? "ご予約内容を変更しました"
-          : eventType === "cancelled_by_customer" ? "🆘 お客様がオンラインからキャンセルされました"
-            : "ご予約をキャンセルしました";
+      eventType === "sync_succeeded" ? "サロンボードに反映されました"
+        : eventType === "created" ? (isSyncing ? "ご予約を受け付けました（サロンボードへ反映中）" : "ご予約承りました")
+          : eventType === "updated" ? "ご予約内容を変更しました"
+            : eventType === "cancelled_by_customer" ? "🆘 お客様がオンラインからキャンセルされました"
+              : "ご予約をキャンセルしました";
 
     const results: Record<string, unknown> = {};
 
@@ -177,8 +179,8 @@ Deno.serve(async (req) => {
     for (const r of recipients) {
       const channels = r.channels?.length ? r.channels : ["email"];
 
-      // メール通知
-      if (channels.includes("email") && r.email) {
+      // メール通知 (sync_succeeded はLINEのみで通知数を抑える)
+      if (eventType !== "sync_succeeded" && channels.includes("email") && r.email) {
         const er = await sendTransactionalEmailInternal({
           templateName: "booking-alert-owner",
           recipientEmail: r.email,
@@ -229,8 +231,8 @@ Deno.serve(async (req) => {
     results.owner_email = ownerEmailResults.length ? ownerEmailResults : "skipped: no email recipient";
     results.owner_line = ownerLineResults.length ? ownerLineResults : "skipped: no line recipient";
 
-    // === ② お客様へ LINE プッシュ（連携済みなら）===
-    if (customer?.line_user_id && creds) {
+    // === ② お客様へ LINE プッシュ (sync_succeeded はオーナー専用なのでスキップ) ===
+    if (eventType !== "sync_succeeded" && customer?.line_user_id && creds) {
       const lineMsg =
         `🌸 ${customerName}様\n\n${eventLabel}。\n\n` +
         `📅 ${bookingDate}\n⏰ ${bookingTime}\n💇 ${menu}\n\n` +
@@ -250,11 +252,11 @@ Deno.serve(async (req) => {
         error: r.ok ? null : r.err,
       });
     } else {
-      results.customer_line = "skipped: not linked";
+      results.customer_line = eventType === "sync_succeeded" ? "skipped: owner-only event" : "skipped: not linked";
     }
 
-    // === ③ お客様へメール（メール登録があれば）===
-    if (customer?.email) {
+    // === ③ お客様へメール (sync_succeeded はスキップ) ===
+    if (eventType !== "sync_succeeded" && customer?.email) {
       const templateName =
         eventType === "cancelled" || eventType === "cancelled_by_customer" ? "booking-cancelled"
           : eventType === "updated" ? "booking-updated"
@@ -274,7 +276,7 @@ Deno.serve(async (req) => {
       results.customer_email = er.ok ? "sent" : `error: ${er.status} ${er.errorMessage ?? er.errorBody ?? ""}`;
       if (!er.ok) console.error("customer email error:", er);
     } else {
-      results.customer_email = "skipped: no email";
+      results.customer_email = eventType === "sync_succeeded" ? "skipped: owner-only event" : "skipped: no email";
     }
 
     return new Response(JSON.stringify({ success: true, results }), {

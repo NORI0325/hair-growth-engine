@@ -72,6 +72,20 @@ Deno.serve(async (req) => {
         updates.external_reservation_id = String(external_reservation_id);
       }
       await supabase.from("bookings").update(updates).eq("id", job.reservation_id);
+
+      // Phase2: create_reservation 成功時のみ pending→confirmed 昇格
+      if (success && job.job_type === "create_reservation") {
+        const { data: bk } = await supabase.from("bookings")
+          .select("status").eq("id", job.reservation_id).maybeSingle();
+        if (bk?.status === "pending") {
+          await supabase.from("bookings")
+            .update({ status: "confirmed" }).eq("id", job.reservation_id);
+          // 反映成功通知（軽量・LINEのみ）
+          supabase.functions.invoke("notify-owner-booking", {
+            body: { bookingId: job.reservation_id, eventType: "sync_succeeded" },
+          }).catch((e: any) => console.error("[sync-worker-callback] notify sync_succeeded error:", e));
+        }
+      }
     }
 
     await supabase.from("sync_logs").insert({
