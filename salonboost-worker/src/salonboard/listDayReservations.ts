@@ -209,7 +209,7 @@ export async function listDayReservations(page: Page, date: string): Promise<Day
   for (const r of results) {
     if (r.time) continue;
     const href = r.detail_href || "";
-    if (!href || !/\/net\/reserveDetail/.test(href)) continue;
+    if (!href || !/\/(?:net\/reserveDetail|ext\/extReserveDetail)\/\?reserveId=/.test(href)) continue;
     if (detailFetched >= DETAIL_FETCH_DAILY_LIMIT) {
       r.time_source = "not_fetched_limit";
       r.detail_fetch_skipped_reason = "daily_detail_fetch_limit";
