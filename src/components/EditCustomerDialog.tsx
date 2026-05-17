@@ -6,11 +6,12 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Trash2 } from "lucide-react";
+import { Loader2, Trash2, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 import { CustomerInsightsPanel } from "@/components/CustomerInsightsPanel";
 import CustomerDeliveryTimeline from "@/components/CustomerDeliveryTimeline";
 import CustomerTagEditor from "@/components/CustomerTagEditor";
+import { CustomerMessageDialog } from "@/components/CustomerMessageDialog";
 import { useAuth } from "@/hooks/useAuth";
 
 const schema = z.object({
