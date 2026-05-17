@@ -6,11 +6,12 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Trash2 } from "lucide-react";
+import { Loader2, Trash2, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 import { CustomerInsightsPanel } from "@/components/CustomerInsightsPanel";
 import CustomerDeliveryTimeline from "@/components/CustomerDeliveryTimeline";
 import CustomerTagEditor from "@/components/CustomerTagEditor";
+import { CustomerMessageDialog } from "@/components/CustomerMessageDialog";
 import { useAuth } from "@/hooks/useAuth";
 
 const schema = z.object({
@@ -39,6 +40,7 @@ export interface EditableCustomer {
   notes?: string | null;
   opt_out_automation?: boolean | null;
   opt_out_reason?: string | null;
+  line_unfollowed_at?: string | null;
   imported_from?: string | null;
   activated_at?: string | null;
   gender?: "female"|"male"|"other"|"unknown" | null;
@@ -55,6 +57,7 @@ const EditCustomerDialog = ({ customer, open, onOpenChange, onSaved }: Props) =>
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [messageOpen, setMessageOpen] = useState(false);
   const [form, setForm] = useState({
     full_name: "", phone: "", email: "", birthday: "",
     last_visit_date: "", visit_count: "0", total_spent: "0",
@@ -132,7 +135,25 @@ const EditCustomerDialog = ({ customer, open, onOpenChange, onSaved }: Props) =>
           <CustomerInsightsPanel customerId={customer.id} />
         </div>
         <div className="mt-6">
-          <p className="eyebrow mb-3">— 配信履歴 / Delivery Timeline —</p>
+          <div className="flex items-center justify-between mb-3">
+            <p className="eyebrow">— 配信履歴 / Delivery Timeline —</p>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => setMessageOpen(true)}
+              disabled={!customer.line_user_id || !!customer.line_unfollowed_at}
+              className="rounded-none bg-[#06C755] hover:bg-[#06C755]/90 text-white text-[11px] tracking-wider"
+              title={
+                customer.line_unfollowed_at ? "LINE解除済み"
+                  : !customer.line_user_id ? "LINE未連携"
+                  : customer.opt_out_automation ? "自動配信停止中（手動連絡のみ）"
+                  : "LINE送信"
+              }
+            >
+              <MessageCircle className="w-3.5 h-3.5 mr-1.5" />
+              LINE送信
+            </Button>
+          </div>
           <CustomerDeliveryTimeline customerId={customer.id} />
         </div>
         <form onSubmit={handleSubmit} className="space-y-5 mt-4">
@@ -295,6 +316,18 @@ const EditCustomerDialog = ({ customer, open, onOpenChange, onSaved }: Props) =>
           </div>
         </form>
       </DialogContent>
+      {messageOpen && (
+        <CustomerMessageDialog
+          open={messageOpen}
+          onClose={() => setMessageOpen(false)}
+          customerId={customer.id}
+          customerName={customer.full_name}
+          customerPhone={customer.phone}
+          hasLine={!!customer.line_user_id}
+          optOutAutomation={!!customer.opt_out_automation}
+          lineUnfollowed={!!customer.line_unfollowed_at}
+        />
+      )}
     </Dialog>
   );
 };

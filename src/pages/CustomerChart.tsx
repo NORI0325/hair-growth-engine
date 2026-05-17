@@ -5,11 +5,18 @@ import AppLayout from "@/components/AppLayout";
 import CustomerChartPanel from "@/components/CustomerChartPanel";
 import TreatmentHistoryPanel from "@/components/TreatmentHistoryPanel";
 import { CustomerInsightsPanel } from "@/components/CustomerInsightsPanel";
+import CustomerDeliveryTimeline from "@/components/CustomerDeliveryTimeline";
+import { CustomerMessageDialog } from "@/components/CustomerMessageDialog";
 import StaffSwitcher from "@/components/StaffSwitcher";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, ArrowLeft, AlertTriangle } from "lucide-react";
+import { Loader2, ArrowLeft, AlertTriangle, MessageCircle } from "lucide-react";
 
-interface Customer { id: string; full_name: string; email: string | null; phone: string | null; visit_count: number; total_spent: number }
+interface Customer {
+  id: string; full_name: string; email: string | null; phone: string | null;
+  visit_count: number; total_spent: number;
+  line_user_id: string | null; line_unfollowed_at: string | null; opt_out_automation: boolean | null;
+}
 interface ChartAlert { has_diamine_allergy: boolean; is_pregnant: boolean; allergies: string | null }
 
 const CustomerChart = () => {
@@ -17,12 +24,13 @@ const CustomerChart = () => {
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [alert, setAlert] = useState<ChartAlert | null>(null);
   const [loading, setLoading] = useState(true);
+  const [messageOpen, setMessageOpen] = useState(false);
 
   useEffect(() => {
     if (!customerId) return;
     (async () => {
       const [c, ch] = await Promise.all([
-        supabase.from("customers").select("id, full_name, email, phone, visit_count, total_spent").eq("id", customerId).maybeSingle(),
+        supabase.from("customers").select("id, full_name, email, phone, visit_count, total_spent, line_user_id, line_unfollowed_at, opt_out_automation").eq("id", customerId).maybeSingle(),
         supabase.from("customer_charts").select("has_diamine_allergy, is_pregnant, allergies").eq("customer_id", customerId).maybeSingle(),
       ]);
       setCustomer(c.data as any);
@@ -48,6 +56,21 @@ const CustomerChart = () => {
             <div className="font-serif text-base truncate">{customer.full_name}</div>
             <div className="text-[10px] text-muted-foreground">来店{customer.visit_count}回 / ¥{customer.total_spent.toLocaleString()}</div>
           </div>
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => setMessageOpen(true)}
+            disabled={!customer.line_user_id || !!customer.line_unfollowed_at}
+            className="rounded-none bg-[#06C755] hover:bg-[#06C755]/90 text-white text-[11px] tracking-wider shrink-0"
+            title={
+              customer.line_unfollowed_at ? "LINE解除済み"
+                : !customer.line_user_id ? "LINE未連携"
+                : customer.opt_out_automation ? "自動配信停止中（手動連絡のみ）"
+                : "LINE送信"
+            }
+          >
+            <MessageCircle className="w-3.5 h-3.5 mr-1.5" />LINE
+          </Button>
           <StaffSwitcher />
         </div>
 
@@ -65,7 +88,7 @@ const CustomerChart = () => {
       </div>
 
       <Tabs defaultValue="treatments" className="mt-4">
-        <TabsList className="w-full grid grid-cols-3 rounded-none h-auto p-0 bg-transparent border-b border-border">
+        <TabsList className="w-full grid grid-cols-4 rounded-none h-auto p-0 bg-transparent border-b border-border">
           <TabsTrigger value="treatments" className="rounded-none data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-gold data-[state=active]:shadow-none py-3 text-xs">
             施術履歴
           </TabsTrigger>
@@ -75,6 +98,9 @@ const CustomerChart = () => {
           <TabsTrigger value="insights" className="rounded-none data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-gold data-[state=active]:shadow-none py-3 text-xs">
             分析
           </TabsTrigger>
+          <TabsTrigger value="delivery" className="rounded-none data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-gold data-[state=active]:shadow-none py-3 text-xs">
+            配信履歴
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="treatments" className="mt-6">
@@ -82,7 +108,6 @@ const CustomerChart = () => {
         </TabsContent>
         <TabsContent value="chart" className="mt-6">
           <CustomerChartPanel customerId={customer.id} onSaved={() => {
-            // refresh alert banner
             supabase.from("customer_charts").select("has_diamine_allergy, is_pregnant, allergies")
               .eq("customer_id", customer.id).maybeSingle().then(({ data }) => setAlert(data as any));
           }} />
@@ -90,7 +115,24 @@ const CustomerChart = () => {
         <TabsContent value="insights" className="mt-6">
           <CustomerInsightsPanel customerId={customer.id} />
         </TabsContent>
+        <TabsContent value="delivery" className="mt-6">
+          <p className="eyebrow mb-3">— 配信・連絡履歴 / Delivery Timeline —</p>
+          <CustomerDeliveryTimeline customerId={customer.id} />
+        </TabsContent>
       </Tabs>
+
+      {messageOpen && (
+        <CustomerMessageDialog
+          open={messageOpen}
+          onClose={() => setMessageOpen(false)}
+          customerId={customer.id}
+          customerName={customer.full_name}
+          customerPhone={customer.phone}
+          hasLine={!!customer.line_user_id}
+          optOutAutomation={!!customer.opt_out_automation}
+          lineUnfollowed={!!customer.line_unfollowed_at}
+        />
+      )}
     </AppLayout>
   );
 };

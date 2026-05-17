@@ -20,6 +20,7 @@ import { useCurrentLocationId } from "@/hooks/useLocations";
 import KpiStrip from "@/components/customers/KpiStrip";
 import BulkActionBar from "@/components/customers/BulkActionBar";
 import BulkLineDialog from "@/components/customers/BulkLineDialog";
+import { CustomerMessageDialog } from "@/components/CustomerMessageDialog";
 import { cn } from "@/lib/utils";
 
 interface Customer {
@@ -32,6 +33,8 @@ interface Customer {
   visit_count: number;
   total_spent: number;
   line_user_id?: string | null;
+  line_unfollowed_at?: string | null;
+  opt_out_automation?: boolean | null;
   notes?: string | null;
   gender?: string | null;
 }
@@ -72,9 +75,10 @@ interface RowData {
   toggle: (id: string) => void;
   onEdit: (c: Customer) => void;
   onQr: (c: Customer) => void;
+  onMessage: (c: Customer) => void;
 }
 
-const CustomerRow = ({ index, style, customers, selected, toggle, onEdit, onQr }: RowComponentProps<RowData>) => {
+const CustomerRow = ({ index, style, customers, selected, toggle, onEdit, onQr, onMessage }: RowComponentProps<RowData>) => {
   const c = customers[index];
   if (!c) return null;
   const seg = segmentOf(c.last_visit_date);
@@ -147,6 +151,25 @@ const CustomerRow = ({ index, style, customers, selected, toggle, onEdit, onQr }
 
         {/* Actions */}
         <div className="col-span-2 flex items-center justify-end gap-1.5">
+          <button
+            onClick={() => onMessage(c)}
+            disabled={!c.line_user_id || !!c.line_unfollowed_at}
+            title={
+              c.line_unfollowed_at ? "LINE解除済み"
+                : !c.line_user_id ? "LINE未連携"
+                : c.opt_out_automation ? "自動配信停止中（手動連絡のみ）"
+                : "LINE送信"
+            }
+            className={cn(
+              "inline-flex items-center gap-1 px-2 py-1 border text-[10px] font-serif-en tracking-wider transition-colors",
+              c.line_user_id && !c.line_unfollowed_at
+                ? "border-[#06C755]/50 text-[#06C755] hover:bg-[#06C755] hover:text-white"
+                : "border-border text-muted-foreground/40 cursor-not-allowed"
+            )}
+          >
+            <MessageCircle className="w-3 h-3 stroke-[1.5]" />
+            LINE
+          </button>
           <Link
             to={`/customers/${c.id}/chart`}
             className="inline-flex items-center gap-1 px-2 py-1 border border-gold/40 text-gold hover:bg-gold hover:text-background transition-colors text-[10px] font-serif-en tracking-wider"
@@ -174,6 +197,7 @@ const Customers = () => {
   const [qrTarget, setQrTarget] = useState<{ id: string; name: string } | null>(null);
   const [lineAddUrl, setLineAddUrl] = useState<string | null>(null);
   const [bulkLineOpen, setBulkLineOpen] = useState(false);
+  const [messageTarget, setMessageTarget] = useState<Customer | null>(null);
 
   useEffect(() => {
     supabase.from("profiles").select("line_add_friend_url").maybeSingle()
@@ -185,7 +209,7 @@ const Customers = () => {
     setLoading(true);
     const { data } = await supabase
       .from("customers")
-      .select("id, full_name, email, phone, birthday, last_visit_date, visit_count, total_spent, line_user_id, notes, gender")
+      .select("id, full_name, email, phone, birthday, last_visit_date, visit_count, total_spent, line_user_id, line_unfollowed_at, opt_out_automation, notes, gender")
       .eq("location_id", locationId)
       .order("last_visit_date", { ascending: false, nullsFirst: false })
       .limit(5000);
@@ -397,7 +421,7 @@ const Customers = () => {
             rowComponent={CustomerRow}
             rowCount={filtered.length}
             rowHeight={68}
-            rowProps={{ customers: filtered, selected, toggle, onEdit: (c) => setEditTarget(c as any), onQr: (c) => setQrTarget({ id: c.id, name: c.full_name }) }}
+            rowProps={{ customers: filtered, selected, toggle, onEdit: (c) => setEditTarget(c as any), onQr: (c) => setQrTarget({ id: c.id, name: c.full_name }), onMessage: (c) => setMessageTarget(c) }}
             style={{ height: "calc(100vh - 480px)", minHeight: 400 }}
             overscanCount={5}
           />
@@ -450,6 +474,19 @@ const Customers = () => {
           customerId={qrTarget.id}
           customerName={qrTarget.name}
           lineAddFriendUrl={lineAddUrl}
+        />
+      )}
+
+      {messageTarget && (
+        <CustomerMessageDialog
+          open={!!messageTarget}
+          onClose={() => setMessageTarget(null)}
+          customerId={messageTarget.id}
+          customerName={messageTarget.full_name}
+          customerPhone={messageTarget.phone}
+          hasLine={!!messageTarget.line_user_id}
+          optOutAutomation={!!messageTarget.opt_out_automation}
+          lineUnfollowed={!!messageTarget.line_unfollowed_at}
         />
       )}
     </AppLayout>
