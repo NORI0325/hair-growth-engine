@@ -538,8 +538,18 @@ export default function SyncReview() {
                               <div className="text-sm flex-1 min-w-0">
                                 <Badge className={`rounded-none mr-2 text-[10px] border ${badgeTone}`} variant="outline">{labelText}</Badge>
                                 <span className="font-serif">{it.customerName ?? "顧客不明"}</span>
-                                <span className="text-muted-foreground"> ・ {it.time ?? "—"} ・ {it.menu ?? "メニュー不明"}</span>
+                                <span className="text-muted-foreground"> ・ {it.time ?? "—"}{it.time && it.time_source === "detail" ? "（詳細ページから取得）" : ""}{it.end_time ? ` 〜 ${it.end_time}` : ""} ・ {it.menu ?? "メニュー不明"}</span>
                                 <span className="text-[11px] text-muted-foreground"> ／ ext_id: {it.external_reservation_id ?? "—"}</span>
+                                {it.time_source === "not_fetched_limit" && (
+                                  <div className="mt-1 text-[11px] text-amber-800 bg-amber-50 border border-amber-200 px-2 py-1">
+                                    詳細ページ確認上限（1日10件）に達したため、時刻を取得できませんでした。
+                                  </div>
+                                )}
+                                {it.detail_fetch_error && (
+                                  <div className="mt-1 text-[11px] text-red-700 bg-red-50 border border-red-200 px-2 py-1">
+                                    詳細ページから時刻を取得できませんでした：{it.detail_fetch_error}
+                                  </div>
+                                )}
                                 {it.reason && <span className="text-[11px] text-muted-foreground"> ／ {it.reason}</span>}
                                 {sbDetailUrl && (
                                   <a href={sbDetailUrl} target="_blank" rel="noopener noreferrer" className="ml-2 text-[11px] text-gold inline-flex items-center hover:underline">
