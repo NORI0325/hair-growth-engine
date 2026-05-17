@@ -120,7 +120,8 @@ export const CustomerMessageDialog = ({
     }
   };
 
-  const send = async () => {
+  const doSend = async () => {
+    setConfirmOptOutOpen(false);
     if (renderedBody.length < 5) { toast.error("メッセージを入力してください"); return; }
     setSending(true);
     const { data, error } = await supabase.functions.invoke("send-customer-message", {
@@ -134,6 +135,12 @@ export const CustomerMessageDialog = ({
     }
     toast.success("送信しました");
     onClose();
+  };
+
+  const send = () => {
+    if (renderedBody.length < 5) { toast.error("メッセージを入力してください"); return; }
+    if (optOutAutomation) { setConfirmOptOutOpen(true); return; }
+    doSend();
   };
 
   return (
