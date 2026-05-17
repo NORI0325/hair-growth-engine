@@ -75,6 +75,7 @@ interface RowData {
   toggle: (id: string) => void;
   onEdit: (c: Customer) => void;
   onQr: (c: Customer) => void;
+  onMessage: (c: Customer) => void;
 }
 
 const CustomerRow = ({ index, style, customers, selected, toggle, onEdit, onQr }: RowComponentProps<RowData>) => {
