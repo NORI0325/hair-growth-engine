@@ -69,6 +69,8 @@ const PublicBooking = () => {
   const [hasStaff, setHasStaff] = useState(false);
   const [openTime, setOpenTime] = useState<string>("10:00");
   const [closeTime, setCloseTime] = useState<string>("19:00");
+  const [bookingPaused, setBookingPaused] = useState(false);
+  const [pausedMessage, setPausedMessage] = useState<string>("");
 
   const [form, setForm] = useState({ full_name: "", full_name_kana: "", phone: "", email: "", date: "", time: "", staff_id: "", notes: "" });
 
@@ -95,18 +97,22 @@ const PublicBooking = () => {
         if (location.open_time) setOpenTime(String(location.open_time).slice(0, 5));
         if (location.close_time) setCloseTime(String(location.close_time).slice(0, 5));
 
-        // tenant の public_menus フォールバック取得
+        // tenant の public_menus フォールバック取得 + 一時停止フラグ
         const { data: prof } = await supabase
           .from("profiles")
-          .select("public_menus")
+          .select("public_menus, line_booking_paused, line_booking_paused_message")
           .eq("id", location.tenant_id)
           .maybeSingle();
         pubMenus = prof?.public_menus || [];
+        if ((prof as any)?.line_booking_paused) {
+          setBookingPaused(true);
+          setPausedMessage((prof as any)?.line_booking_paused_message || "");
+        }
       } else {
         // 後方互換: profiles.public_slug で探す
         const { data: profile } = await supabase
           .from("profiles")
-          .select("id, salon_name, public_menus, open_time, close_time")
+          .select("id, salon_name, public_menus, open_time, close_time, line_booking_paused, line_booking_paused_message")
           .eq("public_slug", slug)
           .maybeSingle();
         if (profile) {
@@ -115,6 +121,10 @@ const PublicBooking = () => {
           pubMenus = profile.public_menus || [];
           if (profile.open_time) setOpenTime(String(profile.open_time).slice(0, 5));
           if (profile.close_time) setCloseTime(String(profile.close_time).slice(0, 5));
+          if ((profile as any).line_booking_paused) {
+            setBookingPaused(true);
+            setPausedMessage((profile as any).line_booking_paused_message || "");
+          }
         }
       }
 
@@ -225,6 +235,7 @@ const PublicBooking = () => {
   }, [slug, form.date, form.staff_id, totalDuration, hasStaff]);
 
   const handleSubmit = async () => {
+    if (bookingPaused) { toast.error("ただいまWeb予約を一時停止しております"); return; }
     // ひらがな入力をカタカナへ自動変換してから検証
     const normalizedKana = hiraToKata(form.full_name_kana || "").replace(/[\u3000]/g, " ").trim();
     const candidate = { ...form, full_name_kana: normalizedKana };
@@ -279,6 +290,19 @@ const PublicBooking = () => {
         <p className="eyebrow mb-4">— Notice —</p>
         <h2 className="display text-2xl mb-4">サロンが見つかりません</h2>
         <p className="text-sm text-muted-foreground">URLをご確認ください。</p>
+      </div>
+    </div>
+  );
+
+  if (bookingPaused) return (
+    <div className="min-h-screen flex items-center justify-center p-6 bg-background">
+      <div className="max-w-md w-full text-center">
+        <p className="eyebrow mb-4 text-gold">— Notice —</p>
+        <h2 className="display text-2xl mb-6">ただいまWeb予約を一時停止しております</h2>
+        <div className="hairline w-16 mx-auto my-6" />
+        <p className="text-sm text-muted-foreground leading-loose whitespace-pre-wrap">
+          {pausedMessage || "お手数をおかけいたしますが、お電話または公式サイトよりお問い合わせくださいませ。"}
+        </p>
       </div>
     </div>
   );

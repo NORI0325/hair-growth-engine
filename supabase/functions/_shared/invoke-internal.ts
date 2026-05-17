@@ -60,8 +60,6 @@ export async function invokeInternal<T = unknown>(
     opts.idempotencyKey ?? (payload.idempotencyKey as string | undefined);
   const caller = opts.caller ?? "unknown";
   const ctx = opts.context ? JSON.stringify(opts.context) : "-";
-  const idempotencyKey =
-    opts.idempotencyKey ?? (payload.idempotencyKey as string | undefined);
   const anon = pickAnonJwt();
   const ctrl = new AbortController();
   const timer = opts.timeoutMs ? setTimeout(() => ctrl.abort(), opts.timeoutMs) : null;
