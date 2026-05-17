@@ -197,6 +197,7 @@ const Customers = () => {
   const [qrTarget, setQrTarget] = useState<{ id: string; name: string } | null>(null);
   const [lineAddUrl, setLineAddUrl] = useState<string | null>(null);
   const [bulkLineOpen, setBulkLineOpen] = useState(false);
+  const [messageTarget, setMessageTarget] = useState<Customer | null>(null);
 
   useEffect(() => {
     supabase.from("profiles").select("line_add_friend_url").maybeSingle()
