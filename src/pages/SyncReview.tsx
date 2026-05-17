@@ -192,36 +192,123 @@ export default function SyncReview() {
     load();
   };
 
-  const fetchDay = async () => {
-    if (!dayDate) return;
-    setDayLoading(true);
-    setDayItems(null);
+  // 1日分を取得（既存Edgeを呼び出すだけ・破壊変更なし）
+  const fetchOneDay = async (date: string): Promise<DayResult> => {
     try {
       const { data, error } = await supabase.functions.invoke("salonboard-fetch-day-reservations", {
-        body: { date: dayDate, location_id: currentLocationId },
+        body: { date, location_id: currentLocationId },
       });
       if (error) {
-        toast.error("予約表取得に失敗しました: " + error.message);
-        return;
+        return { date, state: "failed", error: error.message, error_type: "invoke_error" };
       }
       const r: any = data;
       if (!r?.success) {
-        toast.error("予約表取得に失敗しました: " + (r?.message || r?.error || "unknown"));
-        return;
+        const msg: string = r?.message || r?.error || "unknown";
+        const looksCaptcha = /captcha/i.test(msg) || r?.error === "captcha_required" || /captcha/i.test(r?.error_type || "");
+        return {
+          date, state: "failed",
+          error: msg,
+          error_type: looksCaptcha ? "captcha_required" : (r?.error || "worker_failed"),
+        };
       }
-      setDayItems(r.items as DayItem[]);
-      setDayMeta({ checked_at: new Date().toISOString(), total_external: r.total_external, total_local: r.total_local });
-      toast.success(`サロンボードから ${r.total_external} 件取得しました`);
+      return {
+        date, state: "done",
+        items: r.items as DayItem[],
+        total_external: r.total_external,
+        total_local: r.total_local,
+      };
     } catch (e: any) {
-      toast.error("予約表取得に失敗しました: " + (e?.message || String(e)));
-    } finally {
-      setDayLoading(false);
+      return { date, state: "failed", error: e?.message || String(e), error_type: "exception" };
     }
   };
 
-  const importItem = async (it: DayItem) => {
-    if (!it.customerName || !it.time) {
-      toast.error("顧客名または時刻が不足しているため取り込めません");
+  const addDays = (yyyymmdd: string, n: number): string => {
+    const d = new Date(yyyymmdd + "T00:00:00");
+    d.setDate(d.getDate() + n);
+    return d.toISOString().slice(0, 10);
+  };
+
+  const fetchRange = async () => {
+    if (!dayDate) return;
+    const total = parseInt(rangeDays, 10);
+    const dates: string[] = [];
+    for (let i = 0; i < total; i++) dates.push(addDays(dayDate, i));
+
+    setDayLoading(true);
+    setStopRequested(false);
+    setStopReason(null);
+    setRangeProgress({ current: 0, total });
+    setExpandedDates({ [dates[0]]: true });
+    setRangeResults(dates.map((d) => ({ date: d, state: "pending" })));
+
+    let consecutiveFailures = 0;
+    let stoppedEarly = false;
+    let stopMsg: string | null = null;
+
+    for (let i = 0; i < dates.length; i++) {
+      // 最新の stopRequested を関数 setter 経由で取り出す（closure 古値対策）
+      let latestStop = false;
+      setStopRequested((s) => { latestStop = s; return s; });
+      if (latestStop) {
+        stoppedEarly = true;
+        stopMsg = "ユーザーが取得を停止しました。";
+        break;
+      }
+
+      const d = dates[i];
+      setRangeResults((prev) => prev.map((r) => r.date === d ? { ...r, state: "running" } : r));
+      setRangeProgress({ current: i + 1, total });
+
+      const result = await fetchOneDay(d);
+      setRangeResults((prev) => prev.map((r) => r.date === d ? result : r));
+
+      if (result.state === "failed") {
+        consecutiveFailures += 1;
+        if (result.error_type === "captcha_required") {
+          stoppedEarly = true;
+          stopMsg = "サロンボード側で確認が必要な可能性があります（captcha_required）。残りの日付の取得を中止しました。";
+          break;
+        }
+        if (consecutiveFailures >= 2) {
+          stoppedEarly = true;
+          stopMsg = "連続2日取得に失敗したため、残りの日付の取得を中止しました。";
+          break;
+        }
+      } else {
+        consecutiveFailures = 0;
+      }
+
+      // サロンボード負荷軽減のため800ms待機（最終日は不要）
+      if (i < dates.length - 1) {
+        await new Promise((r) => setTimeout(r, 800));
+      }
+    }
+
+    setRangeResults((prev) => prev.map((r) => (r.state === "pending" || r.state === "running") ? { ...r, state: "skipped" } : r));
+    setDayLoading(false);
+    setRangeProgress(null);
+    if (stoppedEarly && stopMsg) setStopReason(stopMsg);
+
+    setRangeResults((prev) => {
+      const done = prev.filter((r) => r.state === "done").length;
+      const failed = prev.filter((r) => r.state === "failed").length;
+      if (stoppedEarly) toast.warning(`取得を中止しました（成功${done}日 / 失敗${failed}日）`);
+      else if (failed > 0) toast.warning(`取得完了：成功${done}日 / 失敗${failed}日`);
+      else toast.success(`${done}日分の予約表を取得しました`);
+      return prev;
+    });
+  };
+
+  const importItem = async (it: DayItem, sourceDate: string) => {
+    if (!it.customerName) {
+      toast.error("顧客名が取得できなかったため取り込めません。");
+      return;
+    }
+    if (!it.time) {
+      toast.error(
+        "時刻が取得できなかったため取り込めません。サロンボード画面で時刻表示が変則の可能性があります。サロンボードを開いて時刻を確認後、SalonBoostでは手動予約として登録してください。",
+        { duration: 8000 },
+      );
       return;
     }
     const key = `${it.external_reservation_id ?? ""}|${it.customerName}|${it.time}`;
@@ -229,7 +316,7 @@ export default function SyncReview() {
     try {
       const { data, error } = await supabase.functions.invoke("salonboard-import-reservation", {
         body: {
-          date: dayDate,
+          date: sourceDate,
           time: it.time,
           customer_name: it.customerName,
           menu: it.menu,
@@ -242,7 +329,9 @@ export default function SyncReview() {
       if (r?.success) {
         if (r.action === "skipped") toast.info(r.message || "既に存在するためスキップしました");
         else toast.success("SalonBoost に取り込みました");
-        await fetchDay();
+        // 対象日のみ再取得
+        const refreshed = await fetchOneDay(sourceDate);
+        setRangeResults((prev) => prev.map((x) => x.date === sourceDate ? refreshed : x));
         await load();
       } else {
         toast.error("取り込み失敗: " + (r?.message || r?.error || "unknown"));
@@ -253,6 +342,25 @@ export default function SyncReview() {
       setImportingKey(null);
     }
   };
+
+  const totals = (() => {
+    let ext = 0, loc = 0, matched = 0, only = 0, conflict = 0, doneDays = 0, failedDays = 0;
+    for (const r of rangeResults) {
+      if (r.state === "done") {
+        doneDays++;
+        ext += r.total_external ?? 0;
+        loc += r.total_local ?? 0;
+        for (const it of (r.items ?? [])) {
+          if (it.classification === "matched") matched++;
+          else if (it.classification === "salonboard_only") only++;
+          else if (it.classification === "conflict") conflict++;
+        }
+      } else if (r.state === "failed") {
+        failedDays++;
+      }
+    }
+    return { ext, loc, matched, only, conflict, doneDays, failedDays };
+  })();
 
   return (
     <div className="container max-w-6xl py-12 px-6">
