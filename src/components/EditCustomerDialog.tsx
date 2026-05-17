@@ -57,6 +57,7 @@ const EditCustomerDialog = ({ customer, open, onOpenChange, onSaved }: Props) =>
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [messageOpen, setMessageOpen] = useState(false);
   const [form, setForm] = useState({
     full_name: "", phone: "", email: "", birthday: "",
     last_visit_date: "", visit_count: "0", total_spent: "0",
