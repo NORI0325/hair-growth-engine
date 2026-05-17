@@ -151,6 +151,25 @@ const CustomerRow = ({ index, style, customers, selected, toggle, onEdit, onQr, 
 
         {/* Actions */}
         <div className="col-span-2 flex items-center justify-end gap-1.5">
+          <button
+            onClick={() => onMessage(c)}
+            disabled={!c.line_user_id || !!c.line_unfollowed_at}
+            title={
+              c.line_unfollowed_at ? "LINE解除済み"
+                : !c.line_user_id ? "LINE未連携"
+                : c.opt_out_automation ? "自動配信停止中（手動連絡のみ）"
+                : "LINE送信"
+            }
+            className={cn(
+              "inline-flex items-center gap-1 px-2 py-1 border text-[10px] font-serif-en tracking-wider transition-colors",
+              c.line_user_id && !c.line_unfollowed_at
+                ? "border-[#06C755]/50 text-[#06C755] hover:bg-[#06C755] hover:text-white"
+                : "border-border text-muted-foreground/40 cursor-not-allowed"
+            )}
+          >
+            <MessageCircle className="w-3 h-3 stroke-[1.5]" />
+            LINE
+          </button>
           <Link
             to={`/customers/${c.id}/chart`}
             className="inline-flex items-center gap-1 px-2 py-1 border border-gold/40 text-gold hover:bg-gold hover:text-background transition-colors text-[10px] font-serif-en tracking-wider"
