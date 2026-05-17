@@ -30,10 +30,15 @@ interface Props {
   customerPhone?: string | null;
   hasLine: boolean;
   bookingTime?: string; // "HH:MM"
+  /** お客様が自動配信を停止している場合、手動連絡として送信前に確認ダイアログを出す */
+  optOutAutomation?: boolean;
+  /** LINE友だち解除済み（line_unfollowed_at が立っている）。送信不可表示にする */
+  lineUnfollowed?: boolean;
 }
 
 export const CustomerMessageDialog = ({
   open, onClose, customerId, customerName, customerPhone, hasLine, bookingTime,
+  optOutAutomation, lineUnfollowed,
 }: Props) => {
   const { user } = useAuth();
   const locationId = useCurrentLocationId();
@@ -42,6 +47,9 @@ export const CustomerMessageDialog = ({
   const [minutes, setMinutes] = useState(15);
   const [newTime, setNewTime] = useState(bookingTime || "");
   const [body, setBody] = useState("");
+  const [sending, setSending] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [confirmOptOutOpen, setConfirmOptOutOpen] = useState(false);
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
 
