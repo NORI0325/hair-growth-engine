@@ -24,10 +24,24 @@ const LineLinkQRDialog = ({ open, onOpenChange, customerId, customerName, lineAd
     if (!open || !user) return;
     (async () => {
       setLoading(true);
-      // 既存の未使用トークンを再利用
+      // 1) 対象 customer の owner_id を取得（INSERT/SELECT 共に customer.owner_id を使う）
+      const { data: customer, error: cErr } = await supabase
+        .from("customers")
+        .select("id, owner_id, full_name, line_user_id, line_unfollowed_at")
+        .eq("id", customerId)
+        .maybeSingle();
+      if (cErr || !customer) {
+        toast.error("顧客情報の取得に失敗しました");
+        setLoading(false);
+        return;
+      }
+      const ownerId = customer.owner_id;
+
+      // 2) 既存の未使用トークンを再利用
       const { data: existing } = await supabase
         .from("customer_line_link_tokens")
         .select("token, expires_at, used_at")
+        .eq("owner_id", ownerId)
         .eq("customer_id", customerId)
         .is("used_at", null)
         .gt("expires_at", new Date().toISOString())
@@ -39,7 +53,7 @@ const LineLinkQRDialog = ({ open, onOpenChange, customerId, customerName, lineAd
       } else {
         const { data: created, error } = await supabase
           .from("customer_line_link_tokens")
-          .insert({ owner_id: user.id, customer_id: customerId })
+          .insert({ owner_id: ownerId, customer_id: customerId })
           .select("token")
           .maybeSingle();
         if (error) toast.error("トークン生成に失敗: " + error.message);
