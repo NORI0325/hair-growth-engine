@@ -225,6 +225,23 @@ export default function ManualBookingDialog({ onCreated, trigger }: Props) {
             <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="rounded-none" rows={2} maxLength={500} />
           </div>
 
+          {canUseTestMode && (
+            <label className="flex items-start gap-2 text-xs border border-dashed border-gold/60 p-2 bg-gold/5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={testMode}
+                onChange={(e) => setTestMode(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="font-medium">テスト予約として作成（dispatchしない）</span>
+                <span className="block text-muted-foreground mt-0.5">
+                  booking と sync_job のみ作成し、サロンボードへは送信しません。is_test=true として保存され、Phase2実Worker往復テスト用に保持されます。
+                </span>
+              </span>
+            </label>
+          )}
+
           <p className="text-xs text-muted-foreground border-l-2 border-gold pl-2">
             予約は仮受付として保存され、外部媒体（サロンボード等）への同期成功後に確定になります。同期に時間がかかる場合（最大15秒）、バックグラウンドで処理を続けます。
           </p>
