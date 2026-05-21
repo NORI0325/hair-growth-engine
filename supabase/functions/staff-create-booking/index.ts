@@ -150,7 +150,7 @@ Deno.serve(async (req) => {
 
     const liveIntegrations = (integrations || []).filter((ci: any) =>
       ci.channel !== "own_web" && ci.connection_status === "live"
-      && (ci.location_id == null || ci.location_id === resolvedLocationId));
+      && ci.location_id === resolvedLocationId);
 
     if (!liveIntegrations || liveIntegrations.length === 0) {
       // 同期対象なし → 即 confirmed
