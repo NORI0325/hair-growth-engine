@@ -120,7 +120,7 @@ Deno.serve(async (req) => {
       .insert({
         owner_id: customer.owner_id,
         customer_id: customer.id,
-        location_id: location_id || null,
+        location_id: resolvedLocationId,
         booking_date,
         booking_time: booking_time + ":00",
         menu: menuSummary,
@@ -150,7 +150,7 @@ Deno.serve(async (req) => {
 
     const liveIntegrations = (integrations || []).filter((ci: any) =>
       ci.channel !== "own_web" && ci.connection_status === "live"
-      && (ci.location_id == null || ci.location_id === (location_id || null)));
+      && (ci.location_id == null || ci.location_id === resolvedLocationId));
 
     if (!liveIntegrations || liveIntegrations.length === 0) {
       // 同期対象なし → 即 confirmed
@@ -191,7 +191,7 @@ Deno.serve(async (req) => {
       }
       jobsToInsert.push({
         owner_id: customer.owner_id,
-        location_id: location_id || null,
+        location_id: resolvedLocationId,
         reservation_id: booking.id,
         target_channel: ci.channel,
         job_type: "create_reservation",
