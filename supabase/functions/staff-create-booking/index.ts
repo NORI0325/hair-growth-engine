@@ -250,8 +250,6 @@ Deno.serve(async (req) => {
         sync_job_ids: (insertedJobs || []).map((j: any) => j.id),
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
-      });
-    }
 
     // dispatch を最大 SYNC_WAIT_MS 待機
     const dispatchPromise = supabase.functions.invoke("sync-job-dispatch", { body: { reservation_id: booking.id } });
