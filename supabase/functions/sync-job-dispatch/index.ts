@@ -192,13 +192,41 @@ Deno.serve(async (req) => {
       // 店舗別の default_rsv_route_id を解決
       let defaultRsvRouteId = SALONBOARD_DEFAULT_RSV_ROUTE_ID;
       if (job.target_channel === "salonboard") {
-        let ciq = supabase.from("channel_integrations").select("default_rsv_route_id, sync_enabled, connection_status")
-          .eq("owner_id", job.owner_id).eq("channel", "salonboard");
-        ciq = job.location_id ? ciq.eq("location_id", job.location_id) : ciq.is("location_id", null);
-        const { data: ciRow } = await ciq.maybeSingle();
-        if (ciRow?.default_rsv_route_id) defaultRsvRouteId = ciRow.default_rsv_route_id;
-        if (ciRow && (!ciRow.sync_enabled || ciRow.connection_status !== "live")) {
-          preflightFail = { error_type: "not_live", message: "店舗のサロンボード本番同期がONではありません" };
+        // location_id 解決優先順位:
+        //   1. job.location_id
+        //   2. bookings.location_id
+        //   3. owner の primary location
+        let resolvedLocId: string | null = job.location_id || null;
+        if (!resolvedLocId && job.reservation_id) {
+          const { data: bk } = await supabase.from("bookings")
+            .select("location_id").eq("id", job.reservation_id).maybeSingle();
+          resolvedLocId = bk?.location_id || null;
+        }
+        if (!resolvedLocId) {
+          const { data: locs } = await supabase.from("locations")
+            .select("id, is_primary, created_at")
+            .eq("tenant_id", job.owner_id)
+            .order("is_primary", { ascending: false })
+            .order("created_at", { ascending: true })
+            .limit(1);
+          resolvedLocId = locs?.[0]?.id || null;
+        }
+        if (!resolvedLocId) {
+          preflightFail = { error_type: "location_not_set", message: "店舗未設定のためサロンボード同期できません" };
+        } else {
+          // location_id 一致の channel_integrations を必須化（NULL 全店行は今後使わない）
+          const { data: ciRow } = await supabase.from("channel_integrations")
+            .select("default_rsv_route_id, sync_enabled, connection_status, enabled")
+            .eq("owner_id", job.owner_id).eq("channel", "salonboard")
+            .eq("location_id", resolvedLocId).maybeSingle();
+          if (!ciRow) {
+            preflightFail = { error_type: "channel_integration_not_found", message: "店舗未設定のためサロンボード同期できません（連携行なし）" };
+          } else {
+            if (ciRow.default_rsv_route_id) defaultRsvRouteId = ciRow.default_rsv_route_id;
+            if (!ciRow.enabled || !ciRow.sync_enabled || ciRow.connection_status !== "live") {
+              preflightFail = { error_type: "not_live", message: "店舗のサロンボード本番同期がONではありません" };
+            }
+          }
         }
       }
       if (!preflightFail && job.target_channel === "salonboard" && job.job_type === "create_reservation" && looksAppFormat) {

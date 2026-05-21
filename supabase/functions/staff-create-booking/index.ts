@@ -60,6 +60,25 @@ Deno.serve(async (req) => {
       });
     }
 
+    // location_id 必須化: 明示指定が無ければ primary location にフォールバック、それも無ければ 400
+    let resolvedLocationId: string | null = location_id || null;
+    if (!resolvedLocationId) {
+      const { data: locs } = await supabase.from("locations")
+        .select("id, is_primary, created_at")
+        .eq("tenant_id", customer.owner_id)
+        .order("is_primary", { ascending: false })
+        .order("created_at", { ascending: true })
+        .limit(1);
+      resolvedLocationId = locs?.[0]?.id || null;
+    }
+    if (!resolvedLocationId) {
+      return new Response(JSON.stringify({ error: "location_not_set", message: "店舗が未設定のため予約を作成できません" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+
+
     // テナント所属チェック
     const { data: membership } = await supabase
       .from("tenant_members").select("user_id").eq("tenant_id", customer.owner_id).eq("user_id", userId).not("accepted_at", "is", null).maybeSingle();
@@ -101,7 +120,7 @@ Deno.serve(async (req) => {
       .insert({
         owner_id: customer.owner_id,
         customer_id: customer.id,
-        location_id: location_id || null,
+        location_id: resolvedLocationId,
         booking_date,
         booking_time: booking_time + ":00",
         menu: menuSummary,
@@ -131,7 +150,7 @@ Deno.serve(async (req) => {
 
     const liveIntegrations = (integrations || []).filter((ci: any) =>
       ci.channel !== "own_web" && ci.connection_status === "live"
-      && (ci.location_id == null || ci.location_id === (location_id || null)));
+      && ci.location_id === resolvedLocationId);
 
     if (!liveIntegrations || liveIntegrations.length === 0) {
       // 同期対象なし → 即 confirmed
@@ -172,7 +191,7 @@ Deno.serve(async (req) => {
       }
       jobsToInsert.push({
         owner_id: customer.owner_id,
-        location_id: location_id || null,
+        location_id: resolvedLocationId,
         reservation_id: booking.id,
         target_channel: ci.channel,
         job_type: "create_reservation",

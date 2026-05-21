@@ -84,7 +84,7 @@ export default function ManualBookingDialog({ onCreated, trigger }: Props) {
   };
 
   const submit = async () => {
-    if (!locationId) { toast.error("店舗を選択してください"); return; }
+    if (!locationId) { toast.error("店舗が未設定のため予約を作成できません。サイドバーから店舗を選択してください。"); return; }
     if (!customerId) { toast.error("顧客を選択してください"); return; }
     if (selectedMenus.length === 0) { toast.error("メニューを選択してください"); return; }
     setSubmitting(true);
