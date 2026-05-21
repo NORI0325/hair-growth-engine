@@ -118,6 +118,13 @@ Deno.serve(async (req) => {
     const menuNames = menuRows.map((r) => r.name);
     const menuSummary = menuNames.join(" + ").slice(0, 200);
 
+    // notes に付与するメタタグ
+    const noteParts: string[] = [];
+    if (notes) noteParts.push(String(notes).slice(0, 500));
+    if (dispatchMode === "skip") noteParts.push("[dispatch_mode=skip]");
+    if (isTest) noteParts.push("[is_test=true][Phase2実Worker往復テスト]");
+    const finalNotes = noteParts.length > 0 ? noteParts.join(" ").slice(0, 800) : null;
+
     // bookings INSERT
     const { data: booking, error: bErr } = await supabase
       .from("bookings")
@@ -131,11 +138,12 @@ Deno.serve(async (req) => {
         menus: menuNames,
         total_duration_minutes: totalDuration || null,
         total_price: totalPrice || null,
-        notes: notes ? String(notes).slice(0, 500) : null,
+        notes: finalNotes,
         staff_id: staff_id || null,
         status: "pending", // 仮受付。同期成功で confirmed に昇格
         source_channel: "manual",
         external_source: "manual",
+        is_test: isTest,
       })
       .select()
       .single();
