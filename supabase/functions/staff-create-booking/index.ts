@@ -33,7 +33,11 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const {
       customer_id, booking_date, booking_time, menus, staff_id, notes, location_id,
+      dispatch_mode: rawDispatchMode, is_test: rawIsTest,
     } = body || {};
+    const dispatchMode: "auto" | "skip" = rawDispatchMode === "skip" ? "skip" : "auto";
+    // skip の場合は強制的に is_test=true
+    const isTest: boolean = dispatchMode === "skip" ? true : (rawIsTest === true);
 
     if (!customer_id || !booking_date || !booking_time || !Array.isArray(menus) || menus.length === 0) {
       return new Response(JSON.stringify({ error: "missing_params" }), {
