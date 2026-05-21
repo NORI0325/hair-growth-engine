@@ -33,7 +33,11 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const {
       customer_id, booking_date, booking_time, menus, staff_id, notes, location_id,
+      dispatch_mode: rawDispatchMode, is_test: rawIsTest,
     } = body || {};
+    const dispatchMode: "auto" | "skip" = rawDispatchMode === "skip" ? "skip" : "auto";
+    // skip の場合は強制的に is_test=true
+    const isTest: boolean = dispatchMode === "skip" ? true : (rawIsTest === true);
 
     if (!customer_id || !booking_date || !booking_time || !Array.isArray(menus) || menus.length === 0) {
       return new Response(JSON.stringify({ error: "missing_params" }), {
@@ -53,7 +57,7 @@ Deno.serve(async (req) => {
 
     // 顧客取得 → owner_id 取得（テナント検証）
     const { data: customer } = await supabase
-      .from("customers").select("id, owner_id, full_name, phone, email").eq("id", customer_id).maybeSingle();
+      .from("customers").select("id, owner_id, full_name, name_kana, phone, email").eq("id", customer_id).maybeSingle();
     if (!customer) {
       return new Response(JSON.stringify({ error: "customer_not_found" }), {
         status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -114,6 +118,13 @@ Deno.serve(async (req) => {
     const menuNames = menuRows.map((r) => r.name);
     const menuSummary = menuNames.join(" + ").slice(0, 200);
 
+    // notes に付与するメタタグ
+    const noteParts: string[] = [];
+    if (notes) noteParts.push(String(notes).slice(0, 500));
+    if (dispatchMode === "skip") noteParts.push("[dispatch_mode=skip]");
+    if (isTest) noteParts.push("[is_test=true][Phase2実Worker往復テスト]");
+    const finalNotes = noteParts.length > 0 ? noteParts.join(" ").slice(0, 800) : null;
+
     // bookings INSERT
     const { data: booking, error: bErr } = await supabase
       .from("bookings")
@@ -127,11 +138,12 @@ Deno.serve(async (req) => {
         menus: menuNames,
         total_duration_minutes: totalDuration || null,
         total_price: totalPrice || null,
-        notes: notes ? String(notes).slice(0, 500) : null,
+        notes: finalNotes,
         staff_id: staff_id || null,
         status: "pending", // 仮受付。同期成功で confirmed に昇格
         source_channel: "manual",
         external_source: "manual",
+        is_test: isTest,
       })
       .select()
       .single();
@@ -198,6 +210,7 @@ Deno.serve(async (req) => {
         status: "pending",
         request_payload: {
           customer_name: customer.full_name,
+          customer_kana: customer.name_kana ?? null,
           customer_phone: customer.phone,
           customer_email: customer.email,
           start_time: startISO,
@@ -210,8 +223,9 @@ Deno.serve(async (req) => {
           external_menu_id: extMenuId,
           rsv_term: rsvTerm,
           rsv_route_id: ci.default_rsv_route_id || "K000000001",
-          notes: notes ? String(notes).slice(0, 500) : null,
+          notes: finalNotes,
           source_channel: "manual",
+          is_test: isTest,
         },
       });
     }
@@ -221,8 +235,21 @@ Deno.serve(async (req) => {
         success: true, booking_id: booking.id, sync_status: "not_required", status: "confirmed",
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
-    await supabase.from("sync_jobs").insert(jobsToInsert);
+    const { data: insertedJobs } = await supabase.from("sync_jobs").insert(jobsToInsert).select("id");
     await supabase.from("bookings").update({ sync_status: "pending" }).eq("id", booking.id);
+
+    // dispatch_mode='skip' のときは Worker dispatch を呼ばずに pending のまま返す
+    if (dispatchMode === "skip") {
+      return new Response(JSON.stringify({
+        success: true,
+        booking_id: booking.id,
+        status: "pending",
+        sync_status: "pending",
+        dispatch_mode: "skip",
+        is_test: isTest,
+        sync_job_ids: (insertedJobs || []).map((j: any) => j.id),
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
     // dispatch を最大 SYNC_WAIT_MS 待機
     const dispatchPromise = supabase.functions.invoke("sync-job-dispatch", { body: { reservation_id: booking.id } });

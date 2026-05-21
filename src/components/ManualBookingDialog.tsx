@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useCurrentLocationId } from "@/hooks/useLocations";
+import { useTenantRole, hasMinRole } from "@/hooks/useTenant";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,7 +24,10 @@ interface Props {
 export default function ManualBookingDialog({ onCreated, trigger }: Props) {
   const { user } = useAuth();
   const locationId = useCurrentLocationId();
+  const role = useTenantRole();
+  const canUseTestMode = hasMinRole(role, "manager");
   const [open, setOpen] = useState(false);
+  const [testMode, setTestMode] = useState(false);
   const [customers, setCustomers] = useState<CustomerOpt[]>([]);
   const [staff, setStaff] = useState<StaffOpt[]>([]);
   const [menus, setMenus] = useState<MenuOpt[]>([]);
@@ -81,6 +85,7 @@ export default function ManualBookingDialog({ onCreated, trigger }: Props) {
 
   const reset = () => {
     setCustomerId(""); setStaffId(""); setSelectedMenus([]); setNotes(""); setCustomerSearch("");
+    setTestMode(false);
   };
 
   const submit = async () => {
@@ -89,22 +94,27 @@ export default function ManualBookingDialog({ onCreated, trigger }: Props) {
     if (selectedMenus.length === 0) { toast.error("メニューを選択してください"); return; }
     setSubmitting(true);
     try {
-      const { data, error } = await supabase.functions.invoke("staff-create-booking", {
-        body: {
-          customer_id: customerId,
-          staff_id: staffId || null,
-          booking_date: date,
-          booking_time: time,
-          menus: selectedMenus,
-          notes: notes || null,
-          location_id: locationId,
-        },
-      });
+      const body: Record<string, unknown> = {
+        customer_id: customerId,
+        staff_id: staffId || null,
+        booking_date: date,
+        booking_time: time,
+        menus: selectedMenus,
+        notes: notes || null,
+        location_id: locationId,
+      };
+      if (canUseTestMode && testMode) {
+        body.dispatch_mode = "skip";
+        body.is_test = true;
+      }
+      const { data, error } = await supabase.functions.invoke("staff-create-booking", { body });
       if (error) throw error;
       const r = data as any;
       if (!r?.success) throw new Error(r?.message || "作成に失敗しました");
 
-      if (r.sync_status === "success") {
+      if (r.dispatch_mode === "skip") {
+        toast.success("テスト予約を作成しました（Workerへは送信していません / pending のまま保持）", { icon: <CheckCircle2 className="h-4 w-4" /> });
+      } else if (r.sync_status === "success") {
         toast.success(`予約を作成しサロンボードへ同期しました（${r.external_reservation_id || "ID取得済"}）`, { icon: <CheckCircle2 className="h-4 w-4" /> });
       } else if (r.timed_out || r.sync_status === "pending") {
         toast.warning("予約を作成しました。サロンボード同期はバックグラウンドで処理中です（要確認画面で結果を確認できます）", { icon: <AlertTriangle className="h-4 w-4" /> });
@@ -214,6 +224,23 @@ export default function ManualBookingDialog({ onCreated, trigger }: Props) {
             <Label className="text-xs">備考（任意）</Label>
             <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="rounded-none" rows={2} maxLength={500} />
           </div>
+
+          {canUseTestMode && (
+            <label className="flex items-start gap-2 text-xs border border-dashed border-gold/60 p-2 bg-gold/5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={testMode}
+                onChange={(e) => setTestMode(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="font-medium">テスト予約として作成（dispatchしない）</span>
+                <span className="block text-muted-foreground mt-0.5">
+                  booking と sync_job のみ作成し、サロンボードへは送信しません。is_test=true として保存され、Phase2実Worker往復テスト用に保持されます。
+                </span>
+              </span>
+            </label>
+          )}
 
           <p className="text-xs text-muted-foreground border-l-2 border-gold pl-2">
             予約は仮受付として保存され、外部媒体（サロンボード等）への同期成功後に確定になります。同期に時間がかかる場合（最大15秒）、バックグラウンドで処理を続けます。
