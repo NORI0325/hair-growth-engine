@@ -85,6 +85,7 @@ export default function ManualBookingDialog({ onCreated, trigger }: Props) {
 
   const reset = () => {
     setCustomerId(""); setStaffId(""); setSelectedMenus([]); setNotes(""); setCustomerSearch("");
+    setTestMode(false);
   };
 
   const submit = async () => {
@@ -93,22 +94,27 @@ export default function ManualBookingDialog({ onCreated, trigger }: Props) {
     if (selectedMenus.length === 0) { toast.error("メニューを選択してください"); return; }
     setSubmitting(true);
     try {
-      const { data, error } = await supabase.functions.invoke("staff-create-booking", {
-        body: {
-          customer_id: customerId,
-          staff_id: staffId || null,
-          booking_date: date,
-          booking_time: time,
-          menus: selectedMenus,
-          notes: notes || null,
-          location_id: locationId,
-        },
-      });
+      const body: Record<string, unknown> = {
+        customer_id: customerId,
+        staff_id: staffId || null,
+        booking_date: date,
+        booking_time: time,
+        menus: selectedMenus,
+        notes: notes || null,
+        location_id: locationId,
+      };
+      if (canUseTestMode && testMode) {
+        body.dispatch_mode = "skip";
+        body.is_test = true;
+      }
+      const { data, error } = await supabase.functions.invoke("staff-create-booking", { body });
       if (error) throw error;
       const r = data as any;
       if (!r?.success) throw new Error(r?.message || "作成に失敗しました");
 
-      if (r.sync_status === "success") {
+      if (r.dispatch_mode === "skip") {
+        toast.success("テスト予約を作成しました（Workerへは送信していません / pending のまま保持）", { icon: <CheckCircle2 className="h-4 w-4" /> });
+      } else if (r.sync_status === "success") {
         toast.success(`予約を作成しサロンボードへ同期しました（${r.external_reservation_id || "ID取得済"}）`, { icon: <CheckCircle2 className="h-4 w-4" /> });
       } else if (r.timed_out || r.sync_status === "pending") {
         toast.warning("予約を作成しました。サロンボード同期はバックグラウンドで処理中です（要確認画面で結果を確認できます）", { icon: <AlertTriangle className="h-4 w-4" /> });
