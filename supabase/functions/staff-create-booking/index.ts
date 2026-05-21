@@ -210,6 +210,7 @@ Deno.serve(async (req) => {
         status: "pending",
         request_payload: {
           customer_name: customer.full_name,
+          customer_kana: customer.name_kana ?? null,
           customer_phone: customer.phone,
           customer_email: customer.email,
           start_time: startISO,
@@ -222,9 +223,33 @@ Deno.serve(async (req) => {
           external_menu_id: extMenuId,
           rsv_term: rsvTerm,
           rsv_route_id: ci.default_rsv_route_id || "K000000001",
-          notes: notes ? String(notes).slice(0, 500) : null,
+          notes: finalNotes,
           source_channel: "manual",
+          is_test: isTest,
         },
+      });
+    }
+    if (jobsToInsert.length === 0) {
+      await supabase.from("bookings").update({ status: "confirmed", sync_status: "not_required" }).eq("id", booking.id);
+      return new Response(JSON.stringify({
+        success: true, booking_id: booking.id, sync_status: "not_required", status: "confirmed",
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    const { data: insertedJobs } = await supabase.from("sync_jobs").insert(jobsToInsert).select("id");
+    await supabase.from("bookings").update({ sync_status: "pending" }).eq("id", booking.id);
+
+    // dispatch_mode='skip' のときは Worker dispatch を呼ばずに pending のまま返す
+    if (dispatchMode === "skip") {
+      return new Response(JSON.stringify({
+        success: true,
+        booking_id: booking.id,
+        status: "pending",
+        sync_status: "pending",
+        dispatch_mode: "skip",
+        is_test: isTest,
+        sync_job_ids: (insertedJobs || []).map((j: any) => j.id),
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
       });
     }
     if (jobsToInsert.length === 0) {
