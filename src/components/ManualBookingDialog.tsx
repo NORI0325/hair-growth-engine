@@ -24,7 +24,10 @@ interface Props {
 export default function ManualBookingDialog({ onCreated, trigger }: Props) {
   const { user } = useAuth();
   const locationId = useCurrentLocationId();
+  const role = useTenantRole();
+  const canUseTestMode = hasMinRole(role, "manager");
   const [open, setOpen] = useState(false);
+  const [testMode, setTestMode] = useState(false);
   const [customers, setCustomers] = useState<CustomerOpt[]>([]);
   const [staff, setStaff] = useState<StaffOpt[]>([]);
   const [menus, setMenus] = useState<MenuOpt[]>([]);
