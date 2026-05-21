@@ -252,14 +252,6 @@ Deno.serve(async (req) => {
     }
       });
     }
-    if (jobsToInsert.length === 0) {
-      await supabase.from("bookings").update({ status: "confirmed", sync_status: "not_required" }).eq("id", booking.id);
-      return new Response(JSON.stringify({
-        success: true, booking_id: booking.id, sync_status: "not_required", status: "confirmed",
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-    await supabase.from("sync_jobs").insert(jobsToInsert);
-    await supabase.from("bookings").update({ sync_status: "pending" }).eq("id", booking.id);
 
     // dispatch を最大 SYNC_WAIT_MS 待機
     const dispatchPromise = supabase.functions.invoke("sync-job-dispatch", { body: { reservation_id: booking.id } });
