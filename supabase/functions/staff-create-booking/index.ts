@@ -60,6 +60,25 @@ Deno.serve(async (req) => {
       });
     }
 
+    // location_id 必須化: 明示指定が無ければ primary location にフォールバック、それも無ければ 400
+    let resolvedLocationId: string | null = location_id || null;
+    if (!resolvedLocationId) {
+      const { data: locs } = await supabase.from("locations")
+        .select("id, is_primary, created_at")
+        .eq("tenant_id", customer.owner_id)
+        .order("is_primary", { ascending: false })
+        .order("created_at", { ascending: true })
+        .limit(1);
+      resolvedLocationId = locs?.[0]?.id || null;
+    }
+    if (!resolvedLocationId) {
+      return new Response(JSON.stringify({ error: "location_not_set", message: "店舗が未設定のため予約を作成できません" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+
+
     // テナント所属チェック
     const { data: membership } = await supabase
       .from("tenant_members").select("user_id").eq("tenant_id", customer.owner_id).eq("user_id", userId).not("accepted_at", "is", null).maybeSingle();
