@@ -57,7 +57,7 @@ Deno.serve(async (req) => {
 
     // 顧客取得 → owner_id 取得（テナント検証）
     const { data: customer } = await supabase
-      .from("customers").select("id, owner_id, full_name, phone, email").eq("id", customer_id).maybeSingle();
+      .from("customers").select("id, owner_id, full_name, name_kana, phone, email").eq("id", customer_id).maybeSingle();
     if (!customer) {
       return new Response(JSON.stringify({ error: "customer_not_found" }), {
         status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
