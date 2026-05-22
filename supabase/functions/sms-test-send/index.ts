@@ -14,12 +14,16 @@ Deno.serve(async (req) => {
       });
     }
 
-    const supabase = createClient(
+    const supabaseAuth = createClient(
       Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
       { global: { headers: { Authorization: authHeader } } }
     );
-    const { data: { user } } = await supabase.auth.getUser();
+    const supabaseAdmin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+    const { data: { user } } = await supabaseAuth.auth.getUser();
     if (!user) {
       return new Response(JSON.stringify({ error: "unauthorized" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -38,7 +42,7 @@ Deno.serve(async (req) => {
       }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const { data: profile } = await supabase
+    const { data: profile } = await supabaseAuth
       .from("profiles")
       .select("salon_name")
       .eq("id", user.id)
@@ -47,7 +51,7 @@ Deno.serve(async (req) => {
     const salonName = profile?.salon_name || "サロン";
     const text = customBody || `【${salonName}】SMS接続テストです🌸 このメッセージが届いていれば設定は正常です。`;
 
-    const result = await sendSmsWithLog(supabase, {
+    const result = await sendSmsWithLog(supabaseAdmin, {
       owner_id: user.id,
       location_id: null,
       customer_id: null,
