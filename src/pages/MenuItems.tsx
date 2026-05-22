@@ -21,7 +21,6 @@ interface MenuItem {
   price: number;
   sort_order: number;
   active: boolean;
-  bookable: boolean;
   image_url: string | null;
   description: string | null;
 }
@@ -42,7 +41,7 @@ const MenuItems = () => {
   const [draft, setDraft] = useState({ name: "", duration_minutes: 60, buffer_minutes: 15, price: 0 });
   const [mappingMenu, setMappingMenu] = useState<MenuItem | null>(null);
   const [salonboardSyncOn, setSalonboardSyncOn] = useState(false);
-  const [syncStatusByMenuId, setSyncStatusByMenuId] = useState<Record<string, MenuSyncStatus>>({});
+  const [syncStatusByMenuId, setSyncStatusByMenuId] = useState<Record<string, { label: string; className: string }>>({});
 
   const load = async () => {
     if (!user || !tenantId || !locationId) {
@@ -69,7 +68,8 @@ const MenuItems = () => {
       .eq("location_id", locationId)
       .eq("channel", "salonboard")
       .maybeSingle();
-    const isSalonboardOn = Boolean(ci?.enabled && ci?.sync_enabled && ci?.connection_status === "live");
+    const ciRow = ci as any;
+    const isSalonboardOn = Boolean(ciRow?.enabled && ciRow?.sync_enabled && ciRow?.connection_status === "live");
     setSalonboardSyncOn(isSalonboardOn);
 
     if (isSalonboardOn && menuItems.length > 0) {
@@ -81,7 +81,7 @@ const MenuItems = () => {
         .eq("channel", "salonboard")
         .in("menu_id", menuItems.map((item) => item.id));
       const mappingByMenuId = new Map((mappings || []).map((m: any) => [String(m.menu_id), m]));
-      const nextStatus: Record<string, MenuSyncStatus> = {};
+      const nextStatus: Record<string, { label: string; className: string }> = {};
       const resolveSetmenuId = (m: any) => {
         if (m?.external_setmenu_id) return String(m.external_setmenu_id);
         const externalId = String(m?.external_id || "");
@@ -89,12 +89,12 @@ const MenuItems = () => {
       };
       for (const item of menuItems) {
         const m: any = mappingByMenuId.get(item.id);
-        if (!item.active || item.bookable === false) {
+        if (!item.active) {
           nextStatus[item.id] = { label: "予約フォーム非表示", className: "border-muted text-muted-foreground" };
         } else if (m?.enabled === false) {
           nextStatus[item.id] = { label: "マッピング無効", className: "border-destructive/50 text-destructive" };
         } else if (m && m.external_id && !resolveSetmenuId(m)) {
-          nextStatus[item.id] = { label: "単品メニュー（同期未検証）", className: "border-amber-500 text-amber-700" } as MenuSyncStatus;
+          nextStatus[item.id] = { label: "単品メニュー（同期未検証）", className: "border-amber-500 text-amber-700" };
         } else if (!m || !resolveSetmenuId(m)) {
           nextStatus[item.id] = { label: "setmenu未登録", className: "border-destructive/50 text-destructive" };
         } else if (m.rsv_term == null) {

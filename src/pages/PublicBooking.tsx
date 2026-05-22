@@ -25,13 +25,18 @@ interface MenuItem {
   name: string;
   duration_minutes: number;
   price: number;
-  bookable?: boolean;
 }
 
 interface StaffOption {
   id: string;
   name: string;
 }
+
+type ChannelIntegrationStatus = {
+  enabled?: boolean | null;
+  sync_enabled?: boolean | null;
+  connection_status?: string | null;
+};
 
 // ひらがな → カタカナ変換
 const hiraToKata = (s: string) =>
@@ -46,7 +51,8 @@ async function isSalonboardSyncLive(ownerId: string, locationId: string): Promis
     .eq("channel", "salonboard")
     .maybeSingle();
   if (error) return null;
-  return Boolean(data?.enabled && data?.sync_enabled && data?.connection_status === "live");
+  const row = data as ChannelIntegrationStatus | null;
+  return Boolean(row?.enabled && row?.sync_enabled && row?.connection_status === "live");
 }
 
 async function filterSalonboardMappedMenus(ownerId: string, locationId: string, items: MenuItem[]): Promise<MenuItem[]> {
@@ -174,11 +180,10 @@ const PublicBooking = () => {
         if (locationId) {
           const { data: items } = await supabase
             .from("menu_items")
-            .select("id, name, duration_minutes, price, bookable")
+            .select("id, name, duration_minutes, price")
             .eq("owner_id", ownerId)
             .eq("location_id", locationId)
             .eq("active", true)
-            .eq("bookable", true)
             .order("sort_order", { ascending: true });
           const baseMenus = (items || []) as MenuItem[];
           const salonboardLive = await isSalonboardSyncLive(ownerId, locationId);

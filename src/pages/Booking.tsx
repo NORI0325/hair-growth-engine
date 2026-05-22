@@ -22,7 +22,6 @@ interface MenuItem {
   duration_minutes: number;
   price: number;
   image_url: string | null;
-  bookable?: boolean;
 }
 
 interface StaffMember {
@@ -31,6 +30,12 @@ interface StaffMember {
   display_color: string;
   note: string | null;
 }
+
+type ChannelIntegrationStatus = {
+  enabled?: boolean | null;
+  sync_enabled?: boolean | null;
+  connection_status?: string | null;
+};
 
 async function isSalonboardSyncLive(ownerId: string, locationId: string): Promise<boolean | null> {
   const { data, error } = await supabase
@@ -41,7 +46,8 @@ async function isSalonboardSyncLive(ownerId: string, locationId: string): Promis
     .eq("channel", "salonboard")
     .maybeSingle();
   if (error) return null;
-  return Boolean(data?.enabled && data?.sync_enabled && data?.connection_status === "live");
+  const row = data as ChannelIntegrationStatus | null;
+  return Boolean(row?.enabled && row?.sync_enabled && row?.connection_status === "live");
 }
 
 async function filterSalonboardMappedMenus(ownerId: string, locationId: string, items: MenuItem[]): Promise<MenuItem[]> {
@@ -106,11 +112,10 @@ const Booking = () => {
           setLocationResolved(true);
           const menusQuery = supabase
             .from("menu_items")
-            .select("id, name, duration_minutes, price, image_url, bookable")
+            .select("id, name, duration_minutes, price, image_url")
             .eq("owner_id", data.owner_id)
             .eq("location_id", data.location_id)
             .eq("active", true)
-            .eq("bookable", true)
             .order("sort_order", { ascending: true });
           const staffQuery = supabase
             .from("staff")
