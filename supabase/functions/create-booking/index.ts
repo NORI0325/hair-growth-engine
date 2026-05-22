@@ -334,7 +334,7 @@ Deno.serve(async (req) => {
       if (cust?.line_user_id && creds) {
         const APP_ORIGIN = Deno.env.get("APP_ORIGIN") || "https://hair-growth-engine.lovable.app";
         const myBookingsLink = `${APP_ORIGIN}/my-bookings/${token}`;
-        const text = `🌸 ご予約ありがとうございます\n\n${cust.full_name}様\n${prof?.salon_name || "サロン"}でのご予約が確定しました。\n\n📅 ${date}\n🕐 ${time}\n💇 ${menu}\n\nお会いできるのを楽しみにお待ちしております。\n\nご予約の確認・キャンセルはこちら：\n→ ${myBookingsLink}`;
+        const text = `🌸 ご予約ありがとうございます\n\n${cust.full_name}様\n${prof?.salon_name || "サロン"}でのご予約が確定しました。\n\n📅 ${date}\n🕐 ${time}\n💇 ${menu}\n\nお会いできるのを楽しみにお待ちしております。\n\nご予約内容を確認したい場合は、このLINEに「予約確認」と送信してください。\n変更・キャンセルをご希望の場合は、このLINEにご返信ください。スタッフが確認いたします。\n\nご予約の確認はこちら：\n→ ${myBookingsLink}`;
         const r = await sendLinePush(creds.accessToken, cust.line_user_id, text);
         await supabase.from("line_message_log").insert({
           owner_id: customer.owner_id,

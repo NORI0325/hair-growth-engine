@@ -169,6 +169,18 @@ Deno.serve(async (req) => {
           : eventType === "updated" ? "ご予約内容を変更しました"
             : eventType === "cancelled_by_customer" ? "🆘 お客様がオンラインからキャンセルされました"
               : "ご予約をキャンセルしました";
+    const syncStatus = String((booking as any).sync_status || "");
+    const customerEventLabel =
+      eventType === "created"
+        ? (syncStatus === "needs_review" || syncStatus === "failed"
+          ? "ご予約を受け付けました。店舗で確認後、ご連絡いたします。"
+          : syncStatus === "pending" || syncStatus === "pending_sync" || syncStatus === "syncing"
+            ? "ご予約を受け付けました。店舗で確認後、確定状況をご案内いたします。"
+            : "ご予約が確定しました。")
+        : eventType === "updated" ? "ご予約内容を変更しました。"
+          : eventType === "cancelled_by_customer" ? "ご予約のキャンセルを受け付けました。"
+            : eventType === "cancelled" ? "ご予約をキャンセルしました。"
+              : "ご予約が確定しました。";
 
     const results: Record<string, unknown> = {};
 
@@ -249,11 +261,11 @@ Deno.serve(async (req) => {
     // === ② お客様へ LINE プッシュ (sync_succeeded はオーナー専用なのでスキップ) ===
     if (eventType !== "sync_succeeded" && customer?.line_user_id && creds) {
       const lineMsg =
-        `🌸 ${customerName}様\n\n${eventLabel}。\n\n` +
+        `🌸 ${customerName}様\n\n${customerEventLabel}\n\n` +
         `📅 ${bookingDate}\n⏰ ${bookingTime}\n💇 ${menu}\n\n` +
-        (eventType === "cancelled"
+        (eventType === "cancelled" || eventType === "cancelled_by_customer"
           ? `またのご利用を心よりお待ちしております。\n\n— ${salonName}`
-          : `当日のご来店を心よりお待ちしております。\nご変更・キャンセルはトーク下部の「予約する」ボタンよりお願いいたします。\n\n— ${salonName}`);
+          : `当日のご来店を心よりお待ちしております。\n\nご予約内容を確認したい場合は、このLINEに「予約確認」と送信してください。\n変更・キャンセルをご希望の場合は、このLINEにご返信ください。スタッフが確認いたします。\n\n— ${salonName}`);
       const r = await sendLinePush(creds.accessToken, customer.line_user_id, lineMsg);
       results.customer_line = r.ok ? "sent" : `error: ${r.err}`;
       await supabase.from("line_message_log").insert({

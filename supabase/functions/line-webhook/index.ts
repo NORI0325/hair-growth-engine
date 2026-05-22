@@ -25,7 +25,7 @@ const INQUIRY_CATEGORIES: { intent: InquiryIntent; label: string; urgency: Inqui
   { intent: "parking", label: "駐車場", urgency: "low", notify: false, templateKind: "inquiry_parking", autoAnswer: "parking",
     reply: "駐車場情報がまだ登録されていません。お手数ですが、ご来店時にスタッフまでお声がけください🙇‍♀️" },
   { intent: "hours", label: "営業時間", urgency: "low", notify: false, templateKind: "inquiry_hours", autoAnswer: "hours",
-    reply: "営業時間情報がまだ登録されていません。\nご予約可能な時間は「予約する」ボタンからご確認いただけます🙇‍♀️" },
+    reply: "営業時間情報がまだ登録されていません。\nご予約可能な時間は予約フォームからご確認いただけます🙇‍♀️" },
   { intent: "staff_consult", label: "担当者相談", urgency: "high", notify: true, templateKind: "inquiry_staff_consult",
     reply: "担当者についてのご相談ですね。ご希望やお悩みをお送りください🙇‍♀️" },
   { intent: "style_consult", label: "髪型相談", urgency: "normal", notify: true, templateKind: "inquiry_style_consult",
@@ -69,7 +69,7 @@ function checkOutsideBusinessHours(openTime?: string, closeTime?: string): boole
 
 function defaultAutoReply(salonName?: string | null, openTime?: string, closeTime?: string): string {
   const hours = openTime && closeTime ? `\n営業時間: ${openTime.slice(0,5)} 〜 ${closeTime.slice(0,5)}` : "";
-  return `メッセージありがとうございます🙇‍♀️\n\nただいま営業時間外のため、担当者からの返信は翌営業時間内にお返しいたします。${hours}\n\nお急ぎの場合や予約の変更・キャンセルは、トーク下部の「予約する」ボタンよりご操作ください🌸\n\n— ${salonName || "サロン"}`;
+  return `メッセージありがとうございます🙇‍♀️\n\nただいま営業時間外のため、担当者からの返信は翌営業時間内にお返しいたします。${hours}\n\n予約の変更・キャンセルをご希望の場合は、このLINEにご返信ください。スタッフが確認いたします🌸\n\n— ${salonName || "サロン"}`;
 }
 
 async function generateAutoReplyAI(
@@ -146,7 +146,7 @@ async function generateLinkedCustomerReply(
 【ルール】
 - 必ず「${customerName}様」で始める
 - お客様のメッセージ内容に短く触れて共感や感謝を示す
-- 予約変更・キャンセルの相談なら「予約する」ボタンへ案内
+- 予約変更・キャンセルの相談なら、このLINEに返信するよう案内
 - 質問や雑談なら、担当者が確認してご連絡する旨を伝える
 - 「こんにちは」「ありがとう」など挨拶には、温かく挨拶を返す
 - 100〜140文字、絵文字は1〜2個まで上品に
@@ -525,7 +525,7 @@ Deno.serve(async (req) => {
                     const t = r.closed ? "定休日" : `${String(r.open_time).slice(0,5)}〜${String(r.close_time).slice(0,5)}`;
                     return `${wk[r.weekday]}：${t}`;
                   });
-                  replyBody = `営業時間はこちらです🌸\n\n${lines.join("\n")}\n\nご予約はトーク下部の「予約する」からお進みください。`;
+                  replyBody = `営業時間はこちらです🌸\n\n${lines.join("\n")}\n\nご予約は予約フォームからお進みください。`;
                   autoAnswered = true;
                 }
               } catch (e) { console.warn("[line-webhook] hours fetch failed:", e); }
@@ -798,6 +798,7 @@ Deno.serve(async (req) => {
 
         // ============= 予約状況確認コマンド（AI予約意図判定より前に固定処理） =============
         if (isReservationCheckCommand(text)) {
+          const changeCancelGuidance = "変更・キャンセルをご希望の場合は、このLINEにご返信ください。スタッフが確認いたします。";
           const { data: matchedCustomers, error: customerLookupError } = await supabase
             .from("customers")
             .select("id, full_name, line_unfollowed_at, location_id")
@@ -860,7 +861,7 @@ Deno.serve(async (req) => {
                   `状態：${reservationStatusLabel(booking)}`,
                 ].join("\n");
               }).join("\n\n");
-              replyBody = `${customer.full_name || "お客様"}様のご予約状況です。\n\n${bookingLines}`;
+              replyBody = `${customer.full_name || "お客様"}様のご予約状況です。\n\n${bookingLines}\n\n${changeCancelGuidance}`;
             }
           }
 

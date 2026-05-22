@@ -254,7 +254,7 @@ Deno.serve(async (req) => {
           const menu = p.menu || "";
           templateName = "booking-reminder";
           templateData = { customerName: customer.full_name, salonName, bookingDate: dateStr, bookingTime: timeStr, menu, bookingLink };
-          body = `🌸 明日のご予約のリマインドです\n\n${customer.full_name}様\n\n📅 ${dateStr}\n🕐 ${timeStr}\n💇 ${menu}\n\nお会いできるのを楽しみにしております。\n変更・キャンセルはこちらから：\n→ ${myBookingsLink || bookingLink}\n\n${salonName}`;
+          body = `🌸 明日のご予約のリマインドです\n\n${customer.full_name}様\n\n📅 ${dateStr}\n🕐 ${timeStr}\n💇 ${menu}\n\nお会いできるのを楽しみにしております。\n\nご予約内容を確認したい場合は、このLINEに「予約確認」と送信してください。\n変更・キャンセルをご希望の場合は、このLINEにご返信ください。スタッフが確認いたします。\n\n${salonName}`;
         } else if (job.job_type === "reactivation") {
           const p = (job.payload as any) || {};
           const stage = Number(p.stage) || 1;
