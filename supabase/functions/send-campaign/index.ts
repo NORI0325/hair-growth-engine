@@ -16,6 +16,8 @@ const renderTemplate = (template: string, vars: Record<string, string>) => {
   return template.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] || "");
 };
 
+const isValidLineUserId = (s: string | null | undefined) => !!s && /^U[0-9a-f]{32}$/i.test(s);
+
 // Twilio SMS送信
 const sendSMS = async (to: string, body: string): Promise<{ ok: boolean; error?: string }> => {
   const apiKey = Deno.env.get("TWILIO_API_KEY");
@@ -103,7 +105,11 @@ Deno.serve(async (req) => {
     }
 
     // セグメントに該当する顧客を取得
-    let q = supabase.from("customers").select("id, full_name, email, phone, last_visit_date, line_user_id, location_id").eq("owner_id", user.id);
+    let q = supabase.from("customers")
+      .select("id, full_name, email, phone, last_visit_date, line_user_id, location_id, is_test, opt_out_automation, line_unfollowed_at")
+      .eq("owner_id", user.id)
+      .eq("is_test", false)
+      .or("opt_out_automation.is.null,opt_out_automation.eq.false");
     if ((campaign as any).location_id) q = q.eq("location_id", (campaign as any).location_id);
 
     const today = new Date();
@@ -163,9 +169,11 @@ Deno.serve(async (req) => {
         email_sent: false,
         sms_sent: false,
       };
+      let attemptedDelivery = false;
 
       // メール（送信キュー経由で実配信）
       if (campaign.send_email && c.email) {
+        attemptedDelivery = true;
         const r = await sendTransactionalEmailInternal({
           templateName: "thank-you",
           recipientEmail: c.email,
@@ -182,6 +190,7 @@ Deno.serve(async (req) => {
 
       // SMS
       if (campaign.send_sms && c.phone && campaign.sms_body) {
+        attemptedDelivery = true;
         const smsBody = renderTemplate(campaign.sms_body, vars);
         const result = await sendSMS(c.phone, smsBody);
         if (result.ok) {
@@ -195,17 +204,19 @@ Deno.serve(async (req) => {
       }
 
       // LINE Push（顧客にLINE ID登録があり、店舗別または共通トークンがあれば）
-      if (c.line_user_id) {
+      const lineUserId = typeof c.line_user_id === "string" ? c.line_user_id.trim() : "";
+      if (isValidLineUserId(lineUserId) && !c.line_unfollowed_at) {
         const custLocId = (c as any).location_id || (campaign as any).location_id || null;
         const creds = await getLineCredentials(supabase, user.id, custLocId);
         if (creds) {
           const lineBody = renderTemplate(campaign.sms_body || campaign.email_body || "", vars);
-          const r = await sendLine(creds.accessToken, c.line_user_id, lineBody);
+          attemptedDelivery = true;
+          const r = await sendLine(creds.accessToken, lineUserId, lineBody);
           await supabase.from("line_message_log").insert({
             owner_id: user.id,
             location_id: custLocId,
             customer_id: c.id,
-            line_user_id: c.line_user_id,
+            line_user_id: lineUserId,
             job_type: "campaign",
             template_key: `campaign:${campaign_id}`,
             message: lineBody,
@@ -217,7 +228,7 @@ Deno.serve(async (req) => {
         }
       }
 
-      sends.push(send);
+      if (attemptedDelivery) sends.push(send);
     }
 
     // 配信ログ一括INSERT
