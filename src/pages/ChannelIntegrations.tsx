@@ -186,9 +186,10 @@ export default function ChannelIntegrations() {
     // 予約の再送信・取込・差分解消は SyncReview / 同期状態確認 から個別操作で行う（二重予約事故防止）。
     if (channel === "salonboard") {
       toast.loading("サロンボードからスタッフ・メニュー情報を再取得中...");
+      const body = { owner_id: user.id, location_id: currentLocationId };
       const [s, m] = await Promise.all([
-        supabase.functions.invoke("salonboard-fetch-staff", { body: {} }),
-        supabase.functions.invoke("salonboard-fetch-menus", { body: {} }),
+        supabase.functions.invoke("salonboard-fetch-staff", { body }),
+        supabase.functions.invoke("salonboard-fetch-menus", { body }),
       ]);
       toast.dismiss();
       if (s.error || m.error) toast.error("再取得に失敗しました");

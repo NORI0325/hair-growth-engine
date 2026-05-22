@@ -22,6 +22,7 @@ interface MenuItem {
   duration_minutes: number;
   price: number;
   image_url: string | null;
+  bookable?: boolean;
 }
 
 interface StaffMember {
@@ -29,6 +30,37 @@ interface StaffMember {
   name: string;
   display_color: string;
   note: string | null;
+}
+
+async function isSalonboardSyncLive(ownerId: string, locationId: string): Promise<boolean | null> {
+  const { data, error } = await supabase
+    .from("channel_integrations" as any)
+    .select("enabled, sync_enabled, connection_status")
+    .eq("owner_id", ownerId)
+    .eq("location_id", locationId)
+    .eq("channel", "salonboard")
+    .maybeSingle();
+  if (error) return null;
+  return Boolean(data?.enabled && data?.sync_enabled && data?.connection_status === "live");
+}
+
+async function filterSalonboardMappedMenus(ownerId: string, locationId: string, items: MenuItem[]): Promise<MenuItem[]> {
+  if (items.length === 0) return items;
+  const { data, error } = await supabase
+    .from("menu_channel_mappings" as any)
+    .select("menu_id, enabled, external_id, external_setmenu_id, rsv_term")
+    .eq("owner_id", ownerId)
+    .eq("location_id", locationId)
+    .eq("channel", "salonboard")
+    .eq("enabled", true)
+    .in("menu_id", items.map((item) => item.id));
+  if (error) return items;
+  const mappedIds = new Set(
+    (data || [])
+      .filter((m: any) => (m.external_setmenu_id || m.external_id) && m.rsv_term != null)
+      .map((m: any) => String(m.menu_id)),
+  );
+  return items.filter((item) => mappedIds.has(item.id));
 }
 
 const Booking = () => {
@@ -69,10 +101,11 @@ const Booking = () => {
           setLocationResolved(true);
           const menusQuery = supabase
             .from("menu_items")
-            .select("id, name, duration_minutes, price, image_url")
+            .select("id, name, duration_minutes, price, image_url, bookable")
             .eq("owner_id", data.owner_id)
             .eq("location_id", data.location_id)
             .eq("active", true)
+            .eq("bookable", true)
             .order("sort_order", { ascending: true });
           const staffQuery = supabase
             .from("staff")
@@ -83,7 +116,9 @@ const Booking = () => {
             .eq("bookable", true)
             .order("sort_order", { ascending: true });
           const [menusRes, staffRes] = await Promise.all([menusQuery, staffQuery]);
-          setMenuItems(menusRes.data || []);
+          const baseMenus = (menusRes.data || []) as MenuItem[];
+          const salonboardLive = await isSalonboardSyncLive(data.owner_id, data.location_id);
+          setMenuItems(salonboardLive ? await filterSalonboardMappedMenus(data.owner_id, data.location_id, baseMenus) : baseMenus);
           setStaffList(staffRes.data || []);
         } else {
           setMenuItems([]);

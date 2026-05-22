@@ -25,6 +25,7 @@ interface MenuItem {
   name: string;
   duration_minutes: number;
   price: number;
+  bookable?: boolean;
 }
 
 interface StaffOption {
@@ -35,6 +36,37 @@ interface StaffOption {
 // ひらがな → カタカナ変換
 const hiraToKata = (s: string) =>
   (s || "").replace(/[ぁ-ん]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0x60));
+
+async function isSalonboardSyncLive(ownerId: string, locationId: string): Promise<boolean | null> {
+  const { data, error } = await supabase
+    .from("channel_integrations" as any)
+    .select("enabled, sync_enabled, connection_status")
+    .eq("owner_id", ownerId)
+    .eq("location_id", locationId)
+    .eq("channel", "salonboard")
+    .maybeSingle();
+  if (error) return null;
+  return Boolean(data?.enabled && data?.sync_enabled && data?.connection_status === "live");
+}
+
+async function filterSalonboardMappedMenus(ownerId: string, locationId: string, items: MenuItem[]): Promise<MenuItem[]> {
+  if (items.length === 0) return items;
+  const { data, error } = await supabase
+    .from("menu_channel_mappings" as any)
+    .select("menu_id, enabled, external_id, external_setmenu_id, rsv_term")
+    .eq("owner_id", ownerId)
+    .eq("location_id", locationId)
+    .eq("channel", "salonboard")
+    .eq("enabled", true)
+    .in("menu_id", items.map((item) => item.id));
+  if (error) return items;
+  const mappedIds = new Set(
+    (data || [])
+      .filter((m: any) => (m.external_setmenu_id || m.external_id) && m.rsv_term != null)
+      .map((m: any) => String(m.menu_id)),
+  );
+  return items.filter((item) => mappedIds.has(item.id));
+}
 
 const schema = z.object({
   full_name: z.string().trim().min(1, "お名前を入力してください").max(100),
@@ -137,12 +169,15 @@ const PublicBooking = () => {
         if (locationId) {
           const { data: items } = await supabase
             .from("menu_items")
-            .select("id, name, duration_minutes, price")
+            .select("id, name, duration_minutes, price, bookable")
             .eq("owner_id", ownerId)
             .eq("location_id", locationId)
             .eq("active", true)
+            .eq("bookable", true)
             .order("sort_order", { ascending: true });
-          setMenuItems(items || []);
+          const baseMenus = (items || []) as MenuItem[];
+          const salonboardLive = await isSalonboardSyncLive(ownerId, locationId);
+          setMenuItems(salonboardLive ? await filterSalonboardMappedMenus(ownerId, locationId, baseMenus) : baseMenus);
 
           const { count } = await supabase
             .from("staff")

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, Plus, Trash2, GripVertical, ImagePlus, X, Plug } from "lucide-react";
+import { Loader2, Plus, Trash2, ImagePlus, X, Plug, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { useCurrentLocationId } from "@/hooks/useLocations";
 import { useTenantId } from "@/hooks/useTenant";
@@ -21,9 +21,15 @@ interface MenuItem {
   price: number;
   sort_order: number;
   active: boolean;
+  bookable: boolean;
   image_url: string | null;
   description: string | null;
 }
+
+type MenuSyncStatus = {
+  label: "同期可能" | "setmenu未登録" | "所要時間未登録" | "マッピング無効" | "予約フォーム非表示";
+  className: string;
+};
 
 const MenuItems = () => {
   const { user } = useAuth();
@@ -32,11 +38,20 @@ const MenuItems = () => {
   const [items, setItems] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [refreshingMenus, setRefreshingMenus] = useState(false);
   const [draft, setDraft] = useState({ name: "", duration_minutes: 60, buffer_minutes: 15, price: 0 });
   const [mappingMenu, setMappingMenu] = useState<MenuItem | null>(null);
+  const [salonboardSyncOn, setSalonboardSyncOn] = useState(false);
+  const [syncStatusByMenuId, setSyncStatusByMenuId] = useState<Record<string, MenuSyncStatus>>({});
 
   const load = async () => {
-    if (!user || !tenantId || !locationId) { setItems([]); setLoading(false); return; }
+    if (!user || !tenantId || !locationId) {
+      setItems([]);
+      setSalonboardSyncOn(false);
+      setSyncStatusByMenuId({});
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     const { data } = await supabase
       .from("menu_items")
@@ -44,7 +59,47 @@ const MenuItems = () => {
       .eq("owner_id", tenantId)
       .eq("location_id", locationId)
       .order("sort_order", { ascending: true });
-    setItems(data || []);
+    const menuItems = (data || []) as MenuItem[];
+    setItems(menuItems);
+
+    const { data: ci } = await supabase
+      .from("channel_integrations" as any)
+      .select("enabled, sync_enabled, connection_status")
+      .eq("owner_id", tenantId)
+      .eq("location_id", locationId)
+      .eq("channel", "salonboard")
+      .maybeSingle();
+    const isSalonboardOn = Boolean(ci?.enabled && ci?.sync_enabled && ci?.connection_status === "live");
+    setSalonboardSyncOn(isSalonboardOn);
+
+    if (isSalonboardOn && menuItems.length > 0) {
+      const { data: mappings } = await supabase
+        .from("menu_channel_mappings" as any)
+        .select("menu_id, enabled, external_id, external_setmenu_id, rsv_term")
+        .eq("owner_id", tenantId)
+        .eq("location_id", locationId)
+        .eq("channel", "salonboard")
+        .in("menu_id", menuItems.map((item) => item.id));
+      const mappingByMenuId = new Map((mappings || []).map((m: any) => [String(m.menu_id), m]));
+      const nextStatus: Record<string, MenuSyncStatus> = {};
+      for (const item of menuItems) {
+        const m: any = mappingByMenuId.get(item.id);
+        if (!item.active || item.bookable === false) {
+          nextStatus[item.id] = { label: "予約フォーム非表示", className: "border-muted text-muted-foreground" };
+        } else if (m?.enabled === false) {
+          nextStatus[item.id] = { label: "マッピング無効", className: "border-destructive/50 text-destructive" };
+        } else if (!m || !(m.external_setmenu_id || m.external_id)) {
+          nextStatus[item.id] = { label: "setmenu未登録", className: "border-destructive/50 text-destructive" };
+        } else if (m.rsv_term == null) {
+          nextStatus[item.id] = { label: "所要時間未登録", className: "border-amber-500 text-amber-600" };
+        } else {
+          nextStatus[item.id] = { label: "同期可能", className: "border-emerald-500 text-emerald-700" };
+        }
+      }
+      setSyncStatusByMenuId(nextStatus);
+    } else {
+      setSyncStatusByMenuId({});
+    }
     setLoading(false);
   };
 
@@ -52,6 +107,7 @@ const MenuItems = () => {
 
   const add = async () => {
     if (!user || !tenantId || !locationId) { toast.error("店舗が未選択のためメニューを保存できません"); return; }
+    if (salonboardSyncOn) { toast.error("サロンボード連携中の店舗では、先にサロンボードでメニューを作成してください"); return; }
     if (!draft.name.trim()) { toast.error("メニュー名を入力してください"); return; }
     setSaving(true);
     const max = items.reduce((m, i) => Math.max(m, i.sort_order), 0);
@@ -68,6 +124,21 @@ const MenuItems = () => {
     if (error) { toast.error("追加に失敗しました: " + error.message); return; }
     setDraft({ name: "", duration_minutes: 60, buffer_minutes: 15, price: 0 });
     toast.success("メニューを追加しました");
+    load();
+  };
+
+  const refreshSalonboardMenus = async () => {
+    if (!tenantId || !locationId) { toast.error("店舗が未選択のためメニューを更新できません"); return; }
+    setRefreshingMenus(true);
+    const { data, error } = await supabase.functions.invoke("salonboard-fetch-menus", {
+      body: { owner_id: tenantId, location_id: locationId },
+    });
+    setRefreshingMenus(false);
+    if (error || (data as any)?.success === false) {
+      toast.error("サロンボードメニューの更新に失敗しました");
+      return;
+    }
+    toast.success(`サロンボードメニューを更新しました（${(data as any)?.count ?? 0}件）`);
     load();
   };
 
@@ -133,6 +204,11 @@ const MenuItems = () => {
       {/* 追加フォーム */}
       <div className="border border-border p-6 mb-8">
         <p className="eyebrow mb-4">— Add Menu —</p>
+        {salonboardSyncOn && (
+          <div className="mb-4 border border-amber-500/40 bg-amber-50 px-4 py-3 text-xs text-amber-900 leading-relaxed">
+            サロンボード連携中の店舗では、新メニューは先にサロンボードで作成し、「最新メニューに更新」から取り込んでください。
+          </div>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <div className="md:col-span-2">
             <Label className="font-serif text-xs mb-2 block">メニュー名</Label>
@@ -158,10 +234,18 @@ const MenuItems = () => {
               className="rounded-none" />
           </div>
         </div>
-        <Button onClick={add} disabled={saving} className="mt-4 rounded-none tracking-luxury">
-          {saving ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> : <Plus className="w-3.5 h-3.5 mr-2" />}
-          追加 <span className="ml-2 opacity-60 text-[10px]">ADD</span>
-        </Button>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button onClick={add} disabled={saving || salonboardSyncOn} className="rounded-none tracking-luxury">
+            {saving ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> : <Plus className="w-3.5 h-3.5 mr-2" />}
+            追加 <span className="ml-2 opacity-60 text-[10px]">ADD</span>
+          </Button>
+          {salonboardSyncOn && (
+            <Button onClick={refreshSalonboardMenus} disabled={refreshingMenus} variant="outline" className="rounded-none tracking-luxury">
+              {refreshingMenus ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5 mr-2" />}
+              最新メニューに更新
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* 一覧 */}
@@ -231,6 +315,11 @@ const MenuItems = () => {
                 <Switch checked={item.active} onCheckedChange={(v) => update(item.id, { active: v })} />
               </div>
               <div className="md:col-span-1 flex justify-end gap-1">
+                {salonboardSyncOn && syncStatusByMenuId[item.id] && (
+                  <span className={`inline-flex items-center whitespace-nowrap border px-2 py-1 text-[10px] ${syncStatusByMenuId[item.id].className}`}>
+                    {syncStatusByMenuId[item.id].label}
+                  </span>
+                )}
                 <Button size="icon" variant="ghost" onClick={() => setMappingMenu(item)} title="媒体マッピング">
                   <Plug className="w-4 h-4 text-muted-foreground hover:text-gold" />
                 </Button>
