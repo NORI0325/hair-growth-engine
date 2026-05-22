@@ -104,6 +104,11 @@ export default function ManualBookingDialog({ onCreated, trigger }: Props) {
         location_id: locationId,
       };
       if (canUseTestMode && testMode) {
+        const phase2Note = "Phase2実Worker往復テスト";
+        const currentNotes = String(notes || "").trim();
+        body.notes = currentNotes.includes(phase2Note)
+          ? currentNotes
+          : [currentNotes, phase2Note].filter(Boolean).join("\n");
         body.dispatch_mode = "skip";
         body.is_test = true;
       }

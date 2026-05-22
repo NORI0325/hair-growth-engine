@@ -141,6 +141,7 @@ Deno.serve(async (req) => {
         notes: finalNotes,
         staff_id: staff_id || null,
         status: "pending", // 仮受付。同期成功で confirmed に昇格
+        sync_status: "pending",
         source_channel: "manual",
         external_source: "manual",
         is_test: isTest,
@@ -157,14 +158,18 @@ Deno.serve(async (req) => {
     // 連携チェック (location_id を含む)
     let ciQ = supabase.from("channel_integrations")
       .select("channel, location_id, default_rsv_route_id, connection_status, allow_unmapped_booking")
-      .eq("owner_id", customer.owner_id).eq("enabled", true).eq("sync_enabled", true);
+      .eq("owner_id", customer.owner_id).eq("enabled", true);
+    if (dispatchMode === "auto") {
+      ciQ = ciQ.eq("sync_enabled", true);
+    }
     const { data: integrations } = await ciQ;
 
-    const liveIntegrations = (integrations || []).filter((ci: any) =>
-      ci.channel !== "own_web" && ci.connection_status === "live"
+    const targetIntegrations = (integrations || []).filter((ci: any) =>
+      ci.channel !== "own_web"
+      && (dispatchMode === "skip" || ci.connection_status === "live")
       && ci.location_id === resolvedLocationId);
 
-    if (!liveIntegrations || liveIntegrations.length === 0) {
+    if (dispatchMode === "auto" && (!targetIntegrations || targetIntegrations.length === 0)) {
       // 同期対象なし → 即 confirmed
       await supabase.from("bookings").update({ status: "confirmed", sync_status: "not_required" }).eq("id", booking.id);
       return new Response(JSON.stringify({
@@ -179,8 +184,8 @@ Deno.serve(async (req) => {
       ? await supabase.from("staff").select("name").eq("id", staff_id).maybeSingle() : { data: null };
 
     const jobsToInsert: any[] = [];
-    for (const ci of liveIntegrations) {
-      let extStaffName: string | null = null, extStaffId: string | null = null;
+    for (const ci of targetIntegrations) {
+      let extStaffName: string | null = null, extStaffId: string | null = staff_id ? null : "0000000000";
       if (staff_id) {
         const { data: scm } = await supabase.from("staff_channel_mappings")
           .select("external_name, external_id, enabled")
@@ -218,6 +223,7 @@ Deno.serve(async (req) => {
           staff_name: staffRow?.name ?? null,
           external_staff_name: extStaffName,
           external_staff_id: extStaffId,
+          stylistId: extStaffId,
           menu_name: menuSummary,
           external_menu_name: extMenuName,
           external_menu_id: extMenuId,
@@ -230,6 +236,18 @@ Deno.serve(async (req) => {
       });
     }
     if (jobsToInsert.length === 0) {
+      if (dispatchMode === "skip") {
+        await supabase.from("bookings").update({ sync_status: "pending" }).eq("id", booking.id);
+        return new Response(JSON.stringify({
+          success: true,
+          booking_id: booking.id,
+          status: "pending",
+          sync_status: "pending",
+          dispatch_mode: "skip",
+          is_test: isTest,
+          sync_job_ids: [],
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
       await supabase.from("bookings").update({ status: "confirmed", sync_status: "not_required" }).eq("id", booking.id);
       return new Response(JSON.stringify({
         success: true, booking_id: booking.id, sync_status: "not_required", status: "confirmed",
