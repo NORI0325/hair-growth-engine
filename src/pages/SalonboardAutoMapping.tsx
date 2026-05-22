@@ -21,6 +21,7 @@ type MenuOpt = {
 };
 type ExistingStaff = { id: string; name: string };
 type ExistingMenu = { id: string; name: string };
+type MenuSourceType = "setmenu" | "single_menu" | "coupon" | "category";
 
 export default function SalonboardAutoMapping() {
   const { user } = useAuth();
@@ -63,8 +64,8 @@ export default function SalonboardAutoMapping() {
     COUPON_WARN_PATTERNS.filter((p) => label.includes(p));
 
   // source_type の判定（古いデータは setmenu 扱い）
-  const getSrcType = (m: MenuOpt): "setmenu" | "coupon" | "category" => {
-    if (m.source_type === "coupon" || m.source_type === "category" || m.source_type === "setmenu") return m.source_type;
+  const getSrcType = (m: MenuOpt): MenuSourceType => {
+    if (m.source_type === "coupon" || m.source_type === "category" || m.source_type === "setmenu" || m.source_type === "single_menu") return m.source_type;
     if (m.net_coupon_id) return "coupon";
     if (m.menu_category_cd && !m.setmenu_id) return "category";
     return "setmenu";
@@ -169,7 +170,7 @@ export default function SalonboardAutoMapping() {
       .filter((m) => !mappedMenuExt.has(m.external_menu_id))
       .map((m) => {
         const src = getSrcType(m);
-        // 初期は setmenu のみ create、coupon/category はユーザーが明示しない限り skip
+        // 初期は setmenu のみ create、single_menu/coupon/category は同期対象外として skip
         const defaultAction = src === "setmenu" ? "create" : "skip";
         const a = menuActions[m.external_menu_id] || { action: defaultAction };
         const editedTerm = menuRsvTerm[m.external_menu_id];
@@ -278,10 +279,10 @@ export default function SalonboardAutoMapping() {
         {menuOpts.length === 0 ? (
           <div className="text-sm text-muted-foreground py-6 text-center">未取得です。「サロンボードから取得」を押してください。</div>
         ) : (() => {
-          const groups = { setmenu: [] as MenuOpt[], coupon: [] as MenuOpt[], category: [] as MenuOpt[] };
+          const groups = { setmenu: [] as MenuOpt[], single_menu: [] as MenuOpt[], coupon: [] as MenuOpt[], category: [] as MenuOpt[] };
           for (const m of menuOpts) groups[getSrcType(m)].push(m);
 
-          const renderRow = (m: MenuOpt, src: "setmenu" | "coupon" | "category") => {
+          const renderRow = (m: MenuOpt, src: MenuSourceType) => {
             const mapped = mappedMenuExt.has(m.external_menu_id);
             const defaultAction = src === "setmenu" ? "create" : "skip";
             const a = menuActions[m.external_menu_id] || { action: defaultAction };
@@ -299,6 +300,7 @@ export default function SalonboardAutoMapping() {
                   </div>
                   <div className="text-xs text-muted-foreground">
                     {m.setmenu_id && <>setmenuId: {m.setmenu_id} </>}
+                    {src === "single_menu" && <>menuId: {m.menu_id || m.external_menu_id} </>}
                     {m.menu_category_cd && <>cat: {m.menu_category_cd} </>}
                     {m.net_coupon_id && <>coupon: {m.net_coupon_id} </>}
                     {m.price && <>/ ¥{m.price.toLocaleString()} </>}
@@ -320,7 +322,11 @@ export default function SalonboardAutoMapping() {
                 </div>
                 <div>{mapped ? <Badge className="rounded-none bg-emerald-600">紐付済</Badge> : <Badge className="rounded-none" variant="outline">未紐付</Badge>}</div>
                 <div>
-                  {!mapped && (
+                  {!mapped && src === "single_menu" ? (
+                    <div className="text-xs text-muted-foreground">
+                      同期対象外
+                    </div>
+                  ) : !mapped && (
                     <select className="w-full border px-2 py-1 rounded-none text-sm bg-background"
                       value={a.action === "link" ? `link:${a.target}` : a.action}
                       onChange={(e) => {
@@ -343,6 +349,7 @@ export default function SalonboardAutoMapping() {
             <>
               <div className="flex gap-4 text-xs mb-4 text-muted-foreground">
                 <span>組み合わせメニュー: <b className="text-foreground">{groups.setmenu.length}</b>件</span>
+                <span>単品メニュー: <b className="text-foreground">{groups.single_menu.length}</b>件</span>
                 <span>クーポン: <b className="text-foreground">{groups.coupon.length}</b>件</span>
                 <span>カテゴリ: <b className="text-foreground">{groups.category.length}</b>件</span>
               </div>
@@ -355,6 +362,19 @@ export default function SalonboardAutoMapping() {
                   <div className="text-xs text-muted-foreground py-3">該当データなし</div>
                 ) : (
                   <div className="space-y-2">{groups.setmenu.map((m) => renderRow(m, "setmenu"))}</div>
+                )}
+              </section>
+
+              <section className="mb-6">
+                <div className="text-[10px] tracking-luxury text-muted-foreground mb-1">SINGLE MENU</div>
+                <h3 className="font-serif text-lg mb-1">単品メニュー（同期未検証）</h3>
+                <p className="text-xs text-muted-foreground mb-3">
+                  サロンボード上の単品メニューです。現在は予約同期対象外です。
+                </p>
+                {groups.single_menu.length === 0 ? (
+                  <div className="text-xs text-muted-foreground py-3">該当データなし</div>
+                ) : (
+                  <div className="space-y-2">{groups.single_menu.map((m) => renderRow(m, "single_menu"))}</div>
                 )}
               </section>
 

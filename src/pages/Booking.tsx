@@ -46,6 +46,11 @@ async function isSalonboardSyncLive(ownerId: string, locationId: string): Promis
 
 async function filterSalonboardMappedMenus(ownerId: string, locationId: string, items: MenuItem[]): Promise<MenuItem[]> {
   if (items.length === 0) return items;
+  const resolveSetmenuId = (m: any) => {
+    if (m.external_setmenu_id) return String(m.external_setmenu_id);
+    const externalId = String(m.external_id || "");
+    return /^SN/i.test(externalId) ? externalId : "";
+  };
   const { data, error } = await supabase
     .from("menu_channel_mappings" as any)
     .select("menu_id, enabled, external_id, external_setmenu_id, rsv_term")
@@ -54,10 +59,10 @@ async function filterSalonboardMappedMenus(ownerId: string, locationId: string, 
     .eq("channel", "salonboard")
     .eq("enabled", true)
     .in("menu_id", items.map((item) => item.id));
-  if (error) return items;
+  if (error) return [];
   const mappedIds = new Set(
     (data || [])
-      .filter((m: any) => (m.external_setmenu_id || m.external_id) && m.rsv_term != null)
+      .filter((m: any) => resolveSetmenuId(m) && m.rsv_term != null)
       .map((m: any) => String(m.menu_id)),
   );
   return items.filter((item) => mappedIds.has(item.id));

@@ -12,7 +12,8 @@ export interface FetchedMenu {
   rsv_term: number | null;
   price: number | null;
   active: boolean;
-  source_type: "setmenu" | "category" | "coupon";
+  source_type: "setmenu" | "single_menu" | "category" | "coupon";
+  raw_payload?: Record<string, unknown>;
 }
 
 function extractPrice(label: string): number | null {
@@ -33,6 +34,31 @@ function parseTermLabel(s: string): number | null {
   const num = t.match(/^\d+$/);
   if (num) return Number(t);
   return null;
+}
+
+function parseNumberLike(v: unknown): number | null {
+  const raw = String(v ?? "").replace(/,/g, "").trim();
+  if (!raw) return null;
+  const n = Number(raw);
+  if (Number.isFinite(n) && n > 0) return n;
+  const m = raw.match(/(\d+)/);
+  return m ? Number(m[1]) : null;
+}
+
+function pickFirst(fields: Record<string, string>, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = fields[key];
+    if (value != null && String(value).trim()) return String(value).trim();
+  }
+  return null;
+}
+
+function isTruthyFlag(value: string | null): boolean {
+  return /^(1|true|on|yes|y)$/i.test(String(value ?? "").trim());
+}
+
+function isFalsyFlag(value: string | null): boolean {
+  return /^(0|false|off|no|n)$/i.test(String(value ?? "").trim());
 }
 
 async function snapshot(page: Page) {
@@ -66,6 +92,105 @@ async function extractOptions(page: Page, selector: string) {
       };
     })
   );
+}
+
+async function extractSingleMenuCandidates(page: Page): Promise<{
+  menus: FetchedMenu[];
+  total_candidates: number;
+  skipped_without_id: number;
+  sample_without_id: Array<Record<string, string>>;
+}> {
+  const rows = await page.evaluate(() => {
+    const groups: Record<string, Record<string, string>> = {};
+    const controls = Array.from(document.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
+      'input[name^="frmMenuListDtoList["], select[name^="frmMenuListDtoList["], textarea[name^="frmMenuListDtoList["]',
+    ));
+
+    for (const el of controls) {
+      const match = el.name.match(/^frmMenuListDtoList\[(\d+)\]\.([A-Za-z0-9_.-]+)$/);
+      if (!match) continue;
+      const [, index, field] = match;
+      groups[index] ||= {};
+      if (el instanceof HTMLSelectElement) {
+        groups[index][field] = el.value || "";
+        const selected = el.selectedOptions?.[0]?.textContent?.replace(/\s+/g, " ").trim();
+        if (selected) groups[index][`${field}_label`] = selected;
+      } else if (el instanceof HTMLInputElement && (el.type === "checkbox" || el.type === "radio")) {
+        groups[index][field] = el.checked ? (el.value || "true") : "";
+      } else {
+        groups[index][field] = el.value || "";
+      }
+    }
+
+    return Object.entries(groups).map(([index, fields]) => ({ index, fields }));
+  }).catch(() => [] as Array<{ index: string; fields: Record<string, string> }>);
+
+  const menus: FetchedMenu[] = [];
+  const withoutId: Array<Record<string, string>> = [];
+
+  for (const row of rows) {
+    const fields = row.fields || {};
+    const name = pickFirst(fields, ["menuName", "name", "menuNm", "dispMenuName"]);
+    if (!name) continue;
+
+    const stableId = pickFirst(fields, [
+      "menuId",
+      "menuID",
+      "menu_id",
+      "id",
+      "menuCd",
+      "menuCode",
+      "menuNo",
+      "menuSeq",
+      "menuSerialNo",
+    ]);
+    if (!stableId) {
+      withoutId.push(fields);
+      continue;
+    }
+
+    const categoryCd = pickFirst(fields, [
+      "menuCategoryCd",
+      "menuCategoryCode",
+      "menuCategory",
+      "menuCategoryCdList",
+      "categoryCd",
+    ]);
+    const price = parseNumberLike(pickFirst(fields, ["price", "menuPrice", "sales", "taxIncludedPrice", "priceTaxIn"]));
+    const term = parseNumberLike(pickFirst(fields, [
+      "sejyutsuAimTimeCd",
+      "sejyutsuAimTime",
+      "rsvTerm",
+      "term",
+      "duration",
+      "aimTime",
+      "workTime",
+    ]));
+    const deleteFlag = pickFirst(fields, ["deleteFlg", "deletedFlg", "delFlg", "deleteFlag", "delFlag"]);
+    const presentFlag = pickFirst(fields, ["presentFlg", "presentFlag", "hpPresentFlg", "hotpepperPresentFlg"]);
+    const active = !isTruthyFlag(deleteFlag) && !isFalsyFlag(presentFlag);
+
+    menus.push({
+      external_menu_id: stableId,
+      setmenu_id: null,
+      menu_id: stableId,
+      menu_category_cd: categoryCd,
+      net_coupon_id: null,
+      menu_name: name,
+      rsv_term: term,
+      price,
+      active,
+      source_type: "single_menu",
+      raw_payload: { index: row.index, fields },
+    });
+  }
+
+  return {
+    menus,
+    total_candidates: rows.length,
+    skipped_without_id: withoutId.length,
+    sample_without_id: withoutId.slice(0, 3),
+  };
 }
 
 async function readRsvTerm(page: Page): Promise<number | null> {
@@ -137,6 +262,7 @@ export async function fetchSalonboardMenus(page: Page): Promise<FetchedMenu[]> {
     extractOptions(page, 'select[name="menuCategoryCdList"]'),
     extractOptions(page, 'select[name="netCouponId"]'),
   ]);
+  const singleMenuDiag = await extractSingleMenuCandidates(page);
 
   const result: FetchedMenu[] = [];
 
@@ -222,6 +348,8 @@ export async function fetchSalonboardMenus(page: Page): Promise<FetchedMenu[]> {
     });
   }
 
+  result.push(...singleMenuDiag.menus);
+
   if (result.length === 0) {
     const snap = await snapshot(page);
     logger.error(snap, "no menu options found");
@@ -237,6 +365,10 @@ export async function fetchSalonboardMenus(page: Page): Promise<FetchedMenu[]> {
       count: result.length,
       setmenu: setmenuOpts.length,
       setmenu_with_term: setmenuWithTerm,
+      single_menu_candidates: singleMenuDiag.total_candidates,
+      single_menu: singleMenuDiag.menus.length,
+      single_menu_skipped_without_id: singleMenuDiag.skipped_without_id,
+      single_menu_sample_without_id: singleMenuDiag.sample_without_id,
       category: categoryOpts.length,
       coupon: couponOpts.length,
     },

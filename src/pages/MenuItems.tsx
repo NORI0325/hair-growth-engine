@@ -82,13 +82,20 @@ const MenuItems = () => {
         .in("menu_id", menuItems.map((item) => item.id));
       const mappingByMenuId = new Map((mappings || []).map((m: any) => [String(m.menu_id), m]));
       const nextStatus: Record<string, MenuSyncStatus> = {};
+      const resolveSetmenuId = (m: any) => {
+        if (m?.external_setmenu_id) return String(m.external_setmenu_id);
+        const externalId = String(m?.external_id || "");
+        return /^SN/i.test(externalId) ? externalId : "";
+      };
       for (const item of menuItems) {
         const m: any = mappingByMenuId.get(item.id);
         if (!item.active || item.bookable === false) {
           nextStatus[item.id] = { label: "予約フォーム非表示", className: "border-muted text-muted-foreground" };
         } else if (m?.enabled === false) {
           nextStatus[item.id] = { label: "マッピング無効", className: "border-destructive/50 text-destructive" };
-        } else if (!m || !(m.external_setmenu_id || m.external_id)) {
+        } else if (m && m.external_id && !resolveSetmenuId(m)) {
+          nextStatus[item.id] = { label: "単品メニュー（同期未検証）", className: "border-amber-500 text-amber-700" } as MenuSyncStatus;
+        } else if (!m || !resolveSetmenuId(m)) {
           nextStatus[item.id] = { label: "setmenu未登録", className: "border-destructive/50 text-destructive" };
         } else if (m.rsv_term == null) {
           nextStatus[item.id] = { label: "所要時間未登録", className: "border-amber-500 text-amber-600" };
