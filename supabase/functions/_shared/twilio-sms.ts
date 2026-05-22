@@ -61,3 +61,57 @@ export async function sendSms(toRaw: string, body: string, fromOverride?: string
     return { ok: false, err: e instanceof Error ? e.message : "unknown" };
   }
 }
+
+export type SmsLogSource = "send_campaign" | "bulk_broadcast" | "scheduled_job" | "sms_test";
+
+export interface SmsLogParams {
+  owner_id: string;
+  location_id?: string | null;
+  customer_id?: string | null;
+  phone: string;
+  message: string;
+  source: SmsLogSource;
+  job_type?: string | null;
+  campaign_id?: string | null;
+  scheduled_job_id?: string | null;
+  metadata?: Record<string, unknown>;
+  from_override?: string;
+}
+
+export async function sendSmsWithLog(supabase: any, params: SmsLogParams): Promise<SmsResult> {
+  const normalizedPhone = toE164JP(params.phone);
+  const result = await sendSms(params.phone, params.message, params.from_override);
+  const status = result.ok ? "sent" : result.skipped ? "skipped" : "failed";
+  const error = result.ok ? null : result.err || result.reason || "unknown";
+  const sentAt = result.ok ? new Date().toISOString() : null;
+
+  const { error: logError } = await supabase.from("sms_message_log").insert({
+    owner_id: params.owner_id,
+    location_id: params.location_id ?? null,
+    customer_id: params.customer_id ?? null,
+    phone: params.phone,
+    normalized_phone: normalizedPhone,
+    message: params.message,
+    source: params.source,
+    job_type: params.job_type ?? null,
+    campaign_id: params.campaign_id ?? null,
+    scheduled_job_id: params.scheduled_job_id ?? null,
+    status,
+    error,
+    provider: "twilio",
+    provider_sid: result.sid ?? null,
+    metadata: params.metadata ?? {},
+    sent_at: sentAt,
+  });
+
+  if (logError) {
+    console.warn("[sms] failed to insert sms_message_log", {
+      source: params.source,
+      owner_id: params.owner_id,
+      customer_id: params.customer_id,
+      error: logError.message,
+    });
+  }
+
+  return result;
+}

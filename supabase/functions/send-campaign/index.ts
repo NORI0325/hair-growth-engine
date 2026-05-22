@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
 import { getLineCredentials } from "../_shared/line-push.ts";
 import { sendTransactionalEmailInternal } from "../_shared/invoke-internal.ts";
+import { sendSmsWithLog } from "../_shared/twilio-sms.ts";
 
 // オリジン取得（公開URL or Lovable preview）
 const getAppOrigin = (req: Request): string => {
@@ -17,33 +18,6 @@ const renderTemplate = (template: string, vars: Record<string, string>) => {
 };
 
 const isValidLineUserId = (s: string | null | undefined) => !!s && /^U[0-9a-f]{32}$/i.test(s);
-
-// Twilio SMS送信
-const sendSMS = async (to: string, body: string): Promise<{ ok: boolean; error?: string }> => {
-  const apiKey = Deno.env.get("TWILIO_API_KEY");
-  const lovableKey = Deno.env.get("LOVABLE_API_KEY");
-  if (!apiKey || !lovableKey) return { ok: false, error: "SMS not configured" };
-
-  const fromNumber = Deno.env.get("TWILIO_FROM_NUMBER");
-  if (!fromNumber) return { ok: false, error: "TWILIO_FROM_NUMBER not set" };
-
-  try {
-    const res = await fetch("https://connector-gateway.lovable.dev/twilio/Messages.json", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${lovableKey}`,
-        "X-Connection-Api-Key": apiKey,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: new URLSearchParams({ To: to, From: fromNumber, Body: body }),
-    });
-    const data = await res.json();
-    if (!res.ok) return { ok: false, error: JSON.stringify(data) };
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "unknown" };
-  }
-};
 
 // LINE Push送信
 const sendLine = async (token: string, userId: string, text: string): Promise<{ ok: boolean; error?: string }> => {
@@ -192,12 +166,25 @@ Deno.serve(async (req) => {
       if (campaign.send_sms && c.phone && campaign.sms_body) {
         attemptedDelivery = true;
         const smsBody = renderTemplate(campaign.sms_body, vars);
-        const result = await sendSMS(c.phone, smsBody);
+        const smsLocId = (c as any).location_id || (campaign as any).location_id || null;
+        const result = await sendSmsWithLog(supabase, {
+          owner_id: user.id,
+          location_id: smsLocId,
+          customer_id: c.id,
+          phone: c.phone,
+          message: smsBody,
+          source: "send_campaign",
+          campaign_id,
+          metadata: {
+            campaign_title: campaign.title,
+            booking_link: bookingLink,
+          },
+        });
         if (result.ok) {
           send.sms_sent = true;
           smsSuccess++;
         } else {
-          send.sms_error = result.error;
+          send.sms_error = result.err || result.reason || "unknown";
           smsFailed++;
         }
         await new Promise(r => setTimeout(r, 100));

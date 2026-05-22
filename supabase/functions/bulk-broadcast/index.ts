@@ -1,7 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
 import { sendLinePush } from "../_shared/line-push.ts";
-import { sendSms } from "../_shared/twilio-sms.ts";
+import { sendSmsWithLog } from "../_shared/twilio-sms.ts";
 import { applySegmentFilter, buildFilterContext, ageGroupOf, type SegmentInput } from "../_shared/segment-filter.ts";
 import { sendTransactionalEmailInternal } from "../_shared/invoke-internal.ts";
 
@@ -178,7 +178,19 @@ Deno.serve(async (req) => {
       if (useSms) {
         if (!c.phone) result.sms.skipped++;
         else {
-          const r = await sendSms(c.phone, personalText);
+          const r = await sendSmsWithLog(supabase, {
+            owner_id: user.id,
+            location_id: c.location_id ?? null,
+            customer_id: c.id,
+            phone: c.phone,
+            message: personalText,
+            source: "bulk_broadcast",
+            job_type: "broadcast",
+            metadata: {
+              subject,
+              segment: seg,
+            },
+          });
           if (r.ok) { result.sms.sent++; anySent = true; lastChannel = "sms"; }
           else if (r.skipped) result.sms.skipped++;
           else result.sms.failed++;

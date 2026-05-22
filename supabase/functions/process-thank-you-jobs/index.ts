@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
-import { sendSms } from "../_shared/twilio-sms.ts";
+import { sendSmsWithLog } from "../_shared/twilio-sms.ts";
 
 // LINE Messaging API: Push Message
 async function sendLinePush(token: string, userId: string, text: string): Promise<{ ok: boolean; err?: string }> {
@@ -475,7 +475,19 @@ Deno.serve(async (req) => {
         if (channelUsed === "none" && hasPhone) {
           // SMSは短く簡潔に
           const smsBody = body.length > 300 ? body.slice(0, 280) + "…" : body;
-          const r = await sendSms(customer.phone!, smsBody);
+          const r = await sendSmsWithLog(supabase, {
+            owner_id: job.owner_id,
+            location_id: (job as any).location_id || (customer as any).location_id || null,
+            customer_id: customer.id,
+            phone: customer.phone!,
+            message: smsBody,
+            source: "scheduled_job",
+            job_type: job.job_type,
+            scheduled_job_id: job.id,
+            metadata: {
+              template_key: tmplKey,
+            },
+          });
           if (r.ok) {
             channelUsed = "sms";
             console.log(`[SMS] ${job.job_type} → ${customer.phone}`);

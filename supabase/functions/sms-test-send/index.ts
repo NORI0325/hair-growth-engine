@@ -1,7 +1,7 @@
 // 設定画面からのSMSテスト送信。認証必須（オーナー本人のみ）
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
-import { sendSms, toE164JP } from "../_shared/twilio-sms.ts";
+import { sendSmsWithLog, toE164JP } from "../_shared/twilio-sms.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -47,7 +47,18 @@ Deno.serve(async (req) => {
     const salonName = profile?.salon_name || "サロン";
     const text = customBody || `【${salonName}】SMS接続テストです🌸 このメッセージが届いていれば設定は正常です。`;
 
-    const result = await sendSms(e164, text);
+    const result = await sendSmsWithLog(supabase, {
+      owner_id: user.id,
+      location_id: null,
+      customer_id: null,
+      phone: phoneRaw,
+      message: text,
+      source: "sms_test",
+      job_type: "sms_test",
+      metadata: {
+        normalized_phone: e164,
+      },
+    });
 
     if (result.skipped) {
       const messageMap: Record<string, string> = {
