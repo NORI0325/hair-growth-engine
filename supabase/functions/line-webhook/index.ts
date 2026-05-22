@@ -220,6 +220,46 @@ function isGreetingOrSimpleText(text: string): boolean {
   return /^(こんにちは|こんばんは|おはよう|はじめまして|よろしく|ありがとう|すみません|hello|hi|hey|？|\?|質問|問い合わせ|営業|何時|いつ)/i.test(t);
 }
 
+function isReservationCheckCommand(text: string): boolean {
+  const normalized = text
+    .trim()
+    .replace(/[ \t\r\n　。.!！?？]/g, "");
+
+  return [
+    "予約確認",
+    "予約を確認",
+    "予約状況",
+    "次回予約",
+    "次の予約",
+  ].includes(normalized);
+}
+
+function reservationStatusLabel(booking: { status?: string | null; sync_status?: string | null }): string {
+  if (booking.sync_status === "needs_review" || booking.sync_status === "failed") {
+    return "店舗確認中です。確認後にご連絡します。";
+  }
+  if (booking.status === "confirmed") {
+    return "予約確定済み";
+  }
+  return "店舗確認中です。確定まで少々お待ちください。";
+}
+
+function formatReservationDateTime(bookingDate: string, bookingTime: string): string {
+  const [year, month, day] = String(bookingDate).split("-");
+  const date = year && month && day
+    ? `${year}年${Number(month)}月${Number(day)}日`
+    : String(bookingDate);
+  const time = String(bookingTime || "").slice(0, 5);
+  return time ? `${date} ${time}` : date;
+}
+
+function formatReservationMenu(booking: { menu?: string | null; menus?: string[] | null }): string {
+  if (Array.isArray(booking.menus) && booking.menus.length > 0) {
+    return booking.menus.filter(Boolean).join("、");
+  }
+  return booking.menu || "メニュー未設定";
+}
+
 // 重複返信抑制：直近 windowMs 以内に同オーナー×同ユーザーへ同種返信を送ったか
 async function wasRecentlyReplied(
   supabase: any,
@@ -754,6 +794,101 @@ Deno.serve(async (req) => {
         if (linkedCustomer?.line_unfollowed_at) {
           await supabase.from("customers")
             .update({ line_unfollowed_at: null }).eq("id", linkedCustomer.id);
+        }
+
+        // ============= 予約状況確認コマンド（AI予約意図判定より前に固定処理） =============
+        if (isReservationCheckCommand(text)) {
+          const { data: matchedCustomers, error: customerLookupError } = await supabase
+            .from("customers")
+            .select("id, full_name, line_unfollowed_at, location_id")
+            .eq("owner_id", owner.id)
+            .eq("line_user_id", userId)
+            .limit(2);
+          const customerMatches = (matchedCustomers || []) as Array<{
+            id: string;
+            full_name: string | null;
+            line_unfollowed_at: string | null;
+            location_id: string | null;
+          }>;
+          const statusLocationId = await resolveLocationId(customerMatches[0]?.location_id ?? linkedCustomer?.location_id ?? null);
+
+          let replyBody = "";
+          let replyCustomerId: string | null = null;
+          let suggestedAction = "予約状況確認に自動回答済み";
+
+          if (customerLookupError) {
+            console.error("[line-webhook] reservation status customer lookup failed:", customerLookupError);
+            replyBody = "店舗確認中です。確認後にご連絡します。";
+            suggestedAction = "LINE連携確認でエラーが発生しました。顧客のLINE連携状況を確認してください。";
+          } else if (customerMatches.length === 0) {
+            replyBody = "ご予約確認にはLINE連携が必要です。店舗スタッフにLINE連携QRを提示してもらってください。";
+            suggestedAction = "未連携ユーザーへLINE連携案内を自動返信済み";
+          } else if (customerMatches.length > 1) {
+            replyBody = "店舗確認中です。確認後にご連絡します。";
+            suggestedAction = "同一LINE userIdに複数顧客が紐付いています。顧客連携を確認してください。";
+          } else {
+            const customer = customerMatches[0];
+            replyCustomerId = customer.id;
+            if (customer.line_unfollowed_at) {
+              await supabase.from("customers")
+                .update({ line_unfollowed_at: null }).eq("id", customer.id);
+            }
+
+            const { data: upcomingBookings, error: bookingsError } = await supabase
+              .from("bookings")
+              .select("id, booking_date, booking_time, menu, menus, status, sync_status, staff_id, location_id, cancelled_at")
+              .eq("owner_id", owner.id)
+              .eq("customer_id", customer.id)
+              .is("cancelled_at", null)
+              .gte("booking_date", todayJstIso())
+              .in("status", ["pending", "confirmed", "pending_sync"])
+              .order("booking_date", { ascending: true })
+              .order("booking_time", { ascending: true })
+              .limit(3);
+
+            if (bookingsError) {
+              console.error("[line-webhook] reservation status booking lookup failed:", bookingsError);
+              replyBody = "店舗確認中です。確認後にご連絡します。";
+              suggestedAction = "予約状況確認で予約取得エラーが発生しました。予約情報を確認してください。";
+            } else if (!upcomingBookings || upcomingBookings.length === 0) {
+              replyBody = "現在、確認できる予約はありません。\nご予約をご希望の場合は、予約フォームからお進みください。";
+            } else {
+              const bookingLines = upcomingBookings.map((booking: any, index: number) => {
+                return [
+                  `${index + 1}. ${formatReservationDateTime(booking.booking_date, booking.booking_time)}`,
+                  `メニュー：${formatReservationMenu(booking)}`,
+                  `状態：${reservationStatusLabel(booking)}`,
+                ].join("\n");
+              }).join("\n\n");
+              replyBody = `${customer.full_name || "お客様"}様のご予約状況です。\n\n${bookingLines}`;
+            }
+          }
+
+          const { error: inboundError } = await supabase.from("line_inbound_messages").insert({
+            owner_id: owner.id,
+            location_id: statusLocationId,
+            customer_id: replyCustomerId,
+            line_user_id: userId,
+            display_name: customerMatches.length === 1 ? customerMatches[0].full_name : null,
+            message_text: text.slice(0, 2000),
+            intent: "reservation_status",
+            urgency: "normal",
+            summary: "予約状況確認",
+            suggested_action: suggestedAction,
+            ai_processed: true,
+            handled: true,
+            handled_at: new Date().toISOString(),
+          });
+          if (inboundError) console.warn("[line-webhook] reservation status inbound log failed:", inboundError);
+
+          const r = await replyLine(accessToken, replyToken, replyBody);
+          await logLineReply(
+            supabase, owner.id, replyCustomerId, userId,
+            "reservation_status_reply", replyBody,
+            r.ok ? "sent" : "failed", r.ok ? undefined : r.err,
+            statusLocationId,
+          );
+          continue;
         }
 
         // ============= 多項目自動検出（連携済み顧客） =============
