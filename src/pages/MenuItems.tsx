@@ -10,6 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { Loader2, Plus, Trash2, GripVertical, ImagePlus, X, Plug } from "lucide-react";
 import { toast } from "sonner";
 import { useCurrentLocationId } from "@/hooks/useLocations";
+import { useTenantId } from "@/hooks/useTenant";
 import ChannelMappingDialog from "@/components/ChannelMappingDialog";
 
 interface MenuItem {
@@ -26,6 +27,7 @@ interface MenuItem {
 
 const MenuItems = () => {
   const { user } = useAuth();
+  const tenantId = useTenantId();
   const locationId = useCurrentLocationId();
   const [items, setItems] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -34,26 +36,27 @@ const MenuItems = () => {
   const [mappingMenu, setMappingMenu] = useState<MenuItem | null>(null);
 
   const load = async () => {
-    if (!user || !locationId) { setItems([]); setLoading(false); return; }
+    if (!user || !tenantId || !locationId) { setItems([]); setLoading(false); return; }
     setLoading(true);
     const { data } = await supabase
       .from("menu_items")
       .select("*")
+      .eq("owner_id", tenantId)
       .eq("location_id", locationId)
       .order("sort_order", { ascending: true });
     setItems(data || []);
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, [user, locationId]);
+  useEffect(() => { load(); }, [user, tenantId, locationId]);
 
   const add = async () => {
-    if (!user || !locationId) return;
+    if (!user || !tenantId || !locationId) { toast.error("店舗が未選択のためメニューを保存できません"); return; }
     if (!draft.name.trim()) { toast.error("メニュー名を入力してください"); return; }
     setSaving(true);
     const max = items.reduce((m, i) => Math.max(m, i.sort_order), 0);
     const { error } = await supabase.from("menu_items").insert({
-      owner_id: user.id,
+      owner_id: tenantId,
       location_id: locationId,
       name: draft.name.trim().slice(0, 80),
       duration_minutes: draft.duration_minutes,
@@ -69,14 +72,24 @@ const MenuItems = () => {
   };
 
   const update = async (id: string, patch: Partial<MenuItem>) => {
+    if (!tenantId || !locationId) { toast.error("店舗が未選択のためメニューを保存できません"); return; }
     setItems(items.map(i => i.id === id ? { ...i, ...patch } : i));
-    const { error } = await supabase.from("menu_items").update(patch).eq("id", id);
+    const { error } = await supabase.from("menu_items")
+      .update(patch)
+      .eq("id", id)
+      .eq("owner_id", tenantId)
+      .eq("location_id", locationId);
     if (error) { toast.error("更新に失敗: " + error.message); load(); }
   };
 
   const remove = async (id: string) => {
+    if (!tenantId || !locationId) { toast.error("店舗が未選択のためメニューを保存できません"); return; }
     if (!confirm("このメニューを削除しますか？")) return;
-    const { error } = await supabase.from("menu_items").delete().eq("id", id);
+    const { error } = await supabase.from("menu_items")
+      .delete()
+      .eq("id", id)
+      .eq("owner_id", tenantId)
+      .eq("location_id", locationId);
     if (error) { toast.error("削除に失敗: " + error.message); return; }
     toast.success("削除しました");
     load();
