@@ -2910,6 +2910,69 @@ export type Database = {
         }
         Relationships: []
       }
+      sms_message_log: {
+        Row: {
+          campaign_id: string | null
+          created_at: string
+          customer_id: string | null
+          error: string | null
+          id: string
+          job_type: string | null
+          location_id: string | null
+          message: string
+          metadata: Json
+          normalized_phone: string | null
+          owner_id: string
+          phone: string
+          provider: string
+          provider_sid: string | null
+          scheduled_job_id: string | null
+          sent_at: string | null
+          source: string
+          status: string
+        }
+        Insert: {
+          campaign_id?: string | null
+          created_at?: string
+          customer_id?: string | null
+          error?: string | null
+          id?: string
+          job_type?: string | null
+          location_id?: string | null
+          message: string
+          metadata?: Json
+          normalized_phone?: string | null
+          owner_id: string
+          phone: string
+          provider?: string
+          provider_sid?: string | null
+          scheduled_job_id?: string | null
+          sent_at?: string | null
+          source: string
+          status: string
+        }
+        Update: {
+          campaign_id?: string | null
+          created_at?: string
+          customer_id?: string | null
+          error?: string | null
+          id?: string
+          job_type?: string | null
+          location_id?: string | null
+          message?: string
+          metadata?: Json
+          normalized_phone?: string | null
+          owner_id?: string
+          phone?: string
+          provider?: string
+          provider_sid?: string | null
+          scheduled_job_id?: string | null
+          sent_at?: string | null
+          source?: string
+          status?: string
+        }
+        Relationships: []
+      }
       staff: {
         Row: {
           active: boolean
