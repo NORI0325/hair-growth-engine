@@ -168,11 +168,10 @@ export default function SalonboardAutoMapping() {
     }
     const items = menuOpts
       .filter((m) => !mappedMenuExt.has(m.external_menu_id))
+      .filter((m) => getSrcType(m) === "setmenu")
       .map((m) => {
         const src = getSrcType(m);
-        // 初期は setmenu のみ create、single_menu/coupon/category は同期対象外として skip
-        const defaultAction = src === "setmenu" ? "create" : "skip";
-        const a = menuActions[m.external_menu_id] || { action: defaultAction };
+        const a = menuActions[m.external_menu_id] || { action: "create" };
         const editedTerm = menuRsvTerm[m.external_menu_id];
         const rsv_term = editedTerm === "" || editedTerm === undefined ? m.rsv_term : Number(editedTerm);
         return {
@@ -292,6 +291,11 @@ export default function SalonboardAutoMapping() {
                 <div>
                   <div className="font-medium flex items-center gap-2 flex-wrap">
                     {m.menu_name}
+                    {src === "coupon" && (
+                      <Badge variant="outline" className="rounded-none text-[10px] border-amber-500 text-amber-700">
+                        クーポン（同期未検証）
+                      </Badge>
+                    )}
                     {warns.length > 0 && (
                       <Badge variant="outline" className="rounded-none text-[10px] border-amber-500 text-amber-600">
                         要注意: {warns.join("/")}
@@ -302,27 +306,38 @@ export default function SalonboardAutoMapping() {
                     {m.setmenu_id && <>setmenuId: {m.setmenu_id} </>}
                     {src === "single_menu" && <>menuId: {m.menu_id || m.external_menu_id} </>}
                     {m.menu_category_cd && <>cat: {m.menu_category_cd} </>}
-                    {m.net_coupon_id && <>coupon: {m.net_coupon_id} </>}
-                    {m.price && <>/ ¥{m.price.toLocaleString()} </>}
-                    <span className="ml-1">所要時間:
-                      <input
-                        type="number" min={0} step={5}
-                        className="ml-1 w-16 border px-1 py-0.5 rounded-none bg-background"
-                        value={menuRsvTerm[m.external_menu_id] ?? (m.rsv_term ?? "")}
-                        onChange={(e) => setMenuRsvTerm({ ...menuRsvTerm, [m.external_menu_id]: e.target.value === "" ? "" : Number(e.target.value) })}
-                      />
-                      <span className="ml-1">分</span>
-                      {m.rsv_term != null ? (
-                        <Badge variant="outline" className="rounded-none ml-2 text-[10px] border-emerald-500 text-emerald-600">自動取得済み</Badge>
-                      ) : (
-                        <Badge variant="outline" className="rounded-none ml-2 text-[10px] border-amber-500 text-amber-600">未取得 / 手入力してください</Badge>
-                      )}
-                    </span>
+                    {src === "coupon" && (
+                      <>
+                        net_coupon_id: {m.net_coupon_id || m.external_menu_id} source_type='coupon'{" "}
+                        価格: {m.price != null ? `¥${m.price.toLocaleString()}` : "未取得"}{" "}
+                      </>
+                    )}
+                    {src !== "coupon" && m.price != null && <>/ ¥{m.price.toLocaleString()} </>}
+                    {src === "coupon" ? (
+                      <span className="ml-1">
+                        所要時間: {m.rsv_term != null ? `${m.rsv_term}分` : "所要時間未取得"}
+                      </span>
+                    ) : (
+                      <span className="ml-1">所要時間:
+                        <input
+                          type="number" min={0} step={5}
+                          className="ml-1 w-16 border px-1 py-0.5 rounded-none bg-background"
+                          value={menuRsvTerm[m.external_menu_id] ?? (m.rsv_term ?? "")}
+                          onChange={(e) => setMenuRsvTerm({ ...menuRsvTerm, [m.external_menu_id]: e.target.value === "" ? "" : Number(e.target.value) })}
+                        />
+                        <span className="ml-1">分</span>
+                        {m.rsv_term != null ? (
+                          <Badge variant="outline" className="rounded-none ml-2 text-[10px] border-emerald-500 text-emerald-600">自動取得済み</Badge>
+                        ) : (
+                          <Badge variant="outline" className="rounded-none ml-2 text-[10px] border-amber-500 text-amber-600">未取得 / 手入力してください</Badge>
+                        )}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div>{mapped ? <Badge className="rounded-none bg-emerald-600">紐付済</Badge> : <Badge className="rounded-none" variant="outline">未紐付</Badge>}</div>
                 <div>
-                  {!mapped && src === "single_menu" ? (
+                  {!mapped && src !== "setmenu" ? (
                     <div className="text-xs text-muted-foreground">
                       同期対象外
                     </div>
@@ -382,14 +397,14 @@ export default function SalonboardAutoMapping() {
                 <div className="flex items-center justify-between mb-1">
                   <div>
                     <div className="text-[10px] tracking-luxury text-muted-foreground mb-1">HOTPEPPER COUPON</div>
-                    <h3 className="font-serif text-lg">ホットペッパークーポン</h3>
+                    <h3 className="font-serif text-lg">クーポン（同期未検証）</h3>
                   </div>
                   <Button variant="outline" size="sm" className="rounded-none" onClick={() => setShowCoupon((v) => !v)}>
                     {showCoupon ? "折りたたむ" : "表示する"}
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground mb-3">
-                  条件付きクーポンが多いため、初期状態では同期対象外です。自社アプリでも使うものだけ「新規作成」を選んでください。
+                  サロンボード上のクーポンです。現在は予約同期対象外です。
                 </p>
                 {showCoupon && (
                   groups.coupon.length === 0 ? (
