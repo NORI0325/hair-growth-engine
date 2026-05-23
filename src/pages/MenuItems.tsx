@@ -195,12 +195,12 @@ const MenuItems = () => {
     if (importItems.length === 0) return { setmenuCount: 0, singleMenuCount: 0, updatedCount: 0 };
 
     for (const item of importItems.filter((menu) => menu.action === "link")) {
-      const menuPatch: Record<string, unknown> = {
+      const menuPatch: { name: string; duration_minutes: number; active: boolean; price?: number } = {
         name: item.menu_name,
         duration_minutes: item.rsv_term && item.rsv_term > 0 ? item.rsv_term : 60,
         active: item.active,
       };
-      if (hasPositivePrice(item.price)) menuPatch.price = item.price;
+      if (hasPositivePrice(item.price)) menuPatch.price = item.price as number;
 
       const { error: itemUpdateError } = await supabase
         .from("menu_items")
