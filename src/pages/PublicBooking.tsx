@@ -83,6 +83,8 @@ const PublicBooking = () => {
 
   const [form, setForm] = useState({ full_name: "", full_name_kana: "", phone: "", email: "", date: "", time: "", staff_id: "", notes: "" });
 
+
+
   useEffect(() => {
     const load = async () => {
       if (!slug) { setLoading(false); return; }
@@ -154,6 +156,9 @@ const PublicBooking = () => {
           } else {
             setMenuItems(normalizeBookableMenus(menuRows as any[]));
           }
+
+
+
 
           const { count } = await supabase
             .from("staff")
@@ -526,6 +531,9 @@ const PublicBooking = () => {
                 店舗情報を確認できませんでした。お手数ですが、店舗へお問い合わせください。
               </div>
             )}
+
+
+
 
             {useRichMenus && selectedMenus.length > 0 && (
               <div className="mt-4 p-4 border border-gold/40 bg-secondary/30 flex justify-between items-center">
