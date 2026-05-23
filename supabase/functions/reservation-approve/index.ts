@@ -31,6 +31,151 @@ function jpDate(ymd?: string): string {
   return `${Number(m)}月${Number(d)}日(${w})`;
 }
 
+async function assertSalonboardSyncableMenu(
+  supabase: any,
+  ownerId: string,
+  locationId: string | null,
+  menus: unknown[],
+): Promise<{ ok: true } | { ok: false; status: number; error: string; message: string }> {
+  if (!locationId) return { ok: true };
+
+  const { data: salonboardIntegrations, error: salonboardLiveErr } = await supabase
+    .from("channel_integrations")
+    .select("id")
+    .eq("owner_id", ownerId)
+    .eq("location_id", locationId)
+    .eq("channel", "salonboard")
+    .eq("enabled", true)
+    .eq("sync_enabled", true)
+    .eq("connection_status", "live")
+    .limit(1);
+
+  if (salonboardLiveErr) {
+    console.error("[reservation-approve] salonboard live check error:", salonboardLiveErr);
+    return {
+      ok: false,
+      status: 500,
+      error: "salonboard_guard_failed",
+      message: "予約メニューの確認に失敗しました。",
+    };
+  }
+
+  const salonboardLive = (salonboardIntegrations || []).length > 0;
+  if (!salonboardLive) return { ok: true };
+
+  const selectedMenus = menus
+    .filter((menu): menu is string => typeof menu === "string" && menu.trim().length > 0)
+    .map((menu) => menu.trim());
+
+  if (selectedMenus.length !== 1) {
+    return {
+      ok: false,
+      status: 400,
+      error: "salonboard_requires_single_syncable_setmenu",
+      message: "この店舗では同期可能なメニューを1つ選択してください。",
+    };
+  }
+
+  let syncableMenuCount = 0;
+  const selectedMenuName = selectedMenus[0];
+
+  const { data: syncableMenuRows, error: syncableMenuErr } = await supabase
+    .from("menu_items")
+    .select("id")
+    .eq("owner_id", ownerId)
+    .eq("location_id", locationId)
+    .eq("name", selectedMenuName)
+    .eq("active", true);
+
+  if (syncableMenuErr) {
+    console.error("[reservation-approve] salonboard menu guard menu_items error:", syncableMenuErr);
+    return {
+      ok: false,
+      status: 500,
+      error: "salonboard_guard_failed",
+      message: "予約メニューの確認に失敗しました。",
+    };
+  }
+
+  const menuIds = (syncableMenuRows || []).map((row: any) => row.id).filter(Boolean);
+  if (menuIds.length > 0) {
+    const { data: mappings, error: mappingErr } = await supabase
+      .from("menu_channel_mappings")
+      .select("menu_id, external_id, external_setmenu_id, rsv_term, enabled")
+      .eq("owner_id", ownerId)
+      .eq("channel", "salonboard")
+      .eq("enabled", true)
+      .not("rsv_term", "is", null)
+      .in("menu_id", menuIds);
+
+    if (mappingErr) {
+      console.error("[reservation-approve] salonboard menu guard mapping error:", mappingErr);
+      return {
+        ok: false,
+        status: 500,
+        error: "salonboard_guard_failed",
+        message: "予約メニューの確認に失敗しました。",
+      };
+    }
+
+    const setmenuIds = Array.from(new Set(
+      (mappings || [])
+        .map((mapping: any) =>
+          String(mapping.external_setmenu_id || "").trim() || String(mapping.external_id || "").trim()
+        )
+        .filter((id: string) => /^SN/i.test(id))
+    ));
+
+    if (setmenuIds.length > 0) {
+      const { data: optionRows, error: optionErr } = await supabase
+        .from("channel_menu_options")
+        .select("setmenu_id, rsv_term")
+        .eq("owner_id", ownerId)
+        .eq("location_id", locationId)
+        .eq("channel", "salonboard")
+        .eq("source_type", "setmenu")
+        .not("rsv_term", "is", null)
+        .in("setmenu_id", setmenuIds);
+
+      if (optionErr) {
+        console.error("[reservation-approve] salonboard menu guard option error:", optionErr);
+        return {
+          ok: false,
+          status: 500,
+          error: "salonboard_guard_failed",
+          message: "予約メニューの確認に失敗しました。",
+        };
+      }
+
+      const optionCountBySetmenuId = new Map<string, number>();
+      for (const option of optionRows || []) {
+        const setmenuId = String((option as any).setmenu_id || "").trim();
+        if (!setmenuId) continue;
+        optionCountBySetmenuId.set(setmenuId, (optionCountBySetmenuId.get(setmenuId) || 0) + 1);
+      }
+
+      for (const mapping of mappings || []) {
+        const setmenuId =
+          String((mapping as any).external_setmenu_id || "").trim() ||
+          String((mapping as any).external_id || "").trim();
+        if (!/^SN/i.test(setmenuId) || (mapping as any).rsv_term == null) continue;
+        syncableMenuCount += optionCountBySetmenuId.get(setmenuId) || 0;
+      }
+    }
+  }
+
+  if (syncableMenuCount !== 1) {
+    return {
+      ok: false,
+      status: 400,
+      error: "salonboard_menu_not_syncable",
+      message: "このメニューは現在オンライン予約できません。店舗へお問い合わせください。",
+    };
+  }
+
+  return { ok: true };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") {
@@ -127,6 +272,21 @@ Deno.serve(async (req) => {
       });
     }
     const menu = body.confirmed_menu || rr.desired_menu || "ご相談";
+    const bookingMenus = Array.isArray(rr.desired_menu_items) && rr.desired_menu_items.length > 0
+      ? rr.desired_menu_items
+      : [menu];
+
+    const menuGuard = await assertSalonboardSyncableMenu(supabase, rr.owner_id, locationId, bookingMenus);
+    if (!menuGuard.ok) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: menuGuard.error,
+        message: menuGuard.message,
+      }), {
+        status: menuGuard.status,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // bookings に登録
     const { data: booking, error: bookingErr } = await supabase
@@ -138,7 +298,7 @@ Deno.serve(async (req) => {
         booking_date: body.confirmed_date,
         booking_time: body.confirmed_time,
         menu: menu.slice(0, 200),
-        menus: rr.desired_menu_items || [menu],
+        menus: bookingMenus,
         status: "confirmed",
         staff_id: body.confirmed_staff_id || null,
         notes: `LINEからの予約: ${rr.raw_message?.slice(0, 200) || ""}`,
