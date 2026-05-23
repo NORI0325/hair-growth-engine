@@ -80,8 +80,10 @@ const PublicBooking = () => {
   const [closeTime, setCloseTime] = useState<string>("19:00");
   const [bookingPaused, setBookingPaused] = useState(false);
   const [pausedMessage, setPausedMessage] = useState<string>("");
+  const [debugRpc, setDebugRpc] = useState<string>("");
 
   const [form, setForm] = useState({ full_name: "", full_name_kana: "", phone: "", email: "", date: "", time: "", staff_id: "", notes: "" });
+
 
   useEffect(() => {
     const load = async () => {
