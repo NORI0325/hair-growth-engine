@@ -4,6 +4,7 @@ export type ErrorType =
   | "session_expired"
   | "mapping_not_found"
   | "duplicate_risk"
+  | "invalid_time"
   | "external_site_changed"
   | "network_error"
   | "unknown_error";
