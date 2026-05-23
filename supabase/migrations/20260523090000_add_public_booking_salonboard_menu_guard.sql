@@ -64,7 +64,7 @@ BEGIN
   IF _name_kana = '' OR length(_name_kana) > 100 THEN
     RETURN jsonb_build_object('success', false, 'error', 'invalid_name_kana');
   END IF;
-  IF _name_kana !~ '^[縺・繧薙ぃ-繝ｶ繝ｼ\s縲]+$' THEN
+  IF _name_kana !~ '^[ぁ-んァ-ヶー\s　]+$' THEN
     RETURN jsonb_build_object('success', false, 'error', 'invalid_name_kana_chars');
   END IF;
   IF _phone IS NULL OR length(trim(_phone)) < 8 OR length(_phone) > 20 THEN
@@ -376,7 +376,7 @@ BEGIN
 
     IF _resolved_staff_id IS NULL THEN
       _staff_name := NULL;
-      _ext_staff_name := '謖・錐縺ｪ縺・/ 繝輔Μ繝ｼ';
+      _ext_staff_name := '指名なし / フリー';
       _ext_staff_id := '0000000000';
     ELSE
       SELECT name INTO _staff_name FROM public.staff WHERE id = _resolved_staff_id;
