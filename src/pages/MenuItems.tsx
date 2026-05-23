@@ -82,7 +82,7 @@ const MenuItems = () => {
     setItems(menuItems);
 
     const { data: candidates, error: candidateError } = await supabase
-      .from("channel_menu_options" as any)
+      .from("channel_menu_options")
       .select("id, external_menu_id, setmenu_id, menu_id, menu_category_cd, net_coupon_id, source_type, menu_name, rsv_term, price, active, fetched_at")
       .eq("owner_id", tenantId)
       .eq("location_id", locationId)
@@ -94,7 +94,7 @@ const MenuItems = () => {
       console.error("failed to load salonboard menu candidates", candidateError);
       setChannelCandidates([]);
     } else {
-      setChannelCandidates((candidates || []) as ChannelMenuOption[]);
+      setChannelCandidates((candidates || []) as unknown as ChannelMenuOption[]);
     }
 
     const { data: ci } = await supabase
