@@ -151,6 +151,7 @@ const PublicBooking = () => {
             _location_id: locationId,
           });
           console.log("[PublicBooking][debug] RPC result", { menuError, count: Array.isArray(menuRows) ? menuRows.length : null, menuRows });
+          setDebugRpc(JSON.stringify({ err: menuError?.message || null, code: menuError?.code || null, len: Array.isArray(menuRows) ? menuRows.length : (menuRows === null ? "null" : typeof menuRows), sample: Array.isArray(menuRows) && menuRows[0] ? Object.keys(menuRows[0]) : null }));
           if (menuError) {
             console.error("[PublicBooking] public_get_bookable_menus_v1 failed:", menuError);
             toast.error("メニュー情報を取得できませんでした。時間をおいて再度お試しください。");
@@ -158,6 +159,7 @@ const PublicBooking = () => {
           } else {
             setMenuItems(normalizeBookableMenus(menuRows as any[]));
           }
+
 
 
           const { count } = await supabase
