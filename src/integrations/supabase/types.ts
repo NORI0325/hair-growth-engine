@@ -4056,6 +4056,23 @@ export type Database = {
         }
         Returns: Json
       }
+      public_get_bookable_menus_v1: {
+        Args: { _location_id: string; _owner_id: string }
+        Returns: {
+          buffer_minutes: number
+          description: string
+          duration_minutes: number
+          external_setmenu_id: string
+          id: string
+          image_url: string
+          is_salonboard_syncable: boolean
+          location_id: string
+          name: string
+          price: number
+          rsv_term: number
+          sort_order: number
+        }[]
+      }
       read_email_batch: {
         Args: { batch_size: number; queue_name: string; vt: number }
         Returns: {
