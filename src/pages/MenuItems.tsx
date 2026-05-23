@@ -26,6 +26,7 @@ interface MenuItem {
 }
 
 type ChannelMenuOption = {
+  id?: string;
   external_menu_id: string;
   setmenu_id?: string | null;
   menu_id?: string | null;
@@ -36,6 +37,7 @@ type ChannelMenuOption = {
   rsv_term?: number | null;
   price?: number | null;
   active?: boolean | null;
+  fetched_at?: string | null;
 };
 
 type MenuSyncStatus = {
@@ -58,12 +60,14 @@ const MenuItems = () => {
   const [mappingMenu, setMappingMenu] = useState<MenuItem | null>(null);
   const [salonboardSyncOn, setSalonboardSyncOn] = useState(false);
   const [syncStatusByMenuId, setSyncStatusByMenuId] = useState<Record<string, { label: string; className: string }>>({});
+  const [channelCandidates, setChannelCandidates] = useState<ChannelMenuOption[]>([]);
 
   const load = async () => {
     if (!user || !tenantId || !locationId) {
       setItems([]);
       setSalonboardSyncOn(false);
       setSyncStatusByMenuId({});
+      setChannelCandidates([]);
       setLoading(false);
       return;
     }
@@ -76,6 +80,22 @@ const MenuItems = () => {
       .order("sort_order", { ascending: true });
     const menuItems = (data || []) as MenuItem[];
     setItems(menuItems);
+
+    const { data: candidates, error: candidateError } = await supabase
+      .from("channel_menu_options" as any)
+      .select("id, external_menu_id, setmenu_id, menu_id, menu_category_cd, net_coupon_id, source_type, menu_name, rsv_term, price, active, fetched_at")
+      .eq("owner_id", tenantId)
+      .eq("location_id", locationId)
+      .eq("channel", "salonboard")
+      .in("source_type", ["single_menu", "coupon", "category"])
+      .order("source_type", { ascending: true })
+      .order("menu_name", { ascending: true });
+    if (candidateError) {
+      console.error("failed to load salonboard menu candidates", candidateError);
+      setChannelCandidates([]);
+    } else {
+      setChannelCandidates((candidates || []) as ChannelMenuOption[]);
+    }
 
     const { data: ci } = await supabase
       .from("channel_integrations" as any)
@@ -152,11 +172,9 @@ const MenuItems = () => {
 
   const importSalonboardMenus = async (fetchedMenus: ChannelMenuOption[]) => {
     if (!tenantId || !locationId) return { setmenuCount: 0, singleMenuCount: 0, updatedCount: 0 };
-    const mirrorMenus = fetchedMenus.filter((menu) => {
-      if (menu.source_type === "setmenu") return !!menu.setmenu_id && menu.rsv_term != null;
-      if (menu.source_type === "single_menu") return !!(menu.menu_id || menu.external_menu_id) && !!menu.menu_name;
-      return false;
-    });
+    const mirrorMenus = fetchedMenus.filter((menu) =>
+      menu.source_type === "setmenu" && !!menu.setmenu_id && menu.rsv_term != null
+    );
     if (mirrorMenus.length === 0) return { setmenuCount: 0, singleMenuCount: 0, updatedCount: 0 };
 
     const { data: mappings } = await supabase
@@ -240,8 +258,12 @@ const MenuItems = () => {
       return;
     }
     let imported = { setmenuCount: 0, singleMenuCount: 0, updatedCount: 0 };
+    const fetchedMenus = (((data as any)?.menus || []) as ChannelMenuOption[]);
+    setChannelCandidates(fetchedMenus.filter((menu) =>
+      menu.source_type === "single_menu" || menu.source_type === "coupon" || menu.source_type === "category"
+    ));
     try {
-      imported = await importSalonboardMenus((((data as any)?.menus || []) as ChannelMenuOption[]));
+      imported = await importSalonboardMenus(fetchedMenus);
     } catch (importError) {
       toast.error("サロンボードメニューの取り込みに失敗しました");
       console.error("salonboard menu import failed", importError);
@@ -306,6 +328,99 @@ const MenuItems = () => {
     toast.success("画像を削除しました");
   };
 
+  const singleMenuCandidates = channelCandidates.filter((candidate) => candidate.source_type === "single_menu");
+  const couponCandidates = channelCandidates.filter((candidate) => candidate.source_type === "coupon");
+  const categoryCandidates = channelCandidates.filter((candidate) => candidate.source_type === "category");
+
+  const formatCandidatePrice = (price: number | null | undefined) =>
+    typeof price === "number" && Number.isFinite(price)
+      ? `¥${price.toLocaleString()}`
+      : "価格未取得";
+
+  const formatCandidateDuration = (duration: number | null | undefined) =>
+    typeof duration === "number" && Number.isFinite(duration)
+      ? `${duration}分`
+      : "所要時間未取得";
+
+  const formatFetchedAt = (fetchedAt: string | null | undefined) => {
+    if (!fetchedAt) return "取得日時未取得";
+    const timestamp = Date.parse(fetchedAt);
+    return Number.isNaN(timestamp) ? fetchedAt : new Date(timestamp).toLocaleString("ja-JP");
+  };
+
+  const candidateDisplayId = (candidate: ChannelMenuOption) => {
+    if (candidate.source_type === "coupon") return candidate.net_coupon_id || candidate.external_menu_id || "-";
+    if (candidate.source_type === "single_menu") return candidate.menu_id || candidate.external_menu_id || "-";
+    if (candidate.source_type === "category") return candidate.menu_category_cd || candidate.external_menu_id || "-";
+    return candidate.external_menu_id || "-";
+  };
+
+  const renderCandidateSection = ({
+    title,
+    description,
+    badge,
+    badgeClassName,
+    candidates,
+    emptyMessage,
+  }: {
+    title: string;
+    description: string;
+    badge: string;
+    badgeClassName: string;
+    candidates: ChannelMenuOption[];
+    emptyMessage: string;
+  }) => (
+    <section className="border border-border">
+      <div className="border-b border-border px-4 py-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="font-serif text-lg">{title}</h2>
+          <span className={`inline-flex items-center border px-2 py-1 text-[10px] ${badgeClassName}`}>
+            {badge}
+          </span>
+          <span className="text-[10px] text-muted-foreground">{candidates.length}件</span>
+        </div>
+        <p className="mt-1 text-xs text-muted-foreground leading-relaxed">{description}</p>
+      </div>
+      {candidates.length === 0 ? (
+        <div className="px-4 py-5 text-xs text-muted-foreground leading-relaxed">
+          {emptyMessage}
+        </div>
+      ) : (
+        <div className="divide-y divide-border">
+          {candidates.map((candidate, index) => (
+            <div
+              key={candidate.id || `${candidate.source_type}-${candidate.external_menu_id}-${index}`}
+              className="grid grid-cols-1 gap-3 px-4 py-4 md:grid-cols-12 md:items-center"
+            >
+              <div className="md:col-span-4">
+                <p className="text-sm font-medium">{candidate.menu_name || "名称未取得"}</p>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  ID: {candidateDisplayId(candidate)}
+                </p>
+              </div>
+              <div className="text-xs md:col-span-2">
+                <p className="text-muted-foreground">価格</p>
+                <p>{formatCandidatePrice(candidate.price)}</p>
+              </div>
+              <div className="text-xs md:col-span-2">
+                <p className="text-muted-foreground">所要時間</p>
+                <p>{formatCandidateDuration(candidate.rsv_term)}</p>
+              </div>
+              <div className="text-xs md:col-span-2">
+                <p className="text-muted-foreground">種別</p>
+                <p>source_type='{candidate.source_type || "-"}'</p>
+              </div>
+              <div className="text-xs md:col-span-2">
+                <p className="text-muted-foreground">取得日時</p>
+                <p>{formatFetchedAt(candidate.fetched_at)}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+
   return (
     <AppLayout>
       <PageHeader
@@ -362,6 +477,17 @@ const MenuItems = () => {
       </div>
 
       {/* 一覧 */}
+      <section className="mb-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="font-serif text-lg">同期可能メニュー</h2>
+          <span className="inline-flex items-center border border-emerald-500 px-2 py-1 text-[10px] text-emerald-700">
+            予約フォーム表示対象
+          </span>
+        </div>
+        <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
+          source_type='setmenu' かつ setmenu_id / external_setmenu_id と rsv_term があるメニューです。
+        </p>
+      </section>
       {loading ? (
         <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-gold" /></div>
       ) : items.length === 0 ? (
@@ -442,6 +568,35 @@ const MenuItems = () => {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {!loading && (
+        <div className="mt-8 space-y-6">
+          {renderCandidateSection({
+            title: "単品メニュー（同期未検証）",
+            description: "サロンボード上の単品メニューです。現在は予約同期対象外です。",
+            badge: "同期未検証",
+            badgeClassName: "border-amber-500 text-amber-700",
+            candidates: singleMenuCandidates,
+            emptyMessage: "channel_menu_options に source_type='single_menu' の取得済み候補がないため、単品メニューはまだ表示されていません。fetchMenus が単品メニューを返して保存できると、この欄に表示されます。",
+          })}
+          {renderCandidateSection({
+            title: "クーポン（同期未検証）",
+            description: "サロンボード上のクーポンです。現在は予約同期対象外です。",
+            badge: "同期未検証",
+            badgeClassName: "border-amber-500 text-amber-700",
+            candidates: couponCandidates,
+            emptyMessage: "channel_menu_options に source_type='coupon' の取得済み候補がありません。CP00000008809041 も、net_coupon_id を持つ coupon 行が保存されてから表示されます。",
+          })}
+          {renderCandidateSection({
+            title: "カテゴリ（同期対象外）",
+            description: "サロンボード上のカテゴリです。カテゴリ単体では予約同期に使いません。",
+            badge: "同期対象外",
+            badgeClassName: "border-muted text-muted-foreground",
+            candidates: categoryCandidates,
+            emptyMessage: "channel_menu_options に source_type='category' の取得済み候補がありません。",
+          })}
         </div>
       )}
 
