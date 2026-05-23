@@ -31,48 +31,14 @@ interface StaffMember {
   note: string | null;
 }
 
-type ChannelIntegrationStatus = {
-  enabled?: boolean | null;
-  sync_enabled?: boolean | null;
-  connection_status?: string | null;
-};
-
-async function isSalonboardSyncLive(ownerId: string, locationId: string): Promise<boolean | null> {
-  const { data, error } = await supabase
-    .from("channel_integrations" as any)
-    .select("enabled, sync_enabled, connection_status")
-    .eq("owner_id", ownerId)
-    .eq("location_id", locationId)
-    .eq("channel", "salonboard")
-    .maybeSingle();
-  if (error) return null;
-  const row = data as ChannelIntegrationStatus | null;
-  return Boolean(row?.enabled && row?.sync_enabled && row?.connection_status === "live");
-}
-
-async function filterSalonboardMappedMenus(ownerId: string, locationId: string, items: MenuItem[]): Promise<MenuItem[]> {
-  if (items.length === 0) return items;
-  const resolveSetmenuId = (m: any) => {
-    if (m.external_setmenu_id) return String(m.external_setmenu_id);
-    const externalId = String(m.external_id || "");
-    return /^SN/i.test(externalId) ? externalId : "";
-  };
-  const { data, error } = await supabase
-    .from("menu_channel_mappings" as any)
-    .select("menu_id, enabled, external_id, external_setmenu_id, rsv_term")
-    .eq("owner_id", ownerId)
-    .eq("location_id", locationId)
-    .eq("channel", "salonboard")
-    .eq("enabled", true)
-    .in("menu_id", items.map((item) => item.id));
-  if (error) return [];
-  const mappedIds = new Set(
-    (data || [])
-      .filter((m: any) => resolveSetmenuId(m) && m.rsv_term != null)
-      .map((m: any) => String(m.menu_id)),
-  );
-  return items.filter((item) => mappedIds.has(item.id));
-}
+const normalizeBookableMenus = (rows: any[] | null | undefined): MenuItem[] =>
+  (rows || []).map((row) => ({
+    id: String(row.id),
+    name: String(row.name || ""),
+    duration_minutes: Number(row.duration_minutes || 0),
+    price: Number(row.price || 0),
+    image_url: row.image_url ? String(row.image_url) : null,
+  }));
 
 const Booking = () => {
   const { token } = useParams();
@@ -110,13 +76,10 @@ const Booking = () => {
         // location_id 必須：店舗が確定できない場合は混在事故防止のためメニュー非表示
         if (data.owner_id && data.location_id) {
           setLocationResolved(true);
-          const menusQuery = supabase
-            .from("menu_items")
-            .select("id, name, duration_minutes, price, image_url")
-            .eq("owner_id", data.owner_id)
-            .eq("location_id", data.location_id)
-            .eq("active", true)
-            .order("sort_order", { ascending: true });
+          const menusQuery = supabase.rpc("public_get_bookable_menus_v1" as any, {
+            _owner_id: data.owner_id,
+            _location_id: data.location_id,
+          });
           const staffQuery = supabase
             .from("staff")
             .select("id, name, display_color, note")
@@ -126,9 +89,13 @@ const Booking = () => {
             .eq("bookable", true)
             .order("sort_order", { ascending: true });
           const [menusRes, staffRes] = await Promise.all([menusQuery, staffQuery]);
-          const baseMenus = (menusRes.data || []) as MenuItem[];
-          const salonboardLive = await isSalonboardSyncLive(data.owner_id, data.location_id);
-          setMenuItems(salonboardLive ? await filterSalonboardMappedMenus(data.owner_id, data.location_id, baseMenus) : baseMenus);
+          if (menusRes.error) {
+            console.error("[Booking] public_get_bookable_menus_v1 failed:", menusRes.error);
+            toast.error("メニュー情報を取得できませんでした。時間をおいて再度お試しください。");
+            setMenuItems([]);
+          } else {
+            setMenuItems(normalizeBookableMenus(menusRes.data as any[]));
+          }
           setStaffList(staffRes.data || []);
         } else {
           setMenuItems([]);
