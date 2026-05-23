@@ -529,9 +529,9 @@ const PublicBooking = () => {
             ) : (
               <div className="text-xs text-muted-foreground border border-border p-4 bg-secondary/30">
                 店舗情報を確認できませんでした。お手数ですが、店舗へお問い合わせください。
-                <div className="mt-2 text-[10px] opacity-60 break-all">[debug] menuItems={menuItems.length} fallback={fallbackMenus.length} rpc={debugRpc}</div>
               </div>
             )}
+
 
 
 
