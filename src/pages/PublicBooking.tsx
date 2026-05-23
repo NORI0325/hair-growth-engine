@@ -143,10 +143,12 @@ const PublicBooking = () => {
         setFallbackMenus(pubMenus);
 
         if (locationId) {
+          console.log("[PublicBooking][debug] calling RPC", { ownerId, locationId });
           const { data: menuRows, error: menuError } = await supabase.rpc("public_get_bookable_menus_v1" as any, {
             _owner_id: ownerId,
             _location_id: locationId,
           });
+          console.log("[PublicBooking][debug] RPC result", { menuError, count: Array.isArray(menuRows) ? menuRows.length : null, menuRows });
           if (menuError) {
             console.error("[PublicBooking] public_get_bookable_menus_v1 failed:", menuError);
             toast.error("メニュー情報を取得できませんでした。時間をおいて再度お試しください。");
@@ -154,6 +156,7 @@ const PublicBooking = () => {
           } else {
             setMenuItems(normalizeBookableMenus(menuRows as any[]));
           }
+
 
           const { count } = await supabase
             .from("staff")
