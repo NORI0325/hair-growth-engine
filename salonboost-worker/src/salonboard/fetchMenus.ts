@@ -63,6 +63,38 @@ function parseNumberLike(v: unknown): number | null {
   return m ? Number(m[1]) : null;
 }
 
+const SEJYUTSU_AIM_TIME_MINUTES: Record<string, number> = {
+  AT01: 10,
+  AT02: 20,
+  AT03: 30,
+  AT04: 40,
+  AT05: 50,
+  AT06: 60,
+  AT07: 90,
+  AT08: 120,
+  AT09: 150,
+  AT10: 180,
+  AT15: 210,
+  AT11: 240,
+  AT16: 270,
+  AT12: 300,
+  AT17: 330,
+  AT13: 360,
+  AT18: 390,
+  AT14: 420,
+};
+
+function parseSejyutsuAimTime(value: unknown, label?: unknown): number | null {
+  const code = normalizeNumericText(value).toUpperCase();
+  if (code && SEJYUTSU_AIM_TIME_MINUTES[code]) return SEJYUTSU_AIM_TIME_MINUTES[code];
+
+  const labelTerm = parseTermLabel(String(label ?? ""));
+  if (labelTerm) return labelTerm;
+
+  if (/^AT\d+$/i.test(code)) return null;
+  return parseTermLabel(code) ?? parseNumberLike(code);
+}
+
 function pickFirst(fields: Record<string, string>, keys: string[]): string | null {
   for (const key of keys) {
     const value = fields[key];
@@ -76,7 +108,8 @@ type SetmenuCandidate = {
   menu_name: string | null;
   rsv_term: number | null;
   price: number | null;
-  raw_payload: Record<string, string>;
+  active: boolean | null;
+  raw_payload: Record<string, unknown>;
 };
 
 function readFieldByPattern(fields: Record<string, string>, pattern: RegExp): string | null {
@@ -92,6 +125,14 @@ function isTruthyFlag(value: string | null): boolean {
 
 function isFalsyFlag(value: string | null): boolean {
   return /^(0|false|off|no|n)$/i.test(String(value ?? "").trim());
+}
+
+function pickCheckboxFlag(fields: Record<string, string>, keys: string[]): boolean | null {
+  for (const key of keys) {
+    if (!Object.prototype.hasOwnProperty.call(fields, key)) continue;
+    return isTruthyFlag(fields[key]);
+  }
+  return null;
 }
 
 async function snapshot(page: Page) {
@@ -190,7 +231,7 @@ async function extractSingleMenuCandidates(page: Page): Promise<{
       "categoryCd",
     ]);
     const price = parseNumberLike(pickFirst(fields, ["price", "menuPrice", "sales", "taxIncludedPrice", "priceTaxIn"]));
-    const term = parseNumberLike(pickFirst(fields, [
+    const termText = pickFirst(fields, [
       "sejyutsuAimTimeCd",
       "sejyutsuAimTime",
       "rsvTerm",
@@ -198,7 +239,17 @@ async function extractSingleMenuCandidates(page: Page): Promise<{
       "duration",
       "aimTime",
       "workTime",
-    ]));
+    ]);
+    const termLabel = pickFirst(fields, [
+      "sejyutsuAimTimeCd_label",
+      "sejyutsuAimTime_label",
+      "rsvTerm_label",
+      "term_label",
+      "duration_label",
+      "aimTime_label",
+      "workTime_label",
+    ]);
+    const term = parseSejyutsuAimTime(termText, termLabel);
     const deleteFlag = pickFirst(fields, ["deleteFlg", "deletedFlg", "delFlg", "deleteFlag", "delFlag"]);
     const presentFlag = pickFirst(fields, ["presentFlg", "presentFlag", "hpPresentFlg", "hotpepperPresentFlg"]);
     const active = !isTruthyFlag(deleteFlag) && !isFalsyFlag(presentFlag);
@@ -296,15 +347,40 @@ async function extractSetmenuCandidates(page: Page): Promise<Map<string, Setmenu
       "sejyutsuAimTime",
       "workTime",
     ]) || readFieldByPattern(fields, /(rsvTerm|term|duration|aimTime|workTime)$/i);
+    const termLabel = pickFirst(fields, [
+      "rsvTerm_label",
+      "term_label",
+      "duration_label",
+      "sejyutsuAimTimeCd_label",
+      "sejyutsuAimTime_label",
+      "workTime_label",
+    ]) || readFieldByPattern(fields, /(rsvTerm|term|duration|aimTime|workTime).*_label$/i);
     const price = extractPrice(priceText || "") ?? parseNumberLike(priceText);
-    const rsvTerm = parseNumberLike(termText);
+    const rsvTerm = parseSejyutsuAimTime(termText, termLabel);
+    const deleteFlag = pickCheckboxFlag(fields, ["deleteFlg", "deletedFlg", "delFlg", "deleteFlag", "delFlag"]);
+    const presentFlag = pickCheckboxFlag(fields, ["presentFlg", "presentFlag", "hpPresentFlg", "hotpepperPresentFlg"]);
+    const menuTildeFlag = pickCheckboxFlag(fields, ["menuTildeFlg", "tildeFlg"]);
+    const active = deleteFlag === true ? false : presentFlag ?? true;
 
     byId.set(setmenuId, {
       setmenu_id: setmenuId,
       menu_name: menuName,
       rsv_term: rsvTerm,
       price,
-      raw_payload: fields,
+      active,
+      raw_payload: {
+        fields,
+        parsed: {
+          setMenuId: setmenuId,
+          menuName,
+          price,
+          sejyutsuAimTimeCd: termText,
+          sejyutsuAimTimeLabel: termLabel,
+          rsv_term: rsvTerm,
+          presentFlg: presentFlag,
+          menuTildeFlg: menuTildeFlag,
+        },
+      },
     });
   }
   return byId;
@@ -412,7 +488,7 @@ export async function fetchSalonboardMenus(page: Page): Promise<FetchedMenu[]> {
     extractOptions(page, 'select[name="netCouponId"]'),
   ]);
   const singleMenuDiag = await extractSingleMenuCandidates(page);
-  const setmenuCandidateById = await extractSetmenuCandidates(page);
+  const reserveSetmenuCandidateById = await extractSetmenuCandidates(page);
 
   const result: FetchedMenu[] = [];
 
@@ -428,7 +504,7 @@ export async function fetchSalonboardMenus(page: Page): Promise<FetchedMenu[]> {
 
   for (const o of setmenuOpts) {
     if (!o.value) continue;
-    const setmenuCandidate = setmenuCandidateById.get(o.value);
+    const setmenuCandidate = reserveSetmenuCandidateById.get(o.value);
     let rsvTerm: number | null = setmenuCandidate?.rsv_term ?? null;
     let price: number | null = extractPrice(o.label) ?? setmenuCandidate?.price ?? null;
     if (hasSetmenu) {
@@ -463,12 +539,87 @@ export async function fetchSalonboardMenus(page: Page): Promise<FetchedMenu[]> {
       price,
       active: !o.disabled,
       source_type: "setmenu",
-      raw_payload: { option_label: o.label, setmenu_candidate: setmenuCandidate?.raw_payload ?? null },
+      raw_payload: { option_label: o.label, reserve_regist_candidate: setmenuCandidate?.raw_payload ?? null },
     });
   }
 
   // 選択をリセット
   if (hasSetmenu) { try { await setmenuSel.selectOption(""); } catch {} }
+
+  const menuSetUrl = "https://salonboard.com/CNB/set/menuSet/";
+  let menuSetLoaded = false;
+  let menuSetSetmenuCandidateById = new Map<string, SetmenuCandidate>();
+  let menuSetSingleMenuDiag = {
+    menus: [] as FetchedMenu[],
+    total_candidates: 0,
+    skipped_without_id: 0,
+    sample_without_id: [] as Array<Record<string, string>>,
+  };
+
+  logger.info({ url: menuSetUrl }, "navigating to menuSet page (fetchMenus)");
+  try {
+    await page.goto(menuSetUrl, { waitUntil: "domcontentloaded", timeout: 90000 });
+    menuSetLoaded = true;
+  } catch (e) {
+    logger.warn({ e: (e as Error).message }, "goto timeout but continuing (menuSet fetchMenus)");
+    menuSetLoaded = /\/CNB\/set\/menuSet\//.test(page.url());
+  }
+
+  if (/\/login/i.test(page.url()) && !/doLogin/i.test(page.url())) {
+    throw new WorkerError("session_expired", "redirected to login (menuSet fetchMenus)");
+  }
+
+  if (menuSetLoaded || /\/CNB\/set\/menuSet\//.test(page.url())) {
+    try {
+      await page.waitForSelector(
+        'input[name^="frmSetMenuListDtoList["], select[name^="frmSetMenuListDtoList["]',
+        { timeout: 30000 }
+      );
+    } catch {}
+    menuSetSetmenuCandidateById = await extractSetmenuCandidates(page);
+    menuSetSingleMenuDiag = await extractSingleMenuCandidates(page);
+  } else {
+    logger.warn({ url: page.url() }, "menuSet page not loaded; keeping reserve regist menu data only");
+  }
+
+  const setmenuResultById = new Map<string, FetchedMenu>();
+  for (const menu of result) {
+    if (menu.source_type === "setmenu" && menu.setmenu_id) {
+      setmenuResultById.set(menu.setmenu_id, menu);
+    }
+  }
+
+  for (const [setmenuId, candidate] of menuSetSetmenuCandidateById) {
+    const existing = setmenuResultById.get(setmenuId);
+    if (existing) {
+      const reservePayload = existing.raw_payload ?? null;
+      existing.menu_name = candidate.menu_name || existing.menu_name;
+      existing.rsv_term = existing.rsv_term ?? candidate.rsv_term;
+      existing.price = candidate.price ?? existing.price;
+      existing.active = existing.active && (candidate.active ?? true);
+      existing.raw_payload = {
+        reserve_regist: reservePayload,
+        menu_set: candidate.raw_payload,
+      };
+      continue;
+    }
+
+    const menu: FetchedMenu = {
+      external_menu_id: setmenuId,
+      setmenu_id: setmenuId,
+      menu_id: null,
+      menu_category_cd: null,
+      net_coupon_id: null,
+      menu_name: candidate.menu_name || setmenuId,
+      rsv_term: candidate.rsv_term,
+      price: candidate.price,
+      active: candidate.active ?? true,
+      source_type: "setmenu",
+      raw_payload: { menu_set: candidate.raw_payload },
+    };
+    result.push(menu);
+    setmenuResultById.set(setmenuId, menu);
+  }
 
   for (const o of categoryOpts) {
     if (!o.value) continue;
@@ -520,6 +671,9 @@ export async function fetchSalonboardMenus(page: Page): Promise<FetchedMenu[]> {
       setmenu: setmenuOpts.length,
       setmenu_with_term: setmenuWithTerm,
       setmenu_with_price: result.filter((r) => r.source_type === "setmenu" && r.price !== null).length,
+      menu_set_setmenu: menuSetSetmenuCandidateById.size,
+      menu_set_setmenu_with_price: Array.from(menuSetSetmenuCandidateById.values()).filter((r) => r.price !== null).length,
+      menu_set_single_menu_candidates: menuSetSingleMenuDiag.total_candidates,
       single_menu_candidates: singleMenuDiag.total_candidates,
       single_menu: singleMenuDiag.menus.length,
       single_menu_skipped_without_id: singleMenuDiag.skipped_without_id,
