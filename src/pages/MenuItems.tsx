@@ -39,7 +39,7 @@ type ChannelMenuOption = {
 };
 
 type MenuSyncStatus = {
-  label: "同期可能" | "setmenu未登録" | "所要時間未登録" | "マッピング無効" | "予約フォーム非表示";
+  label: "同期可能" | "setmenu未登録" | "所要時間未登録" | "マッピング無効" | "予約フォーム非表示" | "単品メニュー（同期未検証）";
   className: string;
 };
 
@@ -147,44 +147,49 @@ const MenuItems = () => {
     load();
   };
 
-  const importSalonboardSetmenus = async (fetchedMenus: ChannelMenuOption[]) => {
-    if (!tenantId || !locationId) return 0;
-    const setmenus = fetchedMenus.filter((menu) =>
-      menu.source_type === "setmenu" &&
-      !!menu.setmenu_id &&
-      menu.rsv_term != null,
-    );
-    if (setmenus.length === 0) return 0;
+  const importSalonboardMenus = async (fetchedMenus: ChannelMenuOption[]) => {
+    if (!tenantId || !locationId) return { setmenuCount: 0, singleMenuCount: 0, updatedCount: 0 };
+    const mirrorMenus = fetchedMenus.filter((menu) => {
+      if (menu.source_type === "setmenu") return !!menu.setmenu_id && menu.rsv_term != null;
+      if (menu.source_type === "single_menu") return !!(menu.menu_id || menu.external_menu_id) && !!menu.menu_name;
+      return false;
+    });
+    if (mirrorMenus.length === 0) return { setmenuCount: 0, singleMenuCount: 0, updatedCount: 0 };
 
     const { data: mappings } = await supabase
       .from("menu_channel_mappings" as any)
-      .select("external_id, external_setmenu_id")
+      .select("menu_id, external_id, external_setmenu_id")
       .eq("owner_id", tenantId)
       .eq("location_id", locationId)
-      .eq("channel", "salonboard")
-      .eq("enabled", true);
-    const mappedSetmenus = new Set(
-      (mappings || [])
-        .flatMap((m: any) => [m.external_setmenu_id, /^SN/i.test(String(m.external_id || "")) ? m.external_id : null])
-        .filter(Boolean)
-        .map(String),
-    );
-    const importItems = setmenus
-      .filter((menu) => !mappedSetmenus.has(String(menu.setmenu_id)))
-      .map((menu) => ({
-        external_menu_id: menu.external_menu_id,
-        setmenu_id: menu.setmenu_id,
-        menu_id: menu.menu_id ?? null,
+      .eq("channel", "salonboard");
+
+    const mappedMenuIdByExternalId = new Map<string, string>();
+    for (const mapping of mappings || []) {
+      const m = mapping as any;
+      if (m.external_id) mappedMenuIdByExternalId.set(String(m.external_id), String(m.menu_id));
+      if (m.external_setmenu_id) mappedMenuIdByExternalId.set(String(m.external_setmenu_id), String(m.menu_id));
+    }
+
+    const importItems = mirrorMenus.map((menu) => {
+      const isSetmenu = menu.source_type === "setmenu";
+      const externalKey = String(isSetmenu ? menu.setmenu_id : (menu.menu_id || menu.external_menu_id));
+      const mappedMenuId = mappedMenuIdByExternalId.get(externalKey) ?? null;
+      return {
+        external_menu_id: menu.external_menu_id || externalKey,
+        setmenu_id: isSetmenu ? menu.setmenu_id : null,
+        menu_id: isSetmenu ? (menu.menu_id ?? null) : externalKey,
         menu_category_cd: menu.menu_category_cd ?? null,
         net_coupon_id: null,
-        source_type: "setmenu",
+        source_type: menu.source_type,
         menu_name: menu.menu_name,
-        rsv_term: menu.rsv_term,
+        rsv_term: menu.rsv_term ?? null,
         price: menu.price ?? null,
-        action: "create" as const,
-        target_menu_id: null,
-      }));
-    if (importItems.length === 0) return 0;
+        active: menu.active !== false,
+        action: mappedMenuId ? "link" as const : "create" as const,
+        target_menu_id: mappedMenuId,
+      };
+    });
+    if (importItems.length === 0) return { setmenuCount: 0, singleMenuCount: 0, updatedCount: 0 };
 
     const importRes = await supabase.functions.invoke("salonboard-bulk-import-menus", {
       body: { owner_id: tenantId, location_id: locationId, items: importItems },
@@ -192,7 +197,15 @@ const MenuItems = () => {
     if (importRes.error || (importRes.data as any)?.success === false) {
       throw new Error(importRes.error?.message || (importRes.data as any)?.message || "salonboard-bulk-import-menus failed");
     }
-    return ((importRes.data as any)?.results || []).filter((r: any) => r.status === "ok").length;
+    const okExternalIds = new Set(((importRes.data as any)?.results || [])
+      .filter((r: any) => r.status === "ok")
+      .map((r: any) => String(r.external_menu_id)));
+    const okItems = importItems.filter((item) => okExternalIds.has(String(item.external_menu_id)));
+    return {
+      setmenuCount: okItems.filter((item) => item.source_type === "setmenu").length,
+      singleMenuCount: okItems.filter((item) => item.source_type === "single_menu").length,
+      updatedCount: okItems.filter((item) => item.action === "link").length,
+    };
   };
 
   const refreshSalonboardMenus = async () => {
@@ -206,17 +219,17 @@ const MenuItems = () => {
       toast.error("サロンボードメニューの更新に失敗しました");
       return;
     }
-    let importedCount = 0;
+    let imported = { setmenuCount: 0, singleMenuCount: 0, updatedCount: 0 };
     try {
-      importedCount = await importSalonboardSetmenus((((data as any)?.menus || []) as ChannelMenuOption[]));
+      imported = await importSalonboardMenus((((data as any)?.menus || []) as ChannelMenuOption[]));
     } catch (importError) {
       toast.error("サロンボードメニューの取り込みに失敗しました");
       console.error("salonboard menu import failed", importError);
       load();
       return;
     }
-    if (importedCount > 0) {
-      toast.success(`サロンボードsetmenuを${importedCount}件取り込みました`);
+    if (imported.setmenuCount > 0 || imported.singleMenuCount > 0 || imported.updatedCount > 0) {
+      toast.success(`同期可能メニュー${imported.setmenuCount}件、単品メニュー${imported.singleMenuCount}件を更新しました`);
     }
     toast.success(`サロンボードメニューを更新しました（${(data as any)?.count ?? 0}件）`);
     load();

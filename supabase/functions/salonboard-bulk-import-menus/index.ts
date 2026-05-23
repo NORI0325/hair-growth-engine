@@ -13,6 +13,7 @@ interface ImportItem {
   menu_name: string;
   rsv_term?: number | null;
   price?: number | null;
+  active?: boolean | null;
   action: "create" | "link" | "skip";
   target_menu_id?: string | null;
 }
@@ -51,16 +52,29 @@ Deno.serve(async (req) => {
       }
 
       let menuId: string | null = it.target_menu_id ?? null;
+      const durationMinutes = it.rsv_term && it.rsv_term > 0 ? it.rsv_term : 60;
+      const menuPrice = typeof it.price === "number" && Number.isFinite(it.price) ? it.price : 0;
+      const active = it.active !== false;
       if (it.action === "create") {
         const { data: created, error: cErr } = await supabase.from("menu_items").insert({
           owner_id, location_id, name: it.menu_name,
-          duration_minutes: it.rsv_term && it.rsv_term > 0 ? it.rsv_term : 60,
-          price: it.price ?? 0, active: true,
+          duration_minutes: durationMinutes,
+          price: menuPrice, active,
         }).select("id").single();
         if (cErr) { results.push({ external_menu_id: it.external_menu_id, status: "error", error: cErr.message }); continue; }
         menuId = created.id;
       }
       if (!menuId) { results.push({ external_menu_id: it.external_menu_id, status: "error", error: "no_menu_id" }); continue; }
+
+      if (it.action === "link") {
+        const { error: updateErr } = await supabase.from("menu_items").update({
+          name: it.menu_name,
+          duration_minutes: durationMinutes,
+          price: menuPrice,
+          active,
+        }).eq("id", menuId).eq("owner_id", owner_id).eq("location_id", location_id);
+        if (updateErr) { results.push({ external_menu_id: it.external_menu_id, status: "error", error: updateErr.message }); continue; }
+      }
 
       const { error: mErr } = await supabase.from("menu_channel_mappings").upsert({
         owner_id, location_id, menu_id: menuId, channel: "salonboard",
@@ -70,7 +84,7 @@ Deno.serve(async (req) => {
         menu_category_cd: it.menu_category_cd || null,
         net_coupon_id: it.net_coupon_id || null,
         rsv_term: it.rsv_term ?? null,
-        enabled: true,
+        enabled: active,
       }, { onConflict: "menu_id,channel" });
       if (mErr) { results.push({ external_menu_id: it.external_menu_id, status: "error", error: mErr.message }); continue; }
       results.push({ external_menu_id: it.external_menu_id, status: "ok", menu_id: menuId });

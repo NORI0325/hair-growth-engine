@@ -16,11 +16,29 @@ export interface FetchedMenu {
   raw_payload?: Record<string, unknown>;
 }
 
+function normalizeNumericText(value: unknown): string {
+  return String(value ?? "")
+    .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+    .replace(/，/g, ",")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function extractPrice(label: string): number | null {
-  const arrow = label.match(/(?:→|->)\s*[¥￥]?\s*([0-9,]+)/);
-  if (arrow) return Number(arrow[1].replace(/,/g, ""));
-  const m = label.match(/[¥￥]\s*([0-9,]+)/);
-  if (m) return Number(m[1].replace(/,/g, ""));
+  const text = normalizeNumericText(label);
+  const patterns = [
+    /(?:→|->)\s*(?:[¥￥])?\s*([0-9][0-9,]*)/,
+    /[¥￥]\s*([0-9][0-9,]*)/,
+    /([0-9][0-9,]*)\s*円/,
+    /(?:税込|税抜|価格|料金)\D*([0-9][0-9,]*)/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (!match) continue;
+    const price = Number(match[1].replace(/,/g, ""));
+    if (Number.isFinite(price) && price > 0) return price;
+  }
   return null;
 }
 
@@ -37,7 +55,7 @@ function parseTermLabel(s: string): number | null {
 }
 
 function parseNumberLike(v: unknown): number | null {
-  const raw = String(v ?? "").replace(/,/g, "").trim();
+  const raw = normalizeNumericText(v).replace(/,/g, "");
   if (!raw) return null;
   const n = Number(raw);
   if (Number.isFinite(n) && n > 0) return n;
