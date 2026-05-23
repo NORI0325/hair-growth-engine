@@ -43,6 +43,9 @@ type MenuSyncStatus = {
   className: string;
 };
 
+const hasPositivePrice = (price: unknown): price is number =>
+  typeof price === "number" && Number.isFinite(price) && price > 0;
+
 const MenuItems = () => {
   const { user } = useAuth();
   const tenantId = useTenantId();
@@ -190,6 +193,23 @@ const MenuItems = () => {
       };
     });
     if (importItems.length === 0) return { setmenuCount: 0, singleMenuCount: 0, updatedCount: 0 };
+
+    for (const item of importItems.filter((menu) => menu.action === "link")) {
+      const menuPatch: Record<string, unknown> = {
+        name: item.menu_name,
+        duration_minutes: item.rsv_term && item.rsv_term > 0 ? item.rsv_term : 60,
+        active: item.active,
+      };
+      if (hasPositivePrice(item.price)) menuPatch.price = item.price;
+
+      const { error: itemUpdateError } = await supabase
+        .from("menu_items")
+        .update(menuPatch)
+        .eq("id", item.target_menu_id)
+        .eq("owner_id", tenantId)
+        .eq("location_id", locationId);
+      if (itemUpdateError) throw itemUpdateError;
+    }
 
     const importRes = await supabase.functions.invoke("salonboard-bulk-import-menus", {
       body: { owner_id: tenantId, location_id: locationId, items: importItems },

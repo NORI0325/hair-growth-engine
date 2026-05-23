@@ -71,6 +71,21 @@ function pickFirst(fields: Record<string, string>, keys: string[]): string | nul
   return null;
 }
 
+type SetmenuCandidate = {
+  setmenu_id: string;
+  menu_name: string | null;
+  rsv_term: number | null;
+  price: number | null;
+  raw_payload: Record<string, string>;
+};
+
+function readFieldByPattern(fields: Record<string, string>, pattern: RegExp): string | null {
+  for (const [key, value] of Object.entries(fields)) {
+    if (pattern.test(key) && String(value).trim()) return String(value).trim();
+  }
+  return null;
+}
+
 function isTruthyFlag(value: string | null): boolean {
   return /^(1|true|on|yes|y)$/i.test(String(value ?? "").trim());
 }
@@ -211,6 +226,122 @@ async function extractSingleMenuCandidates(page: Page): Promise<{
   };
 }
 
+async function extractSetmenuCandidates(page: Page): Promise<Map<string, SetmenuCandidate>> {
+  const rows = await page.evaluate(() => {
+    const groups: Record<string, Record<string, string>> = {};
+    const controls = Array.from(document.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
+      "input, select, textarea",
+    ));
+
+    for (const el of controls) {
+      const name = el.name || el.id || "";
+      if (!/set.?menu|setMenu|SetMenu|set_menu|setM/i.test(name)) continue;
+      const match = name.match(/^(.+\[\d+\])\.?([A-Za-z0-9_.-]+)$/);
+      if (!match) continue;
+      const [, groupKey, field] = match;
+      groups[groupKey] ||= {};
+      if (el instanceof HTMLSelectElement) {
+        groups[groupKey][field] = el.value || "";
+        const selected = el.selectedOptions?.[0]?.textContent?.replace(/\s+/g, " ").trim();
+        if (selected) groups[groupKey][`${field}_label`] = selected;
+      } else if (el instanceof HTMLInputElement && (el.type === "checkbox" || el.type === "radio")) {
+        groups[groupKey][field] = el.checked ? (el.value || "true") : "";
+      } else {
+        groups[groupKey][field] = el.value || "";
+      }
+    }
+
+    return Object.values(groups);
+  }).catch(() => [] as Array<Record<string, string>>);
+
+  const byId = new Map<string, SetmenuCandidate>();
+  for (const fields of rows) {
+    const setmenuId = pickFirst(fields, [
+      "setmenuId",
+      "setMenuId",
+      "setmenuID",
+      "setmenu_id",
+      "setMenuCd",
+      "setmenuCd",
+      "setMenuNo",
+      "setmenuNo",
+      "id",
+    ]) || readFieldByPattern(fields, /set.?menu.*(id|cd|no)$/i);
+    if (!setmenuId || !/^SN/i.test(setmenuId)) continue;
+
+    const menuName = pickFirst(fields, [
+      "setmenuName",
+      "setMenuName",
+      "setmenuNm",
+      "setMenuNm",
+      "menuName",
+      "name",
+    ]) || readFieldByPattern(fields, /(set.?menu|menu).*(name|nm)$/i);
+    const priceText = pickFirst(fields, [
+      "price",
+      "setmenuPrice",
+      "setMenuPrice",
+      "sales",
+      "taxIncludedPrice",
+      "priceTaxIn",
+      "charge",
+      "amount",
+      "fee",
+    ]) || readFieldByPattern(fields, /(price|charge|amount|fee|sales|kingaku|kakaku|ryokin)$/i);
+    const termText = pickFirst(fields, [
+      "rsvTerm",
+      "term",
+      "duration",
+      "sejyutsuAimTimeCd",
+      "sejyutsuAimTime",
+      "workTime",
+    ]) || readFieldByPattern(fields, /(rsvTerm|term|duration|aimTime|workTime)$/i);
+    const price = extractPrice(priceText || "") ?? parseNumberLike(priceText);
+    const rsvTerm = parseNumberLike(termText);
+
+    byId.set(setmenuId, {
+      setmenu_id: setmenuId,
+      menu_name: menuName,
+      rsv_term: rsvTerm,
+      price,
+      raw_payload: fields,
+    });
+  }
+  return byId;
+}
+
+async function readSelectedSetmenuPrice(page: Page, selectedLabel: string): Promise<number | null> {
+  const optionPrice = extractPrice(selectedLabel);
+  if (optionPrice) return optionPrice;
+
+  const candidates = await page.evaluate(() => {
+    const values: string[] = [];
+    const controls = Array.from(document.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
+      "input, select, textarea",
+    ));
+    const priceLike = /(price|charge|amount|fee|sales|kingaku|kakaku|ryokin)/i;
+
+    for (const el of controls) {
+      const key = `${el.name || ""} ${el.id || ""}`;
+      if (!priceLike.test(key)) continue;
+      if (el instanceof HTMLSelectElement) {
+        if (el.value) values.push(el.value);
+        const selected = el.selectedOptions?.[0]?.textContent?.replace(/\s+/g, " ").trim();
+        if (selected) values.push(selected);
+      } else if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+        if (el.value) values.push(el.value);
+      }
+    }
+    return values;
+  }).catch(() => [] as string[]);
+
+  for (const candidate of candidates) {
+    const price = extractPrice(candidate) ?? parseNumberLike(candidate);
+    if (price) return price;
+  }
+  return null;
+}
+
 async function readRsvTerm(page: Page): Promise<number | null> {
   // 1. select[name="rsvTerm"]
   for (const sel of ['select[name="rsvTerm"]', 'select#rsvTermId']) {
@@ -281,6 +412,7 @@ export async function fetchSalonboardMenus(page: Page): Promise<FetchedMenu[]> {
     extractOptions(page, 'select[name="netCouponId"]'),
   ]);
   const singleMenuDiag = await extractSingleMenuCandidates(page);
+  const setmenuCandidateById = await extractSetmenuCandidates(page);
 
   const result: FetchedMenu[] = [];
 
@@ -296,7 +428,9 @@ export async function fetchSalonboardMenus(page: Page): Promise<FetchedMenu[]> {
 
   for (const o of setmenuOpts) {
     if (!o.value) continue;
-    let rsvTerm: number | null = null;
+    const setmenuCandidate = setmenuCandidateById.get(o.value);
+    let rsvTerm: number | null = setmenuCandidate?.rsv_term ?? null;
+    let price: number | null = extractPrice(o.label) ?? setmenuCandidate?.price ?? null;
     if (hasSetmenu) {
       try {
         await setmenuSel.selectOption(o.value);
@@ -308,11 +442,12 @@ export async function fetchSalonboardMenus(page: Page): Promise<FetchedMenu[]> {
           last = await readRsvTerm(page);
           if (last !== null && last !== baselineTerm) break;
         }
-        rsvTerm = last;
+        rsvTerm = last ?? rsvTerm;
         if (rsvTerm === null) {
           const diag = await diagnoseRsvTerm(page);
           logger.warn({ setmenuId: o.value, diag }, "rsvTerm not detected for setmenu");
         }
+        price = price ?? await readSelectedSetmenuPrice(page, o.label);
       } catch (e) {
         logger.warn({ setmenuId: o.value, e: (e as Error).message }, "selectOption failed");
       }
@@ -323,11 +458,12 @@ export async function fetchSalonboardMenus(page: Page): Promise<FetchedMenu[]> {
       menu_id: null,
       menu_category_cd: null,
       net_coupon_id: null,
-      menu_name: o.label || o.value,
+      menu_name: setmenuCandidate?.menu_name || o.label || o.value,
       rsv_term: rsvTerm,
-      price: extractPrice(o.label),
+      price,
       active: !o.disabled,
       source_type: "setmenu",
+      raw_payload: { option_label: o.label, setmenu_candidate: setmenuCandidate?.raw_payload ?? null },
     });
   }
 
@@ -383,6 +519,7 @@ export async function fetchSalonboardMenus(page: Page): Promise<FetchedMenu[]> {
       count: result.length,
       setmenu: setmenuOpts.length,
       setmenu_with_term: setmenuWithTerm,
+      setmenu_with_price: result.filter((r) => r.source_type === "setmenu" && r.price !== null).length,
       single_menu_candidates: singleMenuDiag.total_candidates,
       single_menu: singleMenuDiag.menus.length,
       single_menu_skipped_without_id: singleMenuDiag.skipped_without_id,

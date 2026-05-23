@@ -53,7 +53,8 @@ Deno.serve(async (req) => {
 
       let menuId: string | null = it.target_menu_id ?? null;
       const durationMinutes = it.rsv_term && it.rsv_term > 0 ? it.rsv_term : 60;
-      const menuPrice = typeof it.price === "number" && Number.isFinite(it.price) ? it.price : 0;
+      const hasPrice = typeof it.price === "number" && Number.isFinite(it.price);
+      const menuPrice = hasPrice ? it.price! : 0;
       const active = it.active !== false;
       if (it.action === "create") {
         const { data: created, error: cErr } = await supabase.from("menu_items").insert({
@@ -67,12 +68,14 @@ Deno.serve(async (req) => {
       if (!menuId) { results.push({ external_menu_id: it.external_menu_id, status: "error", error: "no_menu_id" }); continue; }
 
       if (it.action === "link") {
-        const { error: updateErr } = await supabase.from("menu_items").update({
+        const menuPatch: Record<string, unknown> = {
           name: it.menu_name,
           duration_minutes: durationMinutes,
-          price: menuPrice,
           active,
-        }).eq("id", menuId).eq("owner_id", owner_id).eq("location_id", location_id);
+        };
+        if (hasPrice) menuPatch.price = menuPrice;
+        const { error: updateErr } = await supabase.from("menu_items").update(menuPatch)
+          .eq("id", menuId).eq("owner_id", owner_id).eq("location_id", location_id);
         if (updateErr) { results.push({ external_menu_id: it.external_menu_id, status: "error", error: updateErr.message }); continue; }
       }
 
