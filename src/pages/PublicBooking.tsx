@@ -77,7 +77,7 @@ const PublicBooking = () => {
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [hasStaff, setHasStaff] = useState(false);
   const [openTime, setOpenTime] = useState<string>("10:00");
-  const [closeTime, setCloseTime] = useState<string>("19:00);
+  const [closeTime, setCloseTime] = useState<string>("19:00");
   const [bookingPaused, setBookingPaused] = useState(false);
   const [pausedMessage, setPausedMessage] = useState<string>("");
 
