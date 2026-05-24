@@ -2749,6 +2749,87 @@ export type Database = {
         }
         Relationships: []
       }
+      salonboard_reservation_sync_runs: {
+        Row: {
+          conflict_count: number
+          created_at: string
+          error_message: string | null
+          error_type: string | null
+          fetched_count: number
+          fetched_days: number
+          finished_at: string | null
+          id: string
+          local_only_count: number
+          location_id: string | null
+          matched_count: number
+          matched_with_diff_count: number
+          meta: Json
+          mode: string
+          needs_review_count: number
+          owner_id: string
+          range_end: string
+          range_start: string
+          run_type: string
+          salonboard_only_count: number
+          slot: string
+          started_at: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          conflict_count?: number
+          created_at?: string
+          error_message?: string | null
+          error_type?: string | null
+          fetched_count?: number
+          fetched_days?: number
+          finished_at?: string | null
+          id?: string
+          local_only_count?: number
+          location_id?: string | null
+          matched_count?: number
+          matched_with_diff_count?: number
+          meta?: Json
+          mode?: string
+          needs_review_count?: number
+          owner_id: string
+          range_end: string
+          range_start: string
+          run_type?: string
+          salonboard_only_count?: number
+          slot?: string
+          started_at?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          conflict_count?: number
+          created_at?: string
+          error_message?: string | null
+          error_type?: string | null
+          fetched_count?: number
+          fetched_days?: number
+          finished_at?: string | null
+          id?: string
+          local_only_count?: number
+          location_id?: string | null
+          matched_count?: number
+          matched_with_diff_count?: number
+          meta?: Json
+          mode?: string
+          needs_review_count?: number
+          owner_id?: string
+          range_end?: string
+          range_start?: string
+          run_type?: string
+          salonboard_only_count?: number
+          slot?: string
+          started_at?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       salonboard_sessions: {
         Row: {
           created_at: string
