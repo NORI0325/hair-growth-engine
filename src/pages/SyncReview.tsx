@@ -171,6 +171,7 @@ export default function SyncReview() {
   const [items, setItems] = useState<Row[]>([]);
   const [mirrorRows, setMirrorRows] = useState<Row[]>([]);
   const [reservationRuns, setReservationRuns] = useState<ReservationSyncRun[]>([]);
+  const [scheduledRuns, setScheduledRuns] = useState<ReservationSyncRun[]>([]);
   const [inboundLogs, setInboundLogs] = useState<InboundLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncTarget, setSyncTarget] = useState<string | null>(null);
@@ -291,6 +292,24 @@ export default function SyncReview() {
     }
     const { data: runs } = await runsQuery;
     setReservationRuns((runs as any) ?? []);
+
+    let scheduledRunsQuery = supabase
+      .from("salonboard_reservation_sync_runs")
+      .select(`
+        id, owner_id, location_id, run_type, slot, mode, range_start, range_end, status,
+        started_at, finished_at, fetched_days, fetched_count, matched_count,
+        matched_with_diff_count, salonboard_only_count, local_only_count, conflict_count,
+        needs_review_count, error_type, error_message, created_at
+      `)
+      .eq("owner_id", user.id)
+      .eq("run_type", "scheduled")
+      .order("created_at", { ascending: false })
+      .limit(12);
+    if (currentLocationId) {
+      scheduledRunsQuery = scheduledRunsQuery.eq("location_id", currentLocationId);
+    }
+    const { data: scheduledRunRows } = await scheduledRunsQuery;
+    setScheduledRuns((scheduledRunRows as any) ?? []);
 
     // 外部通知メール取り込みの needs_review もここに統合表示
     const { data: logs } = await supabase
@@ -552,6 +571,10 @@ export default function SyncReview() {
     externalIdMissing: mirrorRows.filter((row) => getMirrorRisks(row).includes("external_id_missing")).length,
     syncError: mirrorRows.filter((row) => getMirrorRisks(row).includes("sync_error")).length,
   };
+  const latestScheduledRuns = (["morning", "noon", "evening"] as const).map((slot) => ({
+    slot,
+    run: scheduledRuns.find((row) => row.slot === slot) ?? null,
+  }));
 
   // ソート順: conflict > matched_with_diff > salonboard_only > matched
   const sortItems = (items: DayItem[]): DayItem[] => {
@@ -699,6 +722,37 @@ export default function SyncReview() {
             店舗別のサロンボード連携だけを対象にするため、店舗を選択するとrange dry_runを実行できます。
           </div>
         )}
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-4">
+          {latestScheduledRuns.map(({ slot, run }) => {
+            const label = slot === "morning" ? "09:00" : slot === "noon" ? "13:00" : "18:00";
+            const statusTone =
+              !run ? "border-amber-200 bg-amber-50 text-amber-800" :
+              run.status === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" :
+              run.status === "running" ? "border-blue-200 bg-blue-50 text-blue-800" :
+              run.status === "skipped" ? "border-amber-200 bg-amber-50 text-amber-800" :
+              "border-red-200 bg-red-50 text-red-700";
+            return (
+              <div key={slot} className={`border px-3 py-2 ${statusTone}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-[10px] uppercase tracking-luxury">{label} scheduled</div>
+                  <Badge variant="outline" className="rounded-none text-[10px] bg-white/60">{run?.status ?? "未実行"}</Badge>
+                </div>
+                {run ? (
+                  <div className="text-[11px] mt-1 space-y-0.5">
+                    <div>{run.range_start}〜{run.range_end}</div>
+                    <div>取得 {run.fetched_count}件 / 要確認 {run.needs_review_count}件</div>
+                    <div>{new Date(run.created_at).toLocaleString("ja-JP")}</div>
+                  </div>
+                ) : (
+                  <div className="text-[11px] mt-1">
+                    まだこの枠のscheduled dry_runログはありません。
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
 
         {reservationRuns.length === 0 ? (
           <div className="text-sm text-muted-foreground bg-muted/20 border border-border px-3 py-2">

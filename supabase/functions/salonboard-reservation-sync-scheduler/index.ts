@@ -54,6 +54,59 @@ const isAuthorized = (req: Request) => {
   return !!configuredSecret && providedSecret === configuredSecret;
 };
 
+const writeSchedulerLogs = async (
+  supabase: ReturnType<typeof createClient>,
+  slot: Slot,
+  results: Array<Record<string, unknown>>,
+) => {
+  const byOwner = new Map<string, Array<Record<string, unknown>>>();
+  for (const result of results) {
+    const ownerId = typeof result.owner_id === "string" ? result.owner_id : "";
+    if (!ownerId) continue;
+    const ownerResults = byOwner.get(ownerId) ?? [];
+    ownerResults.push(result);
+    byOwner.set(ownerId, ownerResults);
+  }
+
+  for (const [ownerId, ownerResults] of byOwner) {
+    const failed = ownerResults.filter((result) => result.ok !== true && result.skipped !== true);
+    const skipped = ownerResults.filter((result) => result.skipped === true);
+    const needsReviewCount = ownerResults.reduce((sum, result) => {
+      const count = typeof result.needs_review_count === "number" ? result.needs_review_count : 0;
+      return sum + count;
+    }, 0);
+    const fetchedCount = ownerResults.reduce((sum, result) => {
+      const count = typeof result.fetched_count === "number" ? result.fetched_count : 0;
+      return sum + count;
+    }, 0);
+    const level = failed.length > 0 ? "error" : needsReviewCount > 0 ? "warning" : "info";
+    const message =
+      level === "error"
+        ? `[scheduler] salonboard reservation dry_run failed (${slot})`
+        : level === "warning"
+          ? `[scheduler] salonboard reservation dry_run needs review (${slot})`
+          : `[scheduler] salonboard reservation dry_run completed (${slot})`;
+
+    await supabase.from("sync_logs").insert({
+      owner_id: ownerId,
+      channel: "salonboard",
+      level,
+      message,
+      metadata: {
+        dry_run: true,
+        scheduler: "salonboard-reservation-sync-scheduler",
+        slot,
+        target_count: ownerResults.length,
+        failed_count: failed.length,
+        skipped_count: skipped.length,
+        needs_review_count: needsReviewCount,
+        fetched_count: fetchedCount,
+        results: ownerResults,
+      },
+    });
+  }
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") return json({ success: false, error: "method_not_allowed" }, 405);
@@ -147,6 +200,7 @@ Deno.serve(async (req) => {
 
   const successCount = results.filter((result) => result.ok === true).length;
   const skippedCount = results.filter((result) => result.skipped === true).length;
+  await writeSchedulerLogs(supabase, slot, results);
   return json({
     success: true,
     dry_run: true,
