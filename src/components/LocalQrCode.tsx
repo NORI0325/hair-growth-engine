@@ -206,6 +206,7 @@ const drawFunctionPatterns = (modules: boolean[][], isFunction: boolean[][], ver
   }
 
   drawVersion(modules, isFunction, version);
+  drawFormat(modules, isFunction, 0);
 };
 
 const drawCodewords = (modules: boolean[][], isFunction: boolean[][], data: number[]) => {
