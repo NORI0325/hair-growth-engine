@@ -203,11 +203,10 @@ export async function listDayReservations(page: Page, date: string): Promise<Day
     }
   }
 
-  // ===== P2: time === null の予約だけ詳細ページ (/net/reserveDetail) を直列で開き #rsvDate から補完 =====
+  // ===== P2: 詳細ページ (/net/reserveDetail) を直列で開き #rsvDate から開始/終了/施術時間を補完 =====
   // ext/extReserveDetail はサンプル未確認のため未対応。
   let detailFetched = 0;
   for (const r of results) {
-    if (r.time) continue;
     const href = r.detail_href || "";
     if (!href || !/\/(?:net\/reserveDetail|ext\/extReserveDetail)\/\?reserveId=/.test(href)) continue;
     if (detailFetched >= DETAIL_FETCH_DAILY_LIMIT) {
@@ -248,7 +247,11 @@ export async function listDayReservations(page: Page, date: string): Promise<Day
         else {
           const sh = parseInt(timeRange[1], 10), sm = parseInt(timeRange[2], 10);
           const eh = parseInt(timeRange[3], 10), em = parseInt(timeRange[4], 10);
-          r.duration_minutes = (eh * 60 + em) - (sh * 60 + sm);
+          const startMinutes = sh * 60 + sm;
+          const endMinutes = eh * 60 + em;
+          r.duration_minutes = endMinutes >= startMinutes
+            ? endMinutes - startMinutes
+            : endMinutes + 24 * 60 - startMinutes;
         }
       } else {
         r.detail_fetch_error = "rsvDate_not_found";

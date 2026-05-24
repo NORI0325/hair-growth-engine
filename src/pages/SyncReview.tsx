@@ -334,6 +334,8 @@ export default function SyncReview() {
           menu: it.menu,
           external_reservation_id: it.external_reservation_id,
           location_id: currentLocationId,
+          duration_minutes: it.duration_minutes ?? null,
+          end_time: it.end_time ?? null,
         },
       });
       if (error) { toast.error("取り込み失敗: " + error.message); return; }

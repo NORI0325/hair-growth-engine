@@ -4,6 +4,26 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
 
+const parseTimeToMinutes = (value?: string | null): number | null => {
+  if (!value) return null;
+  const match = String(value).match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  return hours * 60 + minutes;
+};
+
+const durationFromTimes = (start?: string | null, end?: string | null): number | null => {
+  const startMinutes = parseTimeToMinutes(start);
+  const endMinutes = parseTimeToMinutes(end);
+  if (startMinutes === null || endMinutes === null) return null;
+  const duration = endMinutes >= startMinutes
+    ? endMinutes - startMinutes
+    : endMinutes + 24 * 60 - startMinutes;
+  return duration > 0 ? duration : null;
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
@@ -28,6 +48,7 @@ Deno.serve(async (req) => {
       customer_phone,
       menu, // optional
       duration_minutes, // optional
+      end_time, // optional
     } = body ?? {};
 
     if (!location_id) return new Response(JSON.stringify({ error: "location_required", message: "location_id は必須です" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -59,7 +80,17 @@ Deno.serve(async (req) => {
     }
     if (!customerId) return new Response(JSON.stringify({ error: "customer_create_failed" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-    const needsReview = !menu || !customer_name;
+    const durationFromDetail = durationFromTimes(booking_time, end_time);
+    const resolvedDuration = durationFromDetail ?? (
+      Number.isFinite(Number(duration_minutes)) && Number(duration_minutes) > 0
+        ? Number(duration_minutes)
+        : null
+    );
+    const durationNeedsReview = !resolvedDuration;
+    const needsReview = !menu || !customer_name || durationNeedsReview;
+    const reviewNotes = durationNeedsReview
+      ? "サロンボード予約の施術時間未取得。実予約の終了時刻を確認してください。"
+      : null;
 
     const { data: ins, error: insErr } = await supabase.from("bookings").insert({
       owner_id: user.id,
@@ -68,7 +99,8 @@ Deno.serve(async (req) => {
       booking_date,
       booking_time,
       menu: menu || "（取り込み・要確認）",
-      total_duration_minutes: duration_minutes ?? 60,
+      total_duration_minutes: resolvedDuration,
+      notes: reviewNotes,
       status: "confirmed",
       external_reservation_id,
       external_source: "salonboard_import",

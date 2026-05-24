@@ -4,6 +4,26 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
 
+const parseTimeToMinutes = (value?: string | null): number | null => {
+  if (!value) return null;
+  const match = String(value).match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  return hours * 60 + minutes;
+};
+
+const durationFromTimes = (start?: string | null, end?: string | null): number | null => {
+  const startMinutes = parseTimeToMinutes(start);
+  const endMinutes = parseTimeToMinutes(end);
+  if (startMinutes === null || endMinutes === null) return null;
+  const duration = endMinutes >= startMinutes
+    ? endMinutes - startMinutes
+    : endMinutes + 24 * 60 - startMinutes;
+  return duration > 0 ? duration : null;
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
@@ -28,11 +48,11 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const {
       date, time, customer_name, menu, external_reservation_id,
-      location_id, duration_minutes,
+      location_id, duration_minutes, end_time,
     }: {
       date?: string; time?: string; customer_name?: string;
       menu?: string | null; external_reservation_id?: string | null;
-      location_id?: string | null; duration_minutes?: number | null;
+      location_id?: string | null; duration_minutes?: number | null; end_time?: string | null;
     } = body || {};
 
     if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
@@ -92,6 +112,17 @@ Deno.serve(async (req) => {
       customerId = created.id;
     }
 
+    const durationFromDetail = durationFromTimes(time, end_time);
+    const resolvedDuration = durationFromDetail ?? (
+      Number.isFinite(Number(duration_minutes)) && Number(duration_minutes) > 0
+        ? Number(duration_minutes)
+        : null
+    );
+    const durationNeedsReview = !resolvedDuration;
+    const notes = durationNeedsReview
+      ? "サロンボード予約の施術時間未取得。実予約の終了時刻を確認してください。"
+      : null;
+
     const insertPayload: Record<string, unknown> = {
       owner_id: user.id,
       location_id: location_id ?? null,
@@ -102,9 +133,11 @@ Deno.serve(async (req) => {
       status: "confirmed",
       external_source: "salonboard_manual",
       source_channel: "salonboard",
-      sync_status: "success",
+      sync_status: durationNeedsReview ? "needs_review" : "success",
+      needs_manual_review: durationNeedsReview,
       external_reservation_id: external_reservation_id ?? null,
-      total_duration_minutes: duration_minutes ?? null,
+      total_duration_minutes: resolvedDuration,
+      notes,
       last_synced_at: new Date().toISOString(),
     };
 

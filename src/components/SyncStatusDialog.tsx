@@ -88,6 +88,8 @@ export default function SyncStatusDialog({ bookingId, open, onOpenChange }: Prop
         booking_date: data.local.date,
         booking_time: ext.time ? ext.time + ":00" : data.local.time + ":00",
         customer_name: ext.customerName ?? data.local.customer_name,
+        duration_minutes: ext.duration_minutes ?? null,
+        end_time: ext.end_time ?? null,
       },
     });
     setActing(null);
