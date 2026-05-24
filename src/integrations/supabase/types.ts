@@ -4010,6 +4010,7 @@ export type Database = {
           tenant_id: string
         }[]
       }
+      get_salonboard_cron_secret: { Args: never; Returns: string }
       get_tenant_members_detail: {
         Args: { _tenant_id: string }
         Returns: {

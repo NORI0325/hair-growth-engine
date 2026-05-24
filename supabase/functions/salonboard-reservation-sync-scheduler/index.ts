@@ -42,15 +42,9 @@ const fetchVaultCronSecret = async (
   supabase: ReturnType<typeof createClient>,
 ): Promise<string> => {
   try {
-    const { data, error } = await supabase
-      .schema("vault")
-      .from("decrypted_secrets")
-      .select("decrypted_secret")
-      .eq("name", "salonboard_reservation_sync_cron_secret")
-      .maybeSingle();
+    const { data, error } = await supabase.rpc("get_salonboard_cron_secret");
     if (error) return "";
-    const value = (data as { decrypted_secret?: string } | null)?.decrypted_secret;
-    return typeof value === "string" ? value : "";
+    return typeof data === "string" ? data : "";
   } catch {
     return "";
   }
