@@ -38,20 +38,55 @@ const clampLimit = (value: unknown) => {
   return Math.max(1, Math.min(50, Math.floor(parsed)));
 };
 
-const isAuthorized = (req: Request) => {
+const fetchVaultCronSecret = async (
+  supabase: ReturnType<typeof createClient>,
+): Promise<string> => {
+  try {
+    const { data, error } = await supabase
+      .schema("vault")
+      .from("decrypted_secrets")
+      .select("decrypted_secret")
+      .eq("name", "salonboard_reservation_sync_cron_secret")
+      .maybeSingle();
+    if (error) return "";
+    const value = (data as { decrypted_secret?: string } | null)?.decrypted_secret;
+    return typeof value === "string" ? value : "";
+  } catch {
+    return "";
+  }
+};
+
+const constantTimeEquals = (a: string, b: string) => {
+  if (!a || !b || a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+};
+
+const isAuthorized = async (
+  req: Request,
+  supabase: ReturnType<typeof createClient>,
+): Promise<boolean> => {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
   const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
-  if (serviceKey && token === serviceKey) return true;
+  if (serviceKey && token && constantTimeEquals(token, serviceKey)) return true;
 
-  const configuredSecret =
-    Deno.env.get("SALONBOARD_RESERVATION_SYNC_CRON_SECRET") ||
-    Deno.env.get("CRON_SECRET") ||
-    "";
   const providedSecret =
     req.headers.get("x-cron-secret") ||
     req.headers.get("x-scheduler-secret") ||
     "";
-  return !!configuredSecret && providedSecret === configuredSecret;
+  if (!providedSecret) return false;
+
+  const vaultSecret = await fetchVaultCronSecret(supabase);
+  if (vaultSecret && constantTimeEquals(providedSecret, vaultSecret)) return true;
+
+  const envSecret =
+    Deno.env.get("SALONBOARD_RESERVATION_SYNC_CRON_SECRET") ||
+    Deno.env.get("CRON_SECRET") ||
+    "";
+  if (envSecret && constantTimeEquals(providedSecret, envSecret)) return true;
+
+  return false;
 };
 
 const writeSchedulerLogs = async (
