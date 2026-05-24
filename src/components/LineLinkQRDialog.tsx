@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Copy, Check, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import LocalQrCode from "@/components/LocalQrCode";
+import { getLineLinkConfig } from "@/lib/line-link-config";
 
 interface Props {
   open: boolean;
@@ -15,11 +16,11 @@ interface Props {
   lineAddFriendUrl?: string | null;
 }
 
-const liffId = import.meta.env.VITE_LINE_LIFF_ID as string | undefined;
-
 const LineLinkQRDialog = ({ open, onOpenChange, customerId, customerName, lineAddFriendUrl }: Props) => {
   const { user } = useAuth();
   const [token, setToken] = useState<string>("");
+  const [liffId, setLiffId] = useState<string | null>(null);
+  const [configUnavailable, setConfigUnavailable] = useState(false);
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -27,6 +28,16 @@ const LineLinkQRDialog = ({ open, onOpenChange, customerId, customerName, lineAd
     if (!open || !user) return;
     (async () => {
       setLoading(true);
+      setConfigUnavailable(false);
+
+      const configPromise = getLineLinkConfig()
+        .then((config) => setLiffId(config.liffId))
+        .catch((error) => {
+          console.warn("Failed to load LIFF config", error);
+          setLiffId(null);
+          setConfigUnavailable(true);
+        });
+
       const { data: customer, error: customerError } = await supabase
         .from("customers")
         .select("id, owner_id, full_name, line_user_id, line_unfollowed_at")
@@ -35,6 +46,7 @@ const LineLinkQRDialog = ({ open, onOpenChange, customerId, customerName, lineAd
 
       if (customerError || !customer) {
         toast.error("顧客情報の取得に失敗しました");
+        await configPromise;
         setLoading(false);
         return;
       }
@@ -63,6 +75,7 @@ const LineLinkQRDialog = ({ open, onOpenChange, customerId, customerName, lineAd
         else setToken(created?.token || "");
       }
 
+      await configPromise;
       setLoading(false);
     })();
   }, [open, user, customerId]);
@@ -105,8 +118,9 @@ const LineLinkQRDialog = ({ open, onOpenChange, customerId, customerName, lineAd
 
               {!liffId && (
                 <div className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 p-3">
-                  LIFF IDが未設定のため、QRはアプリ内の連携ページを開きます。自動連携を有効にするには
-                  VITE_LINE_LIFF_ID を設定してください。
+                  {configUnavailable
+                    ? "LIFF設定を取得できませんでした。QRはアプリ内の連携ページを開きます。自動連携にはLINE_LIFF_ID設定が必要です。"
+                    : "LIFF IDが未設定のため、QRはアプリ内の連携ページを開きます。自動連携を有効にするにはLINE_LIFF_IDを設定してください。"}
                 </div>
               )}
 

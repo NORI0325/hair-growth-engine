@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { AlertCircle, CheckCircle2, Copy, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { getLineLinkConfig } from "@/lib/line-link-config";
 
 type LiffApi = {
   init: (config: { liffId: string }) => Promise<void>;
@@ -20,8 +21,6 @@ declare global {
 }
 
 type LinkState = "linking" | "success" | "error" | "config_required";
-
-const liffId = import.meta.env.VITE_LINE_LIFF_ID as string | undefined;
 
 const errorMessages: Record<string, string> = {
   invalid_token: "連携コードが正しくありません。",
@@ -87,13 +86,15 @@ const LineLink = () => {
         return;
       }
 
-      if (!liffId) {
-        setState("config_required");
-        setMessage("LIFF IDが未設定です。店舗スタッフへお知らせください。");
-        return;
-      }
-
       try {
+        const config = await getLineLinkConfig();
+        const liffId = config.liffId;
+        if (!liffId) {
+          setState("config_required");
+          setMessage("LINE連携にはLIFF設定が必要です。店舗スタッフへお知らせください。");
+          return;
+        }
+
         const liff = await loadLiffSdk();
         if (cancelled) return;
 
