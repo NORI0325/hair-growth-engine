@@ -7,6 +7,31 @@ const json = (body: Record<string, unknown>, status = 200) =>
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 
+const DEFAULT_PUBLIC_APP_ORIGIN = "https://saronboost.com";
+
+const normalizeOrigin = (value: string | null | undefined) => {
+  const raw = (value || "").trim();
+  if (!raw) return null;
+
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "https:") return null;
+    return url.origin.replace(/\/+$/, "");
+  } catch {
+    return null;
+  }
+};
+
+const getPublicAppOrigin = () =>
+  normalizeOrigin(
+    Deno.env.get("PUBLIC_APP_ORIGIN") ||
+      Deno.env.get("APP_PUBLIC_ORIGIN") ||
+      Deno.env.get("APP_ORIGIN") ||
+      Deno.env.get("APP_URL") ||
+      Deno.env.get("PUBLIC_SITE_URL") ||
+      DEFAULT_PUBLIC_APP_ORIGIN,
+  ) || DEFAULT_PUBLIC_APP_ORIGIN;
+
 const getRequestToken = async (req: Request) => {
   if (req.method === "GET") {
     return (new URL(req.url).searchParams.get("token") || "").trim().toUpperCase();
@@ -73,12 +98,14 @@ Deno.serve(async (req) => {
   }
 
   const liffId = (Deno.env.get("LINE_LIFF_ID") || "").trim();
+  const publicAppOrigin = getPublicAppOrigin();
   const token = await getRequestToken(req);
   const lineAddFriendUrl = await getLineAddFriendUrl(token);
 
   return json({
     configured: Boolean(liffId),
     liffId: liffId || null,
+    publicAppOrigin,
     lineAddFriendUrl,
   });
 });

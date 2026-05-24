@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 export interface LineLinkConfig {
   configured: boolean;
   liffId: string | null;
+  publicAppOrigin: string | null;
   lineAddFriendUrl: string | null;
 }
 
@@ -10,10 +11,12 @@ const configPromises = new Map<string, Promise<LineLinkConfig>>();
 
 const normalizeConfig = (data: any): LineLinkConfig => {
   const liffId = typeof data?.liffId === "string" ? data.liffId.trim() : "";
+  const publicAppOrigin = typeof data?.publicAppOrigin === "string" ? data.publicAppOrigin.trim().replace(/\/+$/, "") : "";
   const lineAddFriendUrl = typeof data?.lineAddFriendUrl === "string" ? data.lineAddFriendUrl.trim() : "";
   return {
     configured: Boolean(data?.configured && liffId),
     liffId: liffId || null,
+    publicAppOrigin: publicAppOrigin || null,
     lineAddFriendUrl: lineAddFriendUrl || null,
   };
 };

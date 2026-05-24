@@ -16,10 +16,13 @@ interface Props {
   lineAddFriendUrl?: string | null;
 }
 
+const DEFAULT_PUBLIC_APP_ORIGIN = "https://saronboost.com";
+
 const LineLinkQRDialog = ({ open, onOpenChange, customerId, customerName, lineAddFriendUrl }: Props) => {
   const { user } = useAuth();
   const [token, setToken] = useState<string>("");
   const [liffId, setLiffId] = useState<string | null>(null);
+  const [publicAppOrigin, setPublicAppOrigin] = useState<string | null>(null);
   const [configUnavailable, setConfigUnavailable] = useState(false);
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -31,10 +34,14 @@ const LineLinkQRDialog = ({ open, onOpenChange, customerId, customerName, lineAd
       setConfigUnavailable(false);
 
       const configPromise = getLineLinkConfig()
-        .then((config) => setLiffId(config.liffId))
+        .then((config) => {
+          setLiffId(config.liffId);
+          setPublicAppOrigin(config.publicAppOrigin);
+        })
         .catch((error) => {
           console.warn("Failed to load LIFF config", error);
           setLiffId(null);
+          setPublicAppOrigin(null);
           setConfigUnavailable(true);
         });
 
@@ -81,7 +88,8 @@ const LineLinkQRDialog = ({ open, onOpenChange, customerId, customerName, lineAd
   }, [open, user, customerId]);
 
   const linkText = token ? `連携:${token}` : "連携:";
-  const appLinkUrl = token ? `${window.location.origin}/line-link?token=${encodeURIComponent(token)}` : "";
+  const appOrigin = (publicAppOrigin || DEFAULT_PUBLIC_APP_ORIGIN).replace(/\/+$/, "");
+  const appLinkUrl = token ? `${appOrigin}/line-link?token=${encodeURIComponent(token)}` : "";
   const qrData = appLinkUrl || linkText;
 
   const copyToken = async () => {
@@ -120,6 +128,13 @@ const LineLinkQRDialog = ({ open, onOpenChange, customerId, customerName, lineAd
                   {configUnavailable
                     ? "LIFF設定を取得できませんでした。QRはアプリ内の連携ページを開きます。自動連携にはLINE_LIFF_ID設定が必要です。"
                     : "LIFF IDが未設定のため、QRはアプリ内の連携ページを開きます。自動連携を有効にするにはLINE_LIFF_IDを設定してください。"}
+                </div>
+              )}
+
+              {!publicAppOrigin && (
+                <div className="text-[11px] text-red-700 bg-red-50 border border-red-200 p-3">
+                  公開アプリURLを取得できなかったため、既定の https://saronboost.com でQRを作成しています。
+                  環境設定にはPUBLIC_APP_ORIGIN=https://saronboost.com を登録してください。
                 </div>
               )}
 
