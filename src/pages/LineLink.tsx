@@ -9,6 +9,7 @@ import { getLineLinkConfig } from "@/lib/line-link-config";
 type LiffApi = {
   init: (config: { liffId: string }) => Promise<void>;
   isLoggedIn: () => boolean;
+  isInClient: () => boolean;
   login: (config?: { redirectUri?: string }) => void;
   getIDToken: () => string | null;
   getFriendship?: () => Promise<{ friendFlag: boolean }>;
@@ -20,7 +21,7 @@ declare global {
   }
 }
 
-type LinkState = "linking" | "success" | "error" | "config_required";
+type LinkState = "linking" | "success" | "error" | "config_required" | "open_in_line";
 
 const errorMessages: Record<string, string> = {
   invalid_token: "連携コードが正しくありません。",
@@ -71,15 +72,19 @@ const loadLiffSdk = () => {
 const LineLink = () => {
   const [searchParams] = useSearchParams();
   const token = useMemo(() => getLinkToken(searchParams), [searchParams]);
+  const openedFromLiff = useMemo(() => Boolean(searchParams.get("liff.state")), [searchParams]);
+  const openedInLineBrowser = useMemo(() => /Line\//i.test(window.navigator.userAgent), []);
   const [state, setState] = useState<LinkState>("linking");
   const [message, setMessage] = useState("連携中です");
   const [friendRequired, setFriendRequired] = useState(false);
+  const [liffUrl, setLiffUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
 
     const completeLink = async () => {
+      let lineOpenUrl: string | null = null;
       if (!token) {
         setState("error");
         setMessage(errorMessages.invalid_token);
@@ -95,11 +100,25 @@ const LineLink = () => {
           return;
         }
 
+        lineOpenUrl = `https://liff.line.me/${encodeURIComponent(liffId)}?token=${encodeURIComponent(token)}`;
+        setLiffUrl(lineOpenUrl);
+        if (!openedFromLiff && !openedInLineBrowser) {
+          setState("open_in_line");
+          setMessage("このLINE連携はLINEアプリ内で開く必要があります。");
+          return;
+        }
+
         const liff = await loadLiffSdk();
         if (cancelled) return;
 
         await liff.init({ liffId });
         if (cancelled) return;
+
+        if (!liff.isInClient()) {
+          setState("open_in_line");
+          setMessage("このLINE連携はLINEアプリ内で開く必要があります。");
+          return;
+        }
 
         if (!liff.isLoggedIn()) {
           liff.login({ redirectUri: window.location.href });
@@ -139,8 +158,13 @@ const LineLink = () => {
       } catch (error) {
         console.error("LINE link failed", error);
         if (!cancelled) {
-          setState("error");
-          setMessage("連携に失敗しました。店舗スタッフへお知らせください。");
+          if (lineOpenUrl) {
+            setState("open_in_line");
+            setMessage("このLINE連携はLINEアプリ内で開く必要があります。");
+          } else {
+            setState("error");
+            setMessage("連携に失敗しました。店舗スタッフへお知らせください。");
+          }
         }
       }
     };
@@ -149,7 +173,7 @@ const LineLink = () => {
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [openedFromLiff, openedInLineBrowser, token]);
 
   const copyFallbackCode = async () => {
     if (!token) return;
@@ -183,16 +207,27 @@ const LineLink = () => {
 
         <p className="text-sm leading-7 text-foreground">{message}</p>
 
+        {state === "open_in_line" && liffUrl && (
+          <div className="mt-6 space-y-3">
+            <p className="text-xs leading-6 text-muted-foreground">
+              下のボタンを押してLINEで開いてください。
+            </p>
+            <Button asChild className="w-full rounded-none bg-[#06C755] text-white hover:bg-[#05b84f]">
+              <a href={liffUrl}>LINEで連携する</a>
+            </Button>
+          </div>
+        )}
+
         {friendRequired && (
           <div className="mt-4 border border-amber-200 bg-amber-50 p-3 text-xs leading-6 text-amber-800">
             友だち追加が必要な場合は、LINE公式アカウントを友だち追加してください。
           </div>
         )}
 
-        {(state === "error" || state === "config_required") && token && (
+        {(state === "error" || state === "config_required" || state === "open_in_line") && token && (
           <div className="mt-6 space-y-3">
             <p className="text-xs leading-6 text-muted-foreground">
-              自動連携ができない場合は、下の連携コードをLINE公式アカウントのトークへ送信してください。
+              うまく開けない場合は、下の連携コードをLINE公式アカウントのトークへ送信してください。
             </p>
             <div className="flex items-stretch border border-border">
               <div className="flex-1 bg-secondary/30 px-4 py-3 font-mono text-sm">連携:{token}</div>

@@ -82,8 +82,7 @@ const LineLinkQRDialog = ({ open, onOpenChange, customerId, customerName, lineAd
 
   const linkText = token ? `連携:${token}` : "連携:";
   const appLinkUrl = token ? `${window.location.origin}/line-link?token=${encodeURIComponent(token)}` : "";
-  const liffLinkUrl = token && liffId ? `https://liff.line.me/${encodeURIComponent(liffId)}?token=${encodeURIComponent(token)}` : "";
-  const qrData = liffLinkUrl || appLinkUrl || linkText;
+  const qrData = appLinkUrl || linkText;
 
   const copyToken = async () => {
     if (!token) return;
