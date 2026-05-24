@@ -145,7 +145,6 @@ const writeSchedulerLogs = async (
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") return json({ success: false, error: "method_not_allowed" }, 405);
-  if (!isAuthorized(req)) return json({ success: false, error: "unauthorized" }, 401);
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -154,6 +153,9 @@ Deno.serve(async (req) => {
   }
 
   const supabase = createClient(supabaseUrl, serviceKey);
+  if (!(await isAuthorized(req, supabase))) {
+    return json({ success: false, error: "unauthorized" }, 401);
+  }
   const body = await req.json().catch(() => ({}));
   const slot = resolveSlot(body.slot);
   if (!slot) {
