@@ -85,6 +85,9 @@ const getOpenMode = (openedFromLiff: boolean, openedInLineBrowser: boolean): Ope
 
 const maskToken = (token: string) => (token ? `${token.slice(0, 3)}***` : null);
 
+const buildLiffAutoLinkUrl = (liffId: string, token: string) =>
+  `https://liff.line.me/${encodeURIComponent(liffId)}?token=${encodeURIComponent(token)}`;
+
 const sanitizeCurrentUrl = (token: string) => {
   try {
     const url = new URL(window.location.href);
@@ -98,7 +101,25 @@ const sanitizeCurrentUrl = (token: string) => {
     }
     return url.toString();
   } catch {
-    return window.location.origin + window.location.pathname;
+    return window.location.pathname;
+  }
+};
+
+const sanitizeUrlForLog = (value: string | null | undefined, token: string) => {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (url.searchParams.has("token")) url.searchParams.set("token", maskToken(token) || "***");
+    const liffState = url.searchParams.get("liff.state");
+    if (liffState) {
+      const normalizedState = liffState.startsWith("?") ? liffState.slice(1) : liffState;
+      const stateParams = new URLSearchParams(normalizedState);
+      if (stateParams.has("token")) stateParams.set("token", maskToken(token) || "***");
+      url.searchParams.set("liff.state", `?${stateParams.toString()}`);
+    }
+    return url.toString();
+  } catch {
+    return token ? value.replace(token, maskToken(token) || "***") : value;
   }
 };
 
@@ -119,7 +140,7 @@ const warnLineLink = (
     currentUrl: sanitizeCurrentUrl(context.token),
     pathname: window.location.pathname,
     search: sanitizeCurrentUrl(context.token).split("?")[1] ? `?${sanitizeCurrentUrl(context.token).split("?")[1]}` : "",
-    redirectTarget: context.redirectTarget || null,
+    redirectTarget: sanitizeUrlForLog(context.redirectTarget, context.token),
     nextAction,
   });
 };
@@ -134,6 +155,7 @@ const LineLink = () => {
   const [message, setMessage] = useState("連携中です");
   const [friendRequired, setFriendRequired] = useState(false);
   const [lineAddFriendUrl, setLineAddFriendUrl] = useState<string | null>(null);
+  const [liffAutoLinkUrl, setLiffAutoLinkUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -150,7 +172,9 @@ const LineLink = () => {
       try {
         const config = await getLineLinkConfig(token);
         const liffId = config.liffId;
+        const nextLiffAutoLinkUrl = liffId ? buildLiffAutoLinkUrl(liffId, token) : null;
         setLineAddFriendUrl(config.lineAddFriendUrl);
+        setLiffAutoLinkUrl(nextLiffAutoLinkUrl);
         if (!liffId) {
           warnLineLink("show_config_required", { mode: openMode, token, configured: false });
           setState("config_required");
@@ -163,7 +187,7 @@ const LineLink = () => {
             mode: openMode,
             token,
             configured: true,
-            redirectTarget: config.lineAddFriendUrl,
+            redirectTarget: nextLiffAutoLinkUrl,
           });
           setState("open_in_line");
           setMessage(errorMessages.not_in_line_browser);
@@ -301,11 +325,16 @@ const LineLink = () => {
         {state === "open_in_line" && (
           <div className="mt-6 space-y-3">
             <p className="text-xs leading-6 text-muted-foreground">
-              LIFF連携の戻り先がLovable画面になる可能性があるため、自動連携は一時停止しています。
-              LINE公式アカウントのトークで連携コードを送信してください。
+              下のボタンを押してLINEで自動連携してください。
+              うまく開けない場合は、連携コードをLINE公式アカウントのトークへ送信してください。
             </p>
-            {lineAddFriendUrl && (
+            {liffAutoLinkUrl && (
               <Button asChild className="w-full rounded-none bg-[#06C755] text-white hover:bg-[#05b84f]">
+                <a href={liffAutoLinkUrl}>LINEで自動連携する</a>
+              </Button>
+            )}
+            {lineAddFriendUrl && (
+              <Button asChild variant="outline" className="w-full rounded-none">
                 <a href={lineAddFriendUrl}>LINE公式アカウントを開く</a>
               </Button>
             )}
