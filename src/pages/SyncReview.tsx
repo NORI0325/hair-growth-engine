@@ -26,6 +26,7 @@ interface Row {
   booking_date: string;
   booking_time: string;
   menu: string;
+  total_duration_minutes: number | null;
   status: string;
   staff_id: string | null;
   customer_id: string;
@@ -81,10 +82,67 @@ interface DayItem {
   detail_fetch_error?: string | null;
 }
 
+type MirrorRiskKind = "needs_review" | "duration_missing" | "external_id_missing" | "sync_error";
+
+const MIRROR_RISK_LABELS: Record<MirrorRiskKind, string> = {
+  needs_review: "要確認",
+  duration_missing: "施術時間未取得",
+  external_id_missing: "外部予約IDなし",
+  sync_error: "同期エラー",
+};
+
+const getMirrorRisks = (row: Row): MirrorRiskKind[] => {
+  const risks: MirrorRiskKind[] = [];
+  if (row.needs_manual_review || row.sync_status === "needs_review") risks.push("needs_review");
+  if (row.total_duration_minutes == null) risks.push("duration_missing");
+  if (!row.external_reservation_id) risks.push("external_id_missing");
+  if (row.sync_status === "failed" || !!row.last_sync_error || !!row.sync_error_message) risks.push("sync_error");
+  return risks;
+};
+
+const formatClock = (value?: string | null) => {
+  if (!value) return "--:--";
+  return value.slice(0, 5);
+};
+
+const addMinutesToClock = (time?: string | null, minutes?: number | null) => {
+  if (!time || minutes == null) return null;
+  const match = time.match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return null;
+  const start = Number(match[1]) * 60 + Number(match[2]);
+  const end = start + minutes;
+  const hour = Math.floor(end / 60) % 24;
+  const minute = end % 60;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+};
+
+const formatDateInput = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const getTokyoDateWithOffset = (offsetDays: number) => {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const year = Number(parts.find((part) => part.type === "year")?.value);
+  const month = Number(parts.find((part) => part.type === "month")?.value);
+  const day = Number(parts.find((part) => part.type === "day")?.value);
+  const base = new Date(year, month - 1, day);
+  base.setDate(base.getDate() + offsetDays);
+  return formatDateInput(base);
+};
+
 export default function SyncReview() {
   const { user } = useAuth();
   const currentLocationId = useCurrentLocationId();
   const [items, setItems] = useState<Row[]>([]);
+  const [mirrorRows, setMirrorRows] = useState<Row[]>([]);
   const [inboundLogs, setInboundLogs] = useState<InboundLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncTarget, setSyncTarget] = useState<string | null>(null);
@@ -93,7 +151,7 @@ export default function SyncReview() {
   const [inboundDetail, setInboundDetail] = useState<InboundLog | null>(null);
 
   // サロンボード予約表チェック
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getTokyoDateWithOffset(0);
   const [dayDate, setDayDate] = useState<string>(today);
   const [rangeDays, setRangeDays] = useState<"1" | "7" | "14" | "30">("1");
   const [dayLoading, setDayLoading] = useState(false);
@@ -124,7 +182,7 @@ export default function SyncReview() {
       .from("bookings")
       .select(`
         id, booking_date, booking_time, menu, status, staff_id, customer_id, location_id,
-        external_reservation_id, external_source, source_channel,
+        external_reservation_id, external_source, source_channel, total_duration_minutes,
         sync_status, last_sync_error, sync_error_message, last_synced_at, needs_manual_review,
         customers:customer_id(full_name),
         staff:staff_id(name)
@@ -164,6 +222,30 @@ export default function SyncReview() {
 
     setItems(rows.map((r) => ({ ...r, latest_snapshot: snapMap[r.id] ?? null, latest_job: jobMap[r.id] ?? null })));
 
+    const mirrorStart = getTokyoDateWithOffset(-14);
+    const mirrorEnd = getTokyoDateWithOffset(14);
+    let mirrorQuery = supabase
+      .from("bookings")
+      .select(`
+        id, booking_date, booking_time, menu, status, staff_id, customer_id, location_id,
+        external_reservation_id, external_source, source_channel, total_duration_minutes,
+        sync_status, last_sync_error, sync_error_message, last_synced_at, needs_manual_review,
+        customers:customer_id(full_name),
+        staff:staff_id(name)
+      `)
+      .eq("owner_id", user.id)
+      .eq("source_channel", "salonboard")
+      .gte("booking_date", mirrorStart)
+      .lte("booking_date", mirrorEnd)
+      .order("booking_date", { ascending: true })
+      .order("booking_time", { ascending: true })
+      .limit(200);
+    if (currentLocationId) {
+      mirrorQuery = mirrorQuery.eq("location_id", currentLocationId);
+    }
+    const { data: mirrorBookings } = await mirrorQuery;
+    setMirrorRows((mirrorBookings as any) ?? []);
+
     // 外部通知メール取り込みの needs_review もここに統合表示
     const { data: logs } = await supabase
       .from("external_reservation_logs" as any)
@@ -177,7 +259,7 @@ export default function SyncReview() {
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, [user]);
+  useEffect(() => { load(); }, [user, currentLocationId]);
 
   const markResolved = async (b: Row) => {
     if (!confirm("この予約を「確認済み」にします。よろしいですか？")) return;
@@ -377,6 +459,15 @@ export default function SyncReview() {
     return { ext, loc, matched, withDiff, only, conflict, doneDays, failedDays };
   })();
 
+  const mirrorRiskRows = mirrorRows.filter((row) => getMirrorRisks(row).length > 0);
+  const mirrorStats = {
+    total: mirrorRows.length,
+    needsReview: mirrorRows.filter((row) => getMirrorRisks(row).includes("needs_review")).length,
+    durationMissing: mirrorRows.filter((row) => getMirrorRisks(row).includes("duration_missing")).length,
+    externalIdMissing: mirrorRows.filter((row) => getMirrorRisks(row).includes("external_id_missing")).length,
+    syncError: mirrorRows.filter((row) => getMirrorRisks(row).includes("sync_error")).length,
+  };
+
   // ソート順: conflict > matched_with_diff > salonboard_only > matched
   const sortItems = (items: DayItem[]): DayItem[] => {
     const order: Record<DayItem["classification"], number> = {
@@ -395,6 +486,72 @@ export default function SyncReview() {
           <span className="text-amber-700">第3段階：再送信は直前照合付き、取り込みは external_reservation_id 重複防止付き、競合は管理者判断のみ。自動上書きは行いません。</span>
         </p>
       </div>
+
+      <Card className="rounded-none p-5 mb-8 border-l-4 border-l-amber-500">
+        <div className="flex items-start justify-between gap-4 flex-wrap mb-4">
+          <div>
+            <div className="text-[10px] tracking-luxury text-gold mb-1">SALONBOARD MIRROR SAFETY</div>
+            <h2 className="font-serif text-lg">サロンボード外部予約ミラー安全確認</h2>
+            <p className="text-xs text-muted-foreground mt-1">
+              直近14日前から14日先までのサロンボード由来予約を読み取り専用で確認します。bookingsへの書き込み、サロンボード送信、sync_jobs作成は行いません。
+            </p>
+          </div>
+          <Button variant="outline" size="sm" className="rounded-none" onClick={load} disabled={loading}>
+            <RefreshCw className={`w-3 h-3 mr-1 ${loading ? "animate-spin" : ""}`} />再読み込み
+          </Button>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-[11px] mb-4">
+          <SummaryStat label="監視対象" value={mirrorStats.total} />
+          <SummaryStat label="要確認" value={mirrorStats.needsReview} tone={mirrorStats.needsReview > 0 ? "warn" : undefined} />
+          <SummaryStat label="施術時間未取得" value={mirrorStats.durationMissing} tone={mirrorStats.durationMissing > 0 ? "alert" : undefined} />
+          <SummaryStat label="外部予約IDなし" value={mirrorStats.externalIdMissing} tone={mirrorStats.externalIdMissing > 0 ? "warn" : undefined} />
+          <SummaryStat label="同期エラー" value={mirrorStats.syncError} tone={mirrorStats.syncError > 0 ? "alert" : undefined} />
+        </div>
+
+        {mirrorRiskRows.length === 0 ? (
+          <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-2">
+            直近のサロンボード外部予約に、施術時間未取得・外部予約IDなし・同期エラーの要確認はありません。
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {mirrorRiskRows.slice(0, 12).map((row) => {
+              const risks = getMirrorRisks(row);
+              const endTime = addMinutesToClock(row.booking_time, row.total_duration_minutes);
+              return (
+                <div key={row.id} className="border-l-4 border-l-amber-500 bg-amber-50/30 px-3 py-2 flex items-start justify-between gap-3 flex-wrap">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      {risks.map((risk) => (
+                        <Badge key={risk} className={`rounded-none text-[10px] border ${risk === "duration_missing" || risk === "sync_error" ? "bg-red-50 text-red-700 border-red-200" : "bg-amber-50 text-amber-800 border-amber-200"}`} variant="outline">
+                          {MIRROR_RISK_LABELS[risk]}
+                        </Badge>
+                      ))}
+                      {row.external_source && <Badge variant="outline" className="rounded-none text-[10px]">{row.external_source}</Badge>}
+                    </div>
+                    <div className="text-sm">
+                      <span className="font-serif">{row.customers?.full_name ?? "顧客名未取得"}</span>
+                      <span className="text-muted-foreground">
+                        {" "}・ {row.booking_date} {formatClock(row.booking_time)}
+                        {endTime ? `〜${endTime}` : ""}
+                        {" "}・ {row.menu || "メニュー未取得"}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-muted-foreground mt-1">
+                      duration: {row.total_duration_minutes ?? "未取得"}分 / ext_id: {row.external_reservation_id ?? "未取得"} / sync_status: {row.sync_status ?? "未設定"}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {mirrorRiskRows.length > 12 && (
+              <div className="text-[11px] text-muted-foreground">
+                他 {mirrorRiskRows.length - 12} 件の要確認があります。日付範囲を絞って確認してください。
+              </div>
+            )}
+          </div>
+        )}
+      </Card>
 
       {/* サロンボード予約表チェック */}
       <Card className="rounded-none p-5 mb-8 border-l-4 border-l-gold">
