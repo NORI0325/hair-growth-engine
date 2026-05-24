@@ -17,6 +17,7 @@ import Bookings from "./pages/Bookings";
 import Booking from "./pages/Booking";
 import MyBookings from "./pages/MyBookings";
 import PublicBooking from "./pages/PublicBooking";
+import LineLink from "./pages/LineLink";
 import Share from "./pages/Share";
 import Settings from "./pages/Settings";
 import EmailLogs from "./pages/EmailLogs";
@@ -77,6 +78,7 @@ const App = () => (
             <Route path="/book/:token" element={<Booking />} />
             <Route path="/my-bookings/:token" element={<MyBookings />} />
             <Route path="/salon/:slug" element={<PublicBooking />} />
+            <Route path="/line-link" element={<LineLink />} />
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/inbox" element={<ProtectedRoute><Inbox /></ProtectedRoute>} />
             <Route path="/customers" element={<ProtectedRoute><Customers /></ProtectedRoute>} />
