@@ -79,6 +79,7 @@ const App = () => (
             <Route path="/my-bookings/:token" element={<MyBookings />} />
             <Route path="/salon/:slug" element={<PublicBooking />} />
             <Route path="/line-link" element={<LineLink />} />
+            <Route path="/line-link/*" element={<LineLink />} />
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/inbox" element={<ProtectedRoute><Inbox /></ProtectedRoute>} />
             <Route path="/customers" element={<ProtectedRoute><Customers /></ProtectedRoute>} />

@@ -10,7 +10,6 @@ type LiffApi = {
   init: (config: { liffId: string }) => Promise<void>;
   isLoggedIn: () => boolean;
   isInClient: () => boolean;
-  login: (config?: { redirectUri?: string }) => void;
   getIDToken: () => string | null;
   getFriendship?: () => Promise<{ friendFlag: boolean }>;
 };
@@ -21,16 +20,24 @@ declare global {
   }
 }
 
+type OpenMode = "normal_browser" | "line_browser" | "liff";
 type LinkState = "linking" | "success" | "error" | "config_required" | "open_in_line";
 
 const errorMessages: Record<string, string> = {
-  invalid_token: "連携コードが正しくありません。",
+  invalid_token: "連携コードが見つかりません。QRを再度読み込んでください。",
   token_expired: "連携コードの有効期限が切れています。",
   token_used: "この連携コードは既に使用済みです。",
   line_user_conflict: "別の顧客がこのLINEアカウントと既に連携されています。",
   customer_already_linked: "別のLINEアカウントと既に連携されています。",
-  liff_not_configured: "連携に失敗しました。店舗スタッフへお知らせください。",
+  liff_not_configured: "LINE連携設定が見つかりません。店舗スタッフへお知らせください。",
+  liff_config_missing: "LINE連携設定が見つかりません。店舗スタッフへお知らせください。",
+  liff_init_failed: "LINE連携画面の初期化に失敗しました。LINEアプリで開き直してください。",
+  not_in_line_browser: "このLINE連携はLINEアプリ内で開く必要があります。",
   id_token_missing: "LINEの本人確認情報を取得できませんでした。",
+  invalid_id_token: "LINEの本人確認に失敗しました。LINEアプリで開き直してください。",
+  network_error: "通信に失敗しました。時間をおいて再度お試しください。",
+  internal_error: "連携に失敗しました。店舗スタッフへお知らせください。",
+  unknown_error: "連携に失敗しました。店舗スタッフへお知らせください。",
 };
 
 const getLinkToken = (searchParams: URLSearchParams) => {
@@ -69,11 +76,55 @@ const loadLiffSdk = () => {
   });
 };
 
+const getOpenMode = (openedFromLiff: boolean, openedInLineBrowser: boolean): OpenMode => {
+  if (openedFromLiff) return "liff";
+  if (openedInLineBrowser) return "line_browser";
+  return "normal_browser";
+};
+
+const maskToken = (token: string) => (token ? `${token.slice(0, 3)}***` : null);
+
+const sanitizeCurrentUrl = (token: string) => {
+  try {
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("token")) url.searchParams.set("token", maskToken(token) || "***");
+    const liffState = url.searchParams.get("liff.state");
+    if (liffState) {
+      const normalizedState = liffState.startsWith("?") ? liffState.slice(1) : liffState;
+      const stateParams = new URLSearchParams(normalizedState);
+      if (stateParams.has("token")) stateParams.set("token", maskToken(token) || "***");
+      url.searchParams.set("liff.state", `?${stateParams.toString()}`);
+    }
+    return url.toString();
+  } catch {
+    return window.location.origin + window.location.pathname;
+  }
+};
+
+const warnLineLink = (
+  nextAction: string,
+  context: {
+    mode: OpenMode;
+    token: string;
+    configured?: boolean;
+  },
+) => {
+  console.warn("[line-link]", {
+    openMode: context.mode,
+    tokenExists: Boolean(context.token),
+    tokenPrefix: maskToken(context.token),
+    liffConfigured: context.configured ?? null,
+    currentUrl: sanitizeCurrentUrl(context.token),
+    nextAction,
+  });
+};
+
 const LineLink = () => {
   const [searchParams] = useSearchParams();
   const token = useMemo(() => getLinkToken(searchParams), [searchParams]);
   const openedFromLiff = useMemo(() => Boolean(searchParams.get("liff.state")), [searchParams]);
   const openedInLineBrowser = useMemo(() => /Line\//i.test(window.navigator.userAgent), []);
+  const openMode = useMemo(() => getOpenMode(openedFromLiff, openedInLineBrowser), [openedFromLiff, openedInLineBrowser]);
   const [state, setState] = useState<LinkState>("linking");
   const [message, setMessage] = useState("連携中です");
   const [friendRequired, setFriendRequired] = useState(false);
@@ -86,6 +137,7 @@ const LineLink = () => {
     const completeLink = async () => {
       let lineOpenUrl: string | null = null;
       if (!token) {
+        warnLineLink("show_invalid_token", { mode: openMode, token });
         setState("error");
         setMessage(errorMessages.invalid_token);
         return;
@@ -95,38 +147,61 @@ const LineLink = () => {
         const config = await getLineLinkConfig();
         const liffId = config.liffId;
         if (!liffId) {
+          warnLineLink("show_config_required", { mode: openMode, token, configured: false });
           setState("config_required");
-          setMessage("LINE連携にはLIFF設定が必要です。店舗スタッフへお知らせください。");
+          setMessage(errorMessages.liff_config_missing);
           return;
         }
 
         lineOpenUrl = `https://liff.line.me/${encodeURIComponent(liffId)}?token=${encodeURIComponent(token)}`;
         setLiffUrl(lineOpenUrl);
-        if (!openedFromLiff && !openedInLineBrowser) {
+        if (!openedFromLiff) {
+          warnLineLink("show_open_in_line", { mode: openMode, token, configured: true });
           setState("open_in_line");
-          setMessage("このLINE連携はLINEアプリ内で開く必要があります。");
+          setMessage(errorMessages.not_in_line_browser);
           return;
         }
 
-        const liff = await loadLiffSdk();
+        let liff: LiffApi;
+        try {
+          liff = await loadLiffSdk();
+        } catch (error) {
+          console.warn("Failed to load LIFF SDK", error);
+          warnLineLink("show_liff_init_failed", { mode: openMode, token, configured: true });
+          setState("error");
+          setMessage(errorMessages.liff_init_failed);
+          return;
+        }
         if (cancelled) return;
 
-        await liff.init({ liffId });
+        try {
+          await liff.init({ liffId });
+        } catch (error) {
+          console.warn("Failed to initialize LIFF", error);
+          warnLineLink("show_liff_init_failed", { mode: openMode, token, configured: true });
+          setState("error");
+          setMessage(errorMessages.liff_init_failed);
+          return;
+        }
         if (cancelled) return;
 
         if (!liff.isInClient()) {
+          warnLineLink("show_not_in_line_browser", { mode: openMode, token, configured: true });
           setState("open_in_line");
-          setMessage("このLINE連携はLINEアプリ内で開く必要があります。");
+          setMessage(errorMessages.not_in_line_browser);
           return;
         }
 
         if (!liff.isLoggedIn()) {
-          liff.login({ redirectUri: window.location.href });
+          warnLineLink("show_not_logged_in", { mode: openMode, token, configured: true });
+          setState("error");
+          setMessage("LINEアプリ内でログイン状態を確認できませんでした。LINEで開き直してください。");
           return;
         }
 
         const idToken = liff.getIDToken();
         if (!idToken) {
+          warnLineLink("show_id_token_missing", { mode: openMode, token, configured: true });
           setState("error");
           setMessage(errorMessages.id_token_missing);
           return;
@@ -137,10 +212,18 @@ const LineLink = () => {
         });
 
         if (cancelled) return;
-        if (error) throw error;
-        if (!data?.success) {
+        if (error) {
+          console.warn("line-link-complete network error", error);
+          warnLineLink("show_network_error", { mode: openMode, token, configured: true });
           setState("error");
-          setMessage(errorMessages[data?.error] || "連携に失敗しました。店舗スタッフへお知らせください。");
+          setMessage(errorMessages.network_error);
+          return;
+        }
+        if (!data?.success) {
+          const errorCode = typeof data?.error === "string" ? data.error : "unknown_error";
+          warnLineLink(`show_${errorCode}`, { mode: openMode, token, configured: true });
+          setState("error");
+          setMessage(errorMessages[errorCode] || errorMessages.unknown_error);
           return;
         }
 
@@ -158,13 +241,13 @@ const LineLink = () => {
       } catch (error) {
         console.error("LINE link failed", error);
         if (!cancelled) {
-          if (lineOpenUrl) {
-            setState("open_in_line");
-            setMessage("このLINE連携はLINEアプリ内で開く必要があります。");
-          } else {
-            setState("error");
-            setMessage("連携に失敗しました。店舗スタッフへお知らせください。");
-          }
+          warnLineLink(lineOpenUrl ? "show_unknown_error_after_config" : "show_unknown_error", {
+            mode: openMode,
+            token,
+            configured: Boolean(lineOpenUrl),
+          });
+          setState("error");
+          setMessage(errorMessages.unknown_error);
         }
       }
     };
@@ -173,7 +256,7 @@ const LineLink = () => {
     return () => {
       cancelled = true;
     };
-  }, [openedFromLiff, openedInLineBrowser, token]);
+  }, [openMode, openedFromLiff, token]);
 
   const copyFallbackCode = async () => {
     if (!token) return;
