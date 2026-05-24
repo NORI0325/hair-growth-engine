@@ -83,4 +83,6 @@ project_id = "miyedioemkzhetphjzzg"
     verify_jwt = false
   [functions.salonboard-fetch-reservations-range]
     verify_jwt = false
+  [functions.salonboard-reservation-sync-scheduler]
+    verify_jwt = false
 
