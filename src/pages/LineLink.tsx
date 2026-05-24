@@ -38,6 +38,7 @@ const errorMessages: Record<string, string> = {
   network_error: "通信に失敗しました。時間をおいて再度お試しください。",
   internal_error: "連携に失敗しました。店舗スタッフへお知らせください。",
   unknown_error: "連携に失敗しました。店舗スタッフへお知らせください。",
+  liff_endpoint_misconfigured: "LIFF Endpoint URL設定が違う可能性があります。店舗スタッフへお知らせください。",
 };
 
 const getLinkToken = (searchParams: URLSearchParams) => {
@@ -107,6 +108,7 @@ const warnLineLink = (
     mode: OpenMode;
     token: string;
     configured?: boolean;
+    redirectTarget?: string | null;
   },
 ) => {
   console.warn("[line-link]", {
@@ -115,6 +117,9 @@ const warnLineLink = (
     tokenPrefix: maskToken(context.token),
     liffConfigured: context.configured ?? null,
     currentUrl: sanitizeCurrentUrl(context.token),
+    pathname: window.location.pathname,
+    search: sanitizeCurrentUrl(context.token).split("?")[1] ? `?${sanitizeCurrentUrl(context.token).split("?")[1]}` : "",
+    redirectTarget: context.redirectTarget || null,
     nextAction,
   });
 };
@@ -128,14 +133,13 @@ const LineLink = () => {
   const [state, setState] = useState<LinkState>("linking");
   const [message, setMessage] = useState("連携中です");
   const [friendRequired, setFriendRequired] = useState(false);
-  const [liffUrl, setLiffUrl] = useState<string | null>(null);
+  const [lineAddFriendUrl, setLineAddFriendUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
 
     const completeLink = async () => {
-      let lineOpenUrl: string | null = null;
       if (!token) {
         warnLineLink("show_invalid_token", { mode: openMode, token });
         setState("error");
@@ -144,8 +148,9 @@ const LineLink = () => {
       }
 
       try {
-        const config = await getLineLinkConfig();
+        const config = await getLineLinkConfig(token);
         const liffId = config.liffId;
+        setLineAddFriendUrl(config.lineAddFriendUrl);
         if (!liffId) {
           warnLineLink("show_config_required", { mode: openMode, token, configured: false });
           setState("config_required");
@@ -153,10 +158,13 @@ const LineLink = () => {
           return;
         }
 
-        lineOpenUrl = `https://liff.line.me/${encodeURIComponent(liffId)}?token=${encodeURIComponent(token)}`;
-        setLiffUrl(lineOpenUrl);
         if (!openedFromLiff) {
-          warnLineLink("show_open_in_line", { mode: openMode, token, configured: true });
+          warnLineLink("show_open_in_line_fallback", {
+            mode: openMode,
+            token,
+            configured: true,
+            redirectTarget: config.lineAddFriendUrl,
+          });
           setState("open_in_line");
           setMessage(errorMessages.not_in_line_browser);
           return;
@@ -169,7 +177,7 @@ const LineLink = () => {
           console.warn("Failed to load LIFF SDK", error);
           warnLineLink("show_liff_init_failed", { mode: openMode, token, configured: true });
           setState("error");
-          setMessage(errorMessages.liff_init_failed);
+          setMessage(`${errorMessages.liff_init_failed} ${errorMessages.liff_endpoint_misconfigured}`);
           return;
         }
         if (cancelled) return;
@@ -180,7 +188,7 @@ const LineLink = () => {
           console.warn("Failed to initialize LIFF", error);
           warnLineLink("show_liff_init_failed", { mode: openMode, token, configured: true });
           setState("error");
-          setMessage(errorMessages.liff_init_failed);
+          setMessage(`${errorMessages.liff_init_failed} ${errorMessages.liff_endpoint_misconfigured}`);
           return;
         }
         if (cancelled) return;
@@ -188,7 +196,7 @@ const LineLink = () => {
         if (!liff.isInClient()) {
           warnLineLink("show_not_in_line_browser", { mode: openMode, token, configured: true });
           setState("open_in_line");
-          setMessage(errorMessages.not_in_line_browser);
+          setMessage(`${errorMessages.not_in_line_browser} ${errorMessages.liff_endpoint_misconfigured}`);
           return;
         }
 
@@ -241,10 +249,10 @@ const LineLink = () => {
       } catch (error) {
         console.error("LINE link failed", error);
         if (!cancelled) {
-          warnLineLink(lineOpenUrl ? "show_unknown_error_after_config" : "show_unknown_error", {
+          warnLineLink("show_unknown_error", {
             mode: openMode,
             token,
-            configured: Boolean(lineOpenUrl),
+            configured: false,
           });
           setState("error");
           setMessage(errorMessages.unknown_error);
@@ -290,14 +298,17 @@ const LineLink = () => {
 
         <p className="text-sm leading-7 text-foreground">{message}</p>
 
-        {state === "open_in_line" && liffUrl && (
+        {state === "open_in_line" && (
           <div className="mt-6 space-y-3">
             <p className="text-xs leading-6 text-muted-foreground">
-              下のボタンを押してLINEで開いてください。
+              LIFF連携の戻り先がLovable画面になる可能性があるため、自動連携は一時停止しています。
+              LINE公式アカウントのトークで連携コードを送信してください。
             </p>
-            <Button asChild className="w-full rounded-none bg-[#06C755] text-white hover:bg-[#05b84f]">
-              <a href={liffUrl}>LINEで連携する</a>
-            </Button>
+            {lineAddFriendUrl && (
+              <Button asChild className="w-full rounded-none bg-[#06C755] text-white hover:bg-[#05b84f]">
+                <a href={lineAddFriendUrl}>LINE公式アカウントを開く</a>
+              </Button>
+            )}
           </div>
         )}
 

@@ -3,31 +3,37 @@ import { supabase } from "@/integrations/supabase/client";
 export interface LineLinkConfig {
   configured: boolean;
   liffId: string | null;
+  lineAddFriendUrl: string | null;
 }
 
-let configPromise: Promise<LineLinkConfig> | null = null;
+const configPromises = new Map<string, Promise<LineLinkConfig>>();
 
 const normalizeConfig = (data: any): LineLinkConfig => {
   const liffId = typeof data?.liffId === "string" ? data.liffId.trim() : "";
+  const lineAddFriendUrl = typeof data?.lineAddFriendUrl === "string" ? data.lineAddFriendUrl.trim() : "";
   return {
     configured: Boolean(data?.configured && liffId),
     liffId: liffId || null,
+    lineAddFriendUrl: lineAddFriendUrl || null,
   };
 };
 
-export const getLineLinkConfig = () => {
-  if (!configPromise) {
-    configPromise = supabase.functions
-      .invoke("line-link-config")
+export const getLineLinkConfig = (token?: string) => {
+  const cacheKey = token || "__global__";
+  if (!configPromises.has(cacheKey)) {
+    const configPromise = supabase.functions
+      .invoke("line-link-config", token ? { body: { token } } : undefined)
       .then(({ data, error }) => {
         if (error) throw error;
         return normalizeConfig(data);
       })
       .catch((error) => {
-        configPromise = null;
+        configPromises.delete(cacheKey);
         throw error;
       });
+
+    configPromises.set(cacheKey, configPromise);
   }
 
-  return configPromise;
+  return configPromises.get(cacheKey)!;
 };

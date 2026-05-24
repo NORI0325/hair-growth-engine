@@ -1,3 +1,4 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
 
 const json = (body: Record<string, unknown>, status = 200) =>
@@ -6,7 +7,63 @@ const json = (body: Record<string, unknown>, status = 200) =>
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 
-Deno.serve((req) => {
+const getRequestToken = async (req: Request) => {
+  if (req.method === "GET") {
+    return (new URL(req.url).searchParams.get("token") || "").trim().toUpperCase();
+  }
+
+  try {
+    const body = await req.json();
+    return typeof body?.token === "string" ? body.token.trim().toUpperCase() : "";
+  } catch {
+    return "";
+  }
+};
+
+const getLineAddFriendUrl = async (token: string) => {
+  if (!/^[A-Z0-9]{8}$/.test(token)) return null;
+
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  );
+
+  const { data: tokenRow } = await supabase
+    .from("customer_line_link_tokens")
+    .select("owner_id, customer_id")
+    .eq("token", token)
+    .maybeSingle();
+
+  if (!tokenRow) return null;
+
+  const { data: customer } = await supabase
+    .from("customers")
+    .select("location_id")
+    .eq("id", tokenRow.customer_id)
+    .eq("owner_id", tokenRow.owner_id)
+    .maybeSingle();
+
+  if (customer?.location_id) {
+    const { data: location } = await supabase
+      .from("locations")
+      .select("line_add_friend_url")
+      .eq("id", customer.location_id)
+      .eq("owner_id", tokenRow.owner_id)
+      .maybeSingle();
+
+    if (location?.line_add_friend_url) return location.line_add_friend_url;
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("line_add_friend_url")
+    .eq("id", tokenRow.owner_id)
+    .maybeSingle();
+
+  return profile?.line_add_friend_url || null;
+};
+
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -16,9 +73,12 @@ Deno.serve((req) => {
   }
 
   const liffId = (Deno.env.get("LINE_LIFF_ID") || "").trim();
+  const token = await getRequestToken(req);
+  const lineAddFriendUrl = await getLineAddFriendUrl(token);
 
   return json({
     configured: Boolean(liffId),
     liffId: liffId || null,
+    lineAddFriendUrl,
   });
 });
