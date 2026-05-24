@@ -58,6 +58,33 @@ interface InboundLog {
   created_at: string;
 }
 
+interface ReservationSyncRun {
+  id: string;
+  owner_id: string;
+  location_id: string | null;
+  run_type: string;
+  slot: string;
+  mode: string;
+  range_start: string;
+  range_end: string;
+  status: string;
+  started_at: string;
+  finished_at: string | null;
+  fetched_days: number;
+  fetched_count: number;
+  matched_count: number;
+  matched_with_diff_count: number;
+  salonboard_only_count: number;
+  local_only_count: number;
+  conflict_count: number;
+  needs_review_count: number;
+  error_type: string | null;
+  error_message: string | null;
+  created_at: string;
+}
+
+type ReservationSyncSlot = "morning" | "noon" | "evening" | "manual";
+
 interface DayItem {
   external_reservation_id: string | null;
   date: string;
@@ -143,6 +170,7 @@ export default function SyncReview() {
   const currentLocationId = useCurrentLocationId();
   const [items, setItems] = useState<Row[]>([]);
   const [mirrorRows, setMirrorRows] = useState<Row[]>([]);
+  const [reservationRuns, setReservationRuns] = useState<ReservationSyncRun[]>([]);
   const [inboundLogs, setInboundLogs] = useState<InboundLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncTarget, setSyncTarget] = useState<string | null>(null);
@@ -155,6 +183,7 @@ export default function SyncReview() {
   const [dayDate, setDayDate] = useState<string>(today);
   const [rangeDays, setRangeDays] = useState<"1" | "7" | "14" | "30">("1");
   const [dayLoading, setDayLoading] = useState(false);
+  const [rangeDryRunLoading, setRangeDryRunLoading] = useState<ReservationSyncSlot | null>(null);
   const [importingKey, setImportingKey] = useState<string | null>(null);
 
   // 範囲取得の進捗（1日でも同じ構造で持つ）
@@ -246,6 +275,23 @@ export default function SyncReview() {
     const { data: mirrorBookings } = await mirrorQuery;
     setMirrorRows((mirrorBookings as any) ?? []);
 
+    let runsQuery = supabase
+      .from("salonboard_reservation_sync_runs")
+      .select(`
+        id, owner_id, location_id, run_type, slot, mode, range_start, range_end, status,
+        started_at, finished_at, fetched_days, fetched_count, matched_count,
+        matched_with_diff_count, salonboard_only_count, local_only_count, conflict_count,
+        needs_review_count, error_type, error_message, created_at
+      `)
+      .eq("owner_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(8);
+    if (currentLocationId) {
+      runsQuery = runsQuery.eq("location_id", currentLocationId);
+    }
+    const { data: runs } = await runsQuery;
+    setReservationRuns((runs as any) ?? []);
+
     // 外部通知メール取り込みの needs_review もここに統合表示
     const { data: logs } = await supabase
       .from("external_reservation_logs" as any)
@@ -320,6 +366,45 @@ export default function SyncReview() {
     const d = new Date(yyyymmdd + "T00:00:00");
     d.setDate(d.getDate() + n);
     return d.toISOString().slice(0, 10);
+  };
+
+  const runRangeDryRun = async (
+    slot: ReservationSyncSlot,
+    options?: { range_start?: string; range_end?: string },
+  ) => {
+    if (!user) return;
+    if (!currentLocationId) {
+      toast.error("店舗を選択してから実行してください。");
+      return;
+    }
+    setRangeDryRunLoading(slot);
+    try {
+      const { data, error } = await supabase.functions.invoke("salonboard-fetch-reservations-range", {
+        body: {
+          owner_id: user.id,
+          location_id: currentLocationId,
+          run_type: "manual",
+          slot,
+          mode: "dry_run",
+          ...options,
+        },
+      });
+      if (error) {
+        toast.error("range dry_run の起動に失敗しました: " + error.message);
+        return;
+      }
+      const result: any = data;
+      if (result?.success) {
+        toast.success(`range dry_run 完了: ${result.fetched_days ?? 0}日 / 要確認 ${result.needs_review_count ?? 0}件`);
+      } else if (result?.skipped) {
+        toast.warning(result.message || "別のrange dry_runが実行中です。");
+      } else {
+        toast.error(result?.message || result?.error || "range dry_run に失敗しました。");
+      }
+      await load();
+    } finally {
+      setRangeDryRunLoading(null);
+    }
   };
 
   const fetchRange = async () => {
@@ -549,6 +634,113 @@ export default function SyncReview() {
                 他 {mirrorRiskRows.length - 12} 件の要確認があります。日付範囲を絞って確認してください。
               </div>
             )}
+          </div>
+        )}
+      </Card>
+
+      <Card className="rounded-none p-5 mb-8 border-l-4 border-l-blue-500">
+        <div className="flex items-start justify-between gap-4 flex-wrap mb-4">
+          <div>
+            <div className="text-[10px] tracking-luxury text-gold mb-1">RANGE DRY RUN</div>
+            <h2 className="font-serif text-lg">1日3回自動同期に向けたrange dry_run</h2>
+            <p className="text-xs text-muted-foreground mt-1">
+              バックエンドの範囲取得オーケストレーターを手動起動し、runログへ差分集計だけを保存します。外部予約の自動登録とsync_jobs作成は行いません。
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap mb-4">
+          <Button
+            variant="outline"
+            size="sm"
+            className="rounded-none"
+            disabled={!!rangeDryRunLoading || !currentLocationId}
+            onClick={() => runRangeDryRun("morning")}
+          >
+            {rangeDryRunLoading === "morning" ? <RefreshCw className="w-3 h-3 mr-1 animate-spin" /> : <CalendarDays className="w-3 h-3 mr-1" />}
+            09:00想定 今日〜翌日
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="rounded-none"
+            disabled={!!rangeDryRunLoading || !currentLocationId}
+            onClick={() => runRangeDryRun("noon")}
+          >
+            {rangeDryRunLoading === "noon" ? <RefreshCw className="w-3 h-3 mr-1 animate-spin" /> : <CalendarDays className="w-3 h-3 mr-1" />}
+            13:00想定 今日〜翌日
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="rounded-none"
+            disabled={!!rangeDryRunLoading || !currentLocationId}
+            onClick={() => runRangeDryRun("evening")}
+          >
+            {rangeDryRunLoading === "evening" ? <RefreshCw className="w-3 h-3 mr-1 animate-spin" /> : <CalendarDays className="w-3 h-3 mr-1" />}
+            18:00想定 今日〜14日先
+          </Button>
+          <Button
+            size="sm"
+            className="rounded-none"
+            disabled={!!rangeDryRunLoading || !currentLocationId || !dayDate}
+            onClick={() => runRangeDryRun("manual", {
+              range_start: dayDate,
+              range_end: addDays(dayDate, parseInt(rangeDays, 10) - 1),
+            })}
+          >
+            {rangeDryRunLoading === "manual" ? <RefreshCw className="w-3 h-3 mr-1 animate-spin" /> : <FileSearch className="w-3 h-3 mr-1" />}
+            現在の指定範囲をログ付きdry_run
+          </Button>
+        </div>
+
+        {!currentLocationId && (
+          <div className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 px-3 py-2 mb-4">
+            店舗別のサロンボード連携だけを対象にするため、店舗を選択するとrange dry_runを実行できます。
+          </div>
+        )}
+
+        {reservationRuns.length === 0 ? (
+          <div className="text-sm text-muted-foreground bg-muted/20 border border-border px-3 py-2">
+            まだrange dry_runのrunログはありません。
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {reservationRuns.map((run) => {
+              const statusTone =
+                run.status === "success" ? "bg-emerald-50 text-emerald-800 border-emerald-200" :
+                run.status === "running" ? "bg-blue-50 text-blue-800 border-blue-200" :
+                run.status === "skipped" ? "bg-amber-50 text-amber-800 border-amber-200" :
+                "bg-red-50 text-red-700 border-red-200";
+              return (
+                <div key={run.id} className="border border-border px-3 py-2 text-sm">
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge className={`rounded-none text-[10px] border ${statusTone}`} variant="outline">{run.status}</Badge>
+                      <Badge variant="outline" className="rounded-none text-[10px]">{run.slot}</Badge>
+                      <Badge variant="outline" className="rounded-none text-[10px]">{run.mode}</Badge>
+                      <span className="font-serif">{run.range_start}〜{run.range_end}</span>
+                    </div>
+                    <span className="text-[11px] text-muted-foreground">
+                      {new Date(run.created_at).toLocaleString("ja-JP")}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-6 gap-2 mt-2 text-[11px] text-muted-foreground">
+                    <Field k="取得日数" v={run.fetched_days} />
+                    <Field k="取得件数" v={run.fetched_count} />
+                    <Field k="一致" v={run.matched_count} />
+                    <Field k="差分あり" v={run.matched_with_diff_count} />
+                    <Field k="SBのみ" v={run.salonboard_only_count} />
+                    <Field k="要確認" v={run.needs_review_count} />
+                  </div>
+                  {(run.error_type || run.error_message) && (
+                    <div className="text-[11px] text-red-700 bg-red-50 border border-red-200 px-2 py-1 mt-2">
+                      {run.error_type ? `${run.error_type}: ` : ""}{run.error_message}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </Card>
