@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Loader2, Copy, Check, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
+import LocalQrCode from "@/components/LocalQrCode";
 
 interface Props {
   open: boolean;
@@ -70,7 +71,6 @@ const LineLinkQRDialog = ({ open, onOpenChange, customerId, customerName, lineAd
   const appLinkUrl = token ? `${window.location.origin}/line-link?token=${encodeURIComponent(token)}` : "";
   const liffLinkUrl = token && liffId ? `https://liff.line.me/${encodeURIComponent(liffId)}?token=${encodeURIComponent(token)}` : "";
   const qrData = liffLinkUrl || appLinkUrl || linkText;
-  const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=8&data=${encodeURIComponent(qrData)}`;
 
   const copyToken = async () => {
     if (!token) return;
@@ -100,7 +100,7 @@ const LineLinkQRDialog = ({ open, onOpenChange, customerId, customerName, lineAd
           ) : (
             <>
               <div className="flex justify-center bg-secondary/30 p-6 border border-border">
-                <img src={qrSrc} alt="LINE連携QR" className="w-56 h-56 bg-white p-2" />
+                <LocalQrCode value={qrData} title="LINE連携QR" className="w-56 h-56 bg-white p-2" />
               </div>
 
               {!liffId && (
