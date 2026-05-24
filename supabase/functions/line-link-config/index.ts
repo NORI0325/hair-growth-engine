@@ -26,9 +26,6 @@ const getPublicAppOrigin = () =>
   normalizeOrigin(
     Deno.env.get("PUBLIC_APP_ORIGIN") ||
       Deno.env.get("APP_PUBLIC_ORIGIN") ||
-      Deno.env.get("APP_ORIGIN") ||
-      Deno.env.get("APP_URL") ||
-      Deno.env.get("PUBLIC_SITE_URL") ||
       DEFAULT_PUBLIC_APP_ORIGIN,
   ) || DEFAULT_PUBLIC_APP_ORIGIN;
 
