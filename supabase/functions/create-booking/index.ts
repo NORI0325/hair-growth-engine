@@ -62,6 +62,16 @@ Deno.serve(async (req) => {
     }
 
     const customerLocationId = (customer as any).location_id || null;
+    if (!customerLocationId) {
+      return new Response(JSON.stringify({
+        error: "BOOKING_LOCATION_REQUIRED",
+        code: "BOOKING_LOCATION_REQUIRED",
+        message: "店舗情報を確認できないため予約を作成できません。",
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // Salonboard live locations only allow one syncable SN setmenu.
     if (customerLocationId) {
@@ -353,6 +363,7 @@ Deno.serve(async (req) => {
       .from("bookings")
       .insert({
         owner_id: customer.owner_id,
+        location_id: customerLocationId,
         customer_id: customer.id,
         booking_date: date,
         booking_time: time + ":00",
