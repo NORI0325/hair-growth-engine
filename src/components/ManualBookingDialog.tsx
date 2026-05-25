@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useCurrentLocationId } from "@/hooks/useLocations";
-import { useTenantRole, hasMinRole } from "@/hooks/useTenant";
+import { useTenantId, useTenantRole, hasMinRole } from "@/hooks/useTenant";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,7 +14,25 @@ import { toast } from "sonner";
 
 interface CustomerOpt { id: string; full_name: string; phone: string | null; }
 interface StaffOpt { id: string; name: string; }
-interface MenuOpt { id: string; name: string; duration_minutes: number | null; price: number | null; }
+interface MenuOpt {
+  id: string;
+  name: string;
+  duration_minutes: number | null;
+  price: number | null;
+  is_salonboard_syncable?: boolean | null;
+  external_setmenu_id?: string | null;
+  rsv_term?: number | null;
+}
+
+interface StaffCreateBookingResponse {
+  success?: boolean;
+  message?: string;
+  dispatch_mode?: string;
+  sync_status?: string;
+  external_reservation_id?: string | null;
+  timed_out?: boolean;
+  sync_error_message?: string | null;
+}
 
 interface Props {
   onCreated?: () => void;
@@ -24,6 +42,7 @@ interface Props {
 export default function ManualBookingDialog({ onCreated, trigger }: Props) {
   const { user } = useAuth();
   const locationId = useCurrentLocationId();
+  const tenantId = useTenantId();
   const role = useTenantRole();
   const canUseTestMode = hasMinRole(role, "manager");
   const [open, setOpen] = useState(false);
@@ -31,6 +50,8 @@ export default function ManualBookingDialog({ onCreated, trigger }: Props) {
   const [customers, setCustomers] = useState<CustomerOpt[]>([]);
   const [staff, setStaff] = useState<StaffOpt[]>([]);
   const [menus, setMenus] = useState<MenuOpt[]>([]);
+  const [salonboardLive, setSalonboardLive] = useState(false);
+  const [menuLoadError, setMenuLoadError] = useState<string | null>(null);
   const [customerSearch, setCustomerSearch] = useState("");
   const [customerId, setCustomerId] = useState<string>("");
   const [staffId, setStaffId] = useState<string>("");
@@ -44,20 +65,62 @@ export default function ManualBookingDialog({ onCreated, trigger }: Props) {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (!open || !user) return;
+    if (!open || !user || !tenantId) return;
     (async () => {
-      let menuQ = supabase.from("menu_items").select("id, name, duration_minutes, price").eq("active", true).order("sort_order");
-      if (locationId) menuQ = menuQ.eq("location_id", locationId);
-      const [c, s, m] = await Promise.all([
+      setMenuLoadError(null);
+      const menuQuery = locationId
+        ? supabase.rpc("public_get_bookable_menus_v1", {
+          _owner_id: tenantId,
+          _location_id: locationId,
+        })
+        : Promise.resolve({ data: [], error: null });
+      const liveQuery = locationId
+        ? supabase
+          .from("channel_integrations")
+          .select("id")
+          .eq("owner_id", tenantId)
+          .eq("location_id", locationId)
+          .eq("channel", "salonboard")
+          .eq("enabled", true)
+          .eq("sync_enabled", true)
+          .eq("connection_status", "live")
+          .limit(1)
+        : Promise.resolve({ data: [], error: null });
+      const [c, s, m, live] = await Promise.all([
         supabase.from("customers").select("id, full_name, phone").order("created_at", { ascending: false }).limit(500),
         supabase.from("staff").select("id, name").eq("active", true).order("sort_order"),
-        menuQ,
+        menuQuery,
+        liveQuery,
       ]);
       setCustomers((c.data as CustomerOpt[]) || []);
       setStaff((s.data as StaffOpt[]) || []);
-      setMenus((m.data as MenuOpt[]) || []);
+      const isSalonboardLive = (live.data || []).length > 0;
+      setSalonboardLive(isSalonboardLive);
+      if (m.error) {
+        console.error("[ManualBookingDialog] public_get_bookable_menus_v1 failed:", m.error);
+        setMenus([]);
+        setSelectedMenus([]);
+        setMenuLoadError("メニュー情報を取得できませんでした。時間をおいて再度お試しください。");
+        return;
+      }
+      const nextMenus = (m.data || []).map((row) => ({
+        id: String(row.id),
+        name: String(row.name || ""),
+        duration_minutes: row.rsv_term == null
+          ? (row.duration_minutes == null ? null : Number(row.duration_minutes))
+          : Number(row.rsv_term),
+        price: row.price == null ? null : Number(row.price),
+        is_salonboard_syncable: row.is_salonboard_syncable ?? null,
+        external_setmenu_id: row.external_setmenu_id ?? null,
+        rsv_term: row.rsv_term == null ? null : Number(row.rsv_term),
+      }));
+      setMenus(nextMenus);
+      setSelectedMenus((current) => {
+        const allowed = current.filter((id) => nextMenus.some((m) => m.id === id));
+        return isSalonboardLive ? allowed.slice(0, 1) : allowed;
+      });
     })();
-  }, [open, user, locationId]);
+  }, [open, user, tenantId, locationId]);
 
   const filteredCustomers = useMemo(() => {
     const q = customerSearch.trim().toLowerCase();
@@ -68,7 +131,7 @@ export default function ManualBookingDialog({ onCreated, trigger }: Props) {
   }, [customers, customerSearch]);
 
   const totalDuration = useMemo(() => {
-    return menus.filter((m) => selectedMenus.includes(m.id)).reduce((a, m) => a + (m.duration_minutes || 0), 0);
+    return menus.filter((m) => selectedMenus.includes(m.id)).reduce((a, m) => a + (m.rsv_term ?? m.duration_minutes ?? 0), 0);
   }, [menus, selectedMenus]);
 
   // 同名メニューに番号を付与して見分けやすくする
@@ -85,13 +148,19 @@ export default function ManualBookingDialog({ onCreated, trigger }: Props) {
 
   const reset = () => {
     setCustomerId(""); setStaffId(""); setSelectedMenus([]); setNotes(""); setCustomerSearch("");
+    setMenuLoadError(null);
     setTestMode(false);
   };
 
   const submit = async () => {
     if (!locationId) { toast.error("店舗が未設定のため予約を作成できません。サイドバーから店舗を選択してください。"); return; }
     if (!customerId) { toast.error("顧客を選択してください"); return; }
+    if (menuLoadError) { toast.error(menuLoadError); return; }
     if (selectedMenus.length === 0) { toast.error("メニューを選択してください"); return; }
+    if (salonboardLive && selectedMenus.length !== 1) {
+      toast.error("この店舗ではサロンボードへ同期可能なメニューを1つだけ選択してください。");
+      return;
+    }
     setSubmitting(true);
     try {
       const body: Record<string, unknown> = {
@@ -114,7 +183,7 @@ export default function ManualBookingDialog({ onCreated, trigger }: Props) {
       }
       const { data, error } = await supabase.functions.invoke("staff-create-booking", { body });
       if (error) throw error;
-      const r = data as any;
+      const r = data as StaffCreateBookingResponse | null;
       if (!r?.success) throw new Error(r?.message || "作成に失敗しました");
 
       if (r.dispatch_mode === "skip") {
@@ -133,8 +202,8 @@ export default function ManualBookingDialog({ onCreated, trigger }: Props) {
       setOpen(false);
       reset();
       onCreated?.();
-    } catch (e: any) {
-      toast.error(e?.message || "作成に失敗しました");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "作成に失敗しました");
     } finally {
       setSubmitting(false);
     }
@@ -198,6 +267,16 @@ export default function ManualBookingDialog({ onCreated, trigger }: Props) {
 
           <div>
             <Label className="text-xs">メニュー（複数選択可）</Label>
+            {salonboardLive && (
+              <div className="mb-2 border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                この店舗ではサロンボードへ同期可能なメニューのみ手動予約に使用できます。複数メニューは選択できません。
+              </div>
+            )}
+            {menuLoadError && (
+              <div className="mb-2 border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                {menuLoadError}
+              </div>
+            )}
             <div className="border border-border max-h-48 overflow-y-auto p-2 space-y-1">
               {menusDisplay.map((m) => {
                 const checked = selectedMenus.includes(m.id);
@@ -207,7 +286,7 @@ export default function ManualBookingDialog({ onCreated, trigger }: Props) {
                       type="checkbox"
                       checked={checked}
                       onChange={(e) => {
-                        if (e.target.checked) setSelectedMenus([...selectedMenus, m.id]);
+                        if (e.target.checked) setSelectedMenus(salonboardLive ? [m.id] : [...selectedMenus, m.id]);
                         else setSelectedMenus(selectedMenus.filter((x) => x !== m.id));
                       }}
                     />
@@ -220,6 +299,11 @@ export default function ManualBookingDialog({ onCreated, trigger }: Props) {
                 <p className="text-xs text-muted-foreground py-2">メニューが登録されていません。設定 → メニュー管理から追加してください。</p>
               )}
             </div>
+            {salonboardLive && menusDisplay.length === 0 && (
+              <p className="text-xs text-destructive mt-1">
+                この店舗ではサロンボードへ同期可能なメニューがありません。サロンボード側のsetmenu同期状態を確認してください。
+              </p>
+            )}
             {selectedMenus.length > 0 && (
               <p className="text-xs text-muted-foreground mt-1">合計 {totalDuration}分</p>
             )}
@@ -256,7 +340,7 @@ export default function ManualBookingDialog({ onCreated, trigger }: Props) {
           <Button variant="ghost" className="rounded-none" onClick={() => setOpen(false)} disabled={submitting}>
             キャンセル
           </Button>
-          <Button className="rounded-none" onClick={submit} disabled={submitting || !locationId}>
+          <Button className="rounded-none" onClick={submit} disabled={submitting || !locationId || !!menuLoadError || (salonboardLive && menus.length === 0)}>
             {submitting ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" />同期中...</> : "予約を作成"}
           </Button>
         </DialogFooter>

@@ -6,6 +6,30 @@ import { corsHeaders } from "../_shared/cors.ts";
 // - 連携が有効なら sync_jobs を生成し、sync-job-dispatch を最大 SYNC_WAIT_MS 待機
 // - タイムアウトしたら sync_status='pending' のままバックグラウンド処理に任せる
 const SYNC_WAIT_MS = 15_000;
+const MANAGER_ROLES = new Set(["manager", "owner", "super_admin"]);
+
+const jsonResponse = (body: Record<string, unknown>, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+
+type MembershipRow = { user_id: string; role: string | null };
+type MenuRow = {
+  id: string;
+  name: string;
+  duration_minutes: number | null;
+  buffer_minutes: number | null;
+  price: number | null;
+};
+type ChannelIntegrationRow = {
+  channel: string;
+  location_id: string | null;
+  default_rsv_route_id: string | null;
+  connection_status: string | null;
+  allow_unmapped_booking?: boolean | null;
+};
+type InsertedJobRow = { id: string };
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -85,31 +109,146 @@ Deno.serve(async (req) => {
 
     // テナント所属チェック
     const { data: membership } = await supabase
-      .from("tenant_members").select("user_id").eq("tenant_id", customer.owner_id).eq("user_id", userId).not("accepted_at", "is", null).maybeSingle();
+      .from("tenant_members").select("user_id, role").eq("tenant_id", customer.owner_id).eq("user_id", userId).not("accepted_at", "is", null).maybeSingle();
     if (!membership) {
       return new Response(JSON.stringify({ error: "forbidden" }), {
         status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+    const membershipRow = membership as MembershipRow;
+    if (dispatchMode === "skip" && !MANAGER_ROLES.has(String(membershipRow.role || ""))) {
+      return jsonResponse({
+        success: false,
+        error: "STAFF_BOOKING_SKIP_REQUIRES_MANAGER",
+        code: "STAFF_BOOKING_SKIP_REQUIRES_MANAGER",
+        message: "dispatch_mode=skip is only available to managers.",
+      }, 403);
+    }
+
+    const { data: salonboardLiveRows, error: salonboardLiveErr } = await supabase
+      .from("channel_integrations")
+      .select("id")
+      .eq("owner_id", customer.owner_id)
+      .eq("location_id", resolvedLocationId)
+      .eq("channel", "salonboard")
+      .eq("enabled", true)
+      .eq("sync_enabled", true)
+      .eq("connection_status", "live")
+      .limit(1);
+    if (salonboardLiveErr) {
+      console.error("salonboard live check error:", salonboardLiveErr);
+      return jsonResponse({
+        success: false,
+        error: "salonboard_live_check_failed",
+        message: salonboardLiveErr.message,
+      }, 500);
+    }
+    const salonboardLive = (salonboardLiveRows || []).length > 0;
 
     // メニュー集計（IDベース。後方互換で文字列(name)も受け付ける）
-    const rawMenus: any[] = Array.isArray(menus) ? menus.slice(0, 10) : [];
+    const requestedMenuCount = Array.isArray(menus) ? menus.length : 0;
+    const rawMenus: unknown[] = Array.isArray(menus) ? menus.slice(0, 10) : [];
     const menuIds: string[] = rawMenus.filter((m) => typeof m === "string" && /^[0-9a-f-]{36}$/i.test(m));
     const menuNamesFallback: string[] = rawMenus.filter((m) => typeof m === "string" && !/^[0-9a-f-]{36}$/i.test(m));
-    let menuRows: any[] = [];
+    let menuRows: MenuRow[] = [];
     if (menuIds.length > 0) {
       const { data } = await supabase
         .from("menu_items").select("id, name, duration_minutes, buffer_minutes, price")
-        .eq("owner_id", customer.owner_id).in("id", menuIds);
-      menuRows = data || [];
+        .eq("owner_id", customer.owner_id)
+        .eq("location_id", resolvedLocationId)
+        .eq("active", true)
+        .in("id", menuIds);
+      menuRows = (data || []) as MenuRow[];
     } else if (menuNamesFallback.length > 0) {
       const { data } = await supabase
         .from("menu_items").select("id, name, duration_minutes, buffer_minutes, price")
-        .eq("owner_id", customer.owner_id).in("name", menuNamesFallback);
+        .eq("owner_id", customer.owner_id)
+        .eq("location_id", resolvedLocationId)
+        .eq("active", true)
+        .in("name", menuNamesFallback);
       // 同名は最初の1件のみ採用
       const seen = new Set<string>();
-      menuRows = (data || []).filter((r: any) => { if (seen.has(r.name)) return false; seen.add(r.name); return true; });
+      menuRows = ((data || []) as MenuRow[]).filter((r) => { if (seen.has(r.name)) return false; seen.add(r.name); return true; });
     }
+    if (salonboardLive) {
+      if (requestedMenuCount !== 1) {
+        return jsonResponse({
+          success: false,
+          error: "STAFF_BOOKING_MULTIPLE_MENUS_NOT_SUPPORTED_FOR_SALONBOARD",
+          code: "STAFF_BOOKING_MULTIPLE_MENUS_NOT_SUPPORTED_FOR_SALONBOARD",
+          message: "この店舗では同期可能なメニューを1つ選択してください。",
+        }, 409);
+      }
+      if (menuRows.length !== 1) {
+        return jsonResponse({
+          success: false,
+          error: "STAFF_BOOKING_MENU_NOT_SYNCABLE_TO_SALONBOARD",
+          code: "STAFF_BOOKING_MENU_NOT_SYNCABLE_TO_SALONBOARD",
+          message: "このメニューはサロンボードへ同期できません。",
+        }, 409);
+      }
+
+      const selectedMenu = menuRows[0];
+      const { data: mcm, error: mcmErr } = await supabase
+        .from("menu_channel_mappings")
+        .select("external_id, external_setmenu_id, rsv_term, enabled")
+        .eq("owner_id", customer.owner_id)
+        .eq("menu_id", selectedMenu.id)
+        .eq("channel", "salonboard")
+        .eq("enabled", true)
+        .not("rsv_term", "is", null)
+        .maybeSingle();
+      if (mcmErr) {
+        console.error("staff booking menu mapping check error:", mcmErr);
+        return jsonResponse({
+          success: false,
+          error: "STAFF_BOOKING_MENU_MAPPING_REQUIRED",
+          code: "STAFF_BOOKING_MENU_MAPPING_REQUIRED",
+          message: "メニューのサロンボード同期設定を確認できませんでした。",
+        }, 500);
+      }
+
+      const setmenuId = String(mcm?.external_setmenu_id || mcm?.external_id || "").trim();
+      if (!mcm || !setmenuId || !/^SN/i.test(setmenuId) || mcm.rsv_term == null) {
+        return jsonResponse({
+          success: false,
+          error: "STAFF_BOOKING_MENU_NOT_SYNCABLE_TO_SALONBOARD",
+          code: "STAFF_BOOKING_MENU_NOT_SYNCABLE_TO_SALONBOARD",
+          message: "このメニューはサロンボードへ同期できません。",
+        }, 409);
+      }
+
+      const { count: optionCount, error: optionErr } = await supabase
+        .from("channel_menu_options")
+        .select("id", { count: "exact", head: true })
+        .eq("owner_id", customer.owner_id)
+        .eq("location_id", resolvedLocationId)
+        .eq("channel", "salonboard")
+        .eq("source_type", "setmenu")
+        .eq("setmenu_id", setmenuId)
+        .not("rsv_term", "is", null);
+      if (optionErr) {
+        console.error("staff booking channel menu option check error:", optionErr);
+        return jsonResponse({
+          success: false,
+          error: "STAFF_BOOKING_MENU_MAPPING_REQUIRED",
+          code: "STAFF_BOOKING_MENU_MAPPING_REQUIRED",
+          message: "サロンボード側メニュー候補を確認できませんでした。",
+        }, 500);
+      }
+      if (optionCount !== 1) {
+        return jsonResponse({
+          success: false,
+          error: "STAFF_BOOKING_MENU_NOT_SYNCABLE_TO_SALONBOARD",
+          code: "STAFF_BOOKING_MENU_NOT_SYNCABLE_TO_SALONBOARD",
+          message: "このメニューはサロンボードへ同期できません。",
+        }, 409);
+      }
+
+      selectedMenu.duration_minutes = Number(mcm.rsv_term);
+      selectedMenu.buffer_minutes = 0;
+    }
+
     let totalDuration = 0, totalPrice = 0;
     for (const r of menuRows) {
       totalDuration += (r.duration_minutes || 0) + (r.buffer_minutes || 0);
@@ -164,7 +303,7 @@ Deno.serve(async (req) => {
     }
     const { data: integrations } = await ciQ;
 
-    const targetIntegrations = (integrations || []).filter((ci: any) =>
+    const targetIntegrations = ((integrations || []) as ChannelIntegrationRow[]).filter((ci) =>
       ci.channel !== "own_web"
       && (dispatchMode === "skip" || ci.connection_status === "live")
       && ci.location_id === resolvedLocationId);
@@ -183,7 +322,7 @@ Deno.serve(async (req) => {
     const { data: staffRow } = staff_id
       ? await supabase.from("staff").select("name").eq("id", staff_id).maybeSingle() : { data: null };
 
-    const jobsToInsert: any[] = [];
+    const jobsToInsert: Record<string, unknown>[] = [];
     for (const ci of targetIntegrations) {
       let extStaffName: string | null = null, extStaffId: string | null = staff_id ? null : "0000000000";
       if (staff_id) {
@@ -226,7 +365,11 @@ Deno.serve(async (req) => {
           stylistId: extStaffId,
           menu_name: menuSummary,
           external_menu_name: extMenuName,
+          external_setmenu_id: extMenuId,
           external_menu_id: extMenuId,
+          salonboard_setmenu_id: extMenuId,
+          setmenuId: extMenuId,
+          rsvTerm,
           rsv_term: rsvTerm,
           rsv_route_id: ci.default_rsv_route_id || "K000000001",
           notes: finalNotes,
@@ -265,7 +408,7 @@ Deno.serve(async (req) => {
         sync_status: "pending",
         dispatch_mode: "skip",
         is_test: isTest,
-        sync_job_ids: (insertedJobs || []).map((j: any) => j.id),
+        sync_job_ids: ((insertedJobs || []) as InsertedJobRow[]).map((j) => j.id),
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
