@@ -4,6 +4,7 @@
 // 3) sync-job-dispatch を即時呼び出してWorkerへ投げる
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
+import { isExternalMirrorBooking, logExternalMirrorBlocked } from "../_shared/external-mirror-booking.ts";
 
 function fmtDate(d: string): string { return d.replaceAll("-", ""); }
 
@@ -49,7 +50,7 @@ Deno.serve(async (req) => {
 
     const { data: booking } = await supabase
       .from("bookings")
-      .select("id, owner_id, location_id, booking_date, booking_time, status, external_reservation_id, staff_id, sync_status, customer_id, customers(full_name)")
+      .select("id, owner_id, location_id, booking_date, booking_time, status, external_reservation_id, staff_id, sync_status, customer_id, source_channel, external_source, needs_manual_review, customers(full_name)")
       .eq("id", booking_id).maybeSingle();
     if (!booking) {
       return new Response(JSON.stringify({ error: "booking_not_found" }), {
@@ -67,6 +68,18 @@ Deno.serve(async (req) => {
           status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
+    }
+
+    if (isExternalMirrorBooking(booking)) {
+      const code = "EXTERNAL_MIRROR_BOOKING_CANCEL_BLOCKED";
+      await logExternalMirrorBlocked(supabase, booking, "cancel", code);
+      return new Response(JSON.stringify({
+        ok: false,
+        success: false,
+        code,
+        error: code,
+        message: "External SalonBoard mirror bookings cannot be cancelled from SalonBoost.",
+      }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     // キャンセル元印を保存（status自体は呼び出し側で更新済みでも未更新でも対応）

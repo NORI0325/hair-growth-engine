@@ -65,6 +65,7 @@ Deno.serve(async (req) => {
       .select(`
         id, owner_id, location_id, booking_date, booking_time, menu,
         total_duration_minutes, staff_id, customer_id, external_reservation_id, sync_status,
+        source_channel, external_source, needs_manual_review,
         customers:customer_id(full_name, phone),
         staff:staff_id(name)
       `)
@@ -105,11 +106,12 @@ Deno.serve(async (req) => {
     ]);
 
     // SyncStatusDialog の表示互換のため、external_staff_id/external_staff_name にも揃える
-    const staffMapNormalized = staffMap ? {
-      external_staff_id: (staffMap as any).external_id ?? null,
-      external_staff_name: (staffMap as any).external_name ?? null,
-      enabled: (staffMap as any).enabled ?? null,
-      is_no_designation: (staffMap as any).is_no_designation ?? false,
+    const staffMapRow = staffMap as Record<string, unknown> | null;
+    const staffMapNormalized = staffMapRow ? {
+      external_staff_id: staffMapRow.external_id ?? null,
+      external_staff_name: staffMapRow.external_name ?? null,
+      enabled: staffMapRow.enabled ?? null,
+      is_no_designation: staffMapRow.is_no_designation ?? false,
     } : null;
 
     const stylistId = b.staff_id ? (staffMapNormalized?.external_staff_id ?? null) : "0000000000";
@@ -123,6 +125,7 @@ Deno.serve(async (req) => {
       .order("created_at", { ascending: false })
       .limit(1).maybeSingle();
 
+    const bookingSource = b as Record<string, unknown>;
     const local_payload = {
       booking_id: b.id,
       location_id: b.location_id,
@@ -134,6 +137,9 @@ Deno.serve(async (req) => {
       staff_name: b.staff?.name ?? null,
       staff_id: b.staff_id,
       external_reservation_id: b.external_reservation_id,
+      source_channel: bookingSource.source_channel ?? null,
+      external_source: bookingSource.external_source ?? null,
+      needs_manual_review: bookingSource.needs_manual_review ?? null,
       stylist_id_resolved: stylistId,
       stylist_fallback_no_designation: stylistFallback,
       channel_integration: ci ?? null,
@@ -146,7 +152,15 @@ Deno.serve(async (req) => {
     const workerUrl = Deno.env.get("EXTERNAL_WORKER_API_URL");
     const workerKey = Deno.env.get("EXTERNAL_WORKER_API_KEY");
 
-    let externalItems: any[] = [];
+    type ExternalReservationItem = {
+      external_reservation_id?: string | null;
+      time?: string | null;
+      customerName?: string | null;
+      raw?: string | null;
+      duration_minutes?: number | null;
+      end_time?: string | null;
+    };
+    let externalItems: ExternalReservationItem[] = [];
     let workerError: string | null = null;
     let externalReachable = false;
 

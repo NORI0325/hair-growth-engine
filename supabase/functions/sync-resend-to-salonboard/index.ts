@@ -3,6 +3,7 @@
 // 二重予約事故を防止するため、自動再送信は禁止。管理者による手動操作を前提。
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
+import { isExternalMirrorBooking, logExternalMirrorBlocked } from "../_shared/external-mirror-booking.ts";
 
 function fmtDate(d: string) { return d.replaceAll("-", ""); }
 function fmtTime(t: string) { return t.slice(0, 5).replace(":", ""); }
@@ -33,7 +34,7 @@ Deno.serve(async (req) => {
 
     const { data: booking } = await supabase.from("bookings").select(`
       id, owner_id, location_id, booking_date, booking_time, menu, menu_id, total_duration_minutes,
-      staff_id, customer_id, external_reservation_id, sync_status,
+      staff_id, customer_id, external_reservation_id, sync_status, source_channel, external_source, needs_manual_review,
       customers:customer_id(full_name, name_kana, phone, email),
       staff:staff_id(name)
     `).eq("id", booking_id).maybeSingle();
@@ -41,6 +42,18 @@ Deno.serve(async (req) => {
     const b: any = booking;
     if (b.owner_id !== user.id) return new Response(JSON.stringify({ error: "forbidden" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     if (!b.location_id) return new Response(JSON.stringify({ error: "location_required", message: "店舗未割当の予約は再送信できません" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+    if (isExternalMirrorBooking(b)) {
+      const code = "EXTERNAL_MIRROR_BOOKING_RESEND_BLOCKED";
+      await logExternalMirrorBlocked(supabase, b, "resend", code);
+      return new Response(JSON.stringify({
+        action: "refused",
+        ok: false,
+        code,
+        error: code,
+        message: "External SalonBoard mirror bookings cannot be resent from SalonBoost.",
+      }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
     // channel_integration を確認
     const { data: ci } = await supabase.from("channel_integrations")

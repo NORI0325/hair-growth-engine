@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { CustomerMessageDialog } from "@/components/CustomerMessageDialog";
 import { useCurrentLocationId } from "@/hooks/useLocations";
 import ManualBookingDialog from "@/components/ManualBookingDialog";
+import { isExternalMirrorBooking } from "@/lib/external-booking";
 
 interface Booking {
   id: string;
@@ -84,35 +85,43 @@ const Bookings = () => {
 
   useEffect(() => { load(); }, [user, locationId]);
 
-  const assignStaff = async (id: string, staffId: string | null) => {
-    const { error } = await supabase.from("bookings").update({ staff_id: staffId }).eq("id", id);
+  const assignStaff = async (booking: Booking, staffId: string | null) => {
+    if (isExternalMirrorBooking(booking)) {
+      toast.warning("外部予約はSalonBoostから担当変更できません。元の予約管理画面で確認してください。");
+      return;
+    }
+    const { error } = await supabase.from("bookings").update({ staff_id: staffId }).eq("id", booking.id);
     if (error) { toast.error("担当変更に失敗: " + error.message); return; }
     toast.success("担当スタッフを更新しました");
     load();
   };
 
-  const updateStatus = async (id: string, status: "completed" | "cancelled" | "confirmed", revenue?: number) => {
+  const updateStatus = async (booking: Booking, status: "completed" | "cancelled" | "confirmed", revenue?: number) => {
+    if (status === "cancelled" && isExternalMirrorBooking(booking)) {
+      toast.warning("外部予約はSalonBoostからキャンセルできません。元の予約管理画面で操作してください。");
+      return;
+    }
     const update: any = { status };
     if (revenue != null) update.revenue = revenue;
-    const { data, error } = await supabase.from("bookings").update(update).eq("id", id).select();
+    const { data, error } = await supabase.from("bookings").update(update).eq("id", booking.id).select();
     if (error) {
       console.error("[bookings.update] error:", error);
       toast.error("更新に失敗しました：" + (error.message || "不明なエラー"));
       return;
     }
     if (!data || data.length === 0) {
-      console.warn("[bookings.update] 0 rows updated. Possible RLS or auth issue. id=", id);
+      console.warn("[bookings.update] 0 rows updated. Possible RLS or auth issue. id=", booking.id);
       toast.error("更新できませんでした。再ログイン後にお試しください。");
       return;
     }
     toast.success("ステータスを更新しました");
     if (status === "cancelled") {
       supabase.functions.invoke("notify-owner-booking", {
-        body: { bookingId: id, eventType: "cancelled" },
+        body: { bookingId: booking.id, eventType: "cancelled" },
       }).catch(() => {});
       // サロンボード側にもキャンセル同期（external_reservation_id があれば）
       supabase.functions.invoke("sync-cancel-to-salonboard", {
-        body: { booking_id: id },
+        body: { booking_id: booking.id },
       }).catch((e) => console.error("[sync-cancel] error:", e));
     }
     load();
@@ -123,17 +132,25 @@ const Bookings = () => {
     if (input === null) return;
     const amount = parseInt(input.replace(/[^\d]/g, ""), 10);
     if (isNaN(amount) || amount < 0) { toast.error("正しい金額を入力してください"); return; }
-    updateStatus(b.id, "completed", amount);
+    updateStatus(b, "completed", amount);
   };
 
-  const removeBooking = async (id: string) => {
-    const { error } = await supabase.from("bookings").delete().eq("id", id);
+  const removeBooking = async (booking: Booking) => {
+    if (isExternalMirrorBooking(booking)) {
+      toast.warning("外部予約はSalonBoostから削除できません。元の予約管理画面で確認してください。");
+      return;
+    }
+    const { error } = await supabase.from("bookings").delete().eq("id", booking.id);
     if (error) { toast.error("削除に失敗しました：" + error.message); return; }
     toast.success("予約を削除しました");
-    setBookings((prev) => prev.filter((b) => b.id !== id));
+    setBookings((prev) => prev.filter((b) => b.id !== booking.id));
   };
 
   const resyncBooking = async (b: Booking) => {
+    if (isExternalMirrorBooking(b)) {
+      toast.warning("外部予約はSalonBoostからサロンボードへ再送できません。元の予約管理画面で確認してください。");
+      return;
+    }
     const t = toast.loading("サロンボードへ再同期中…");
     const { error } = await supabase.functions.invoke("sync-resend-to-salonboard", {
       body: { booking_id: b.id },
@@ -221,7 +238,7 @@ const Bookings = () => {
                     <div className="text-destructive/90 text-[11px] mt-0.5 truncate">⚠ {b.sync_error_message}</div>
                   )}
                 </div>
-                <Button size="sm" className="rounded-none h-7 text-[11px] bg-destructive hover:bg-destructive/90" onClick={() => resyncBooking(b)}>
+                  <Button size="sm" className="rounded-none h-7 text-[11px] bg-destructive hover:bg-destructive/90" disabled={isExternalMirrorBooking(b)} onClick={() => resyncBooking(b)}>
                   <RefreshCw className="w-3 h-3 mr-1" /> 再同期
                 </Button>
               </div>
@@ -283,7 +300,13 @@ const Bookings = () => {
                               {syncFailed ? `サロンボード同期${b.sync_status === "needs_review" ? "要確認" : "失敗"}` : "サロンボード未反映の可能性"}
                               {b.sync_error_message ? `：${b.sync_error_message}` : ""}
                             </span>
-                            <Button size="sm" className="ml-auto rounded-none h-6 text-[10px] bg-destructive hover:bg-destructive/90" onClick={() => resyncBooking(b)}>
+                            <Button
+                              size="sm"
+                              className="ml-auto rounded-none h-6 text-[10px] bg-destructive hover:bg-destructive/90"
+                              disabled={isExternalMirrorBooking(b)}
+                              title={isExternalMirrorBooking(b) ? "外部予約はSalonBoostから再送できません" : undefined}
+                              onClick={() => resyncBooking(b)}
+                            >
                               <RefreshCw className="w-3 h-3 mr-1" /> サロンボードへ再同期
                             </Button>
                           </div>
@@ -323,7 +346,8 @@ const Bookings = () => {
                           {staff.length > 0 ? (
                             <Select
                               value={b.staff_id || "unassigned"}
-                              onValueChange={(v) => assignStaff(b.id, v === "unassigned" ? null : v)}
+                              disabled={isExternalMirrorBooking(b)}
+                              onValueChange={(v) => assignStaff(b, v === "unassigned" ? null : v)}
                             >
                               <SelectTrigger className="rounded-none h-8 text-xs">
                                 <SelectValue>
@@ -364,7 +388,7 @@ const Bookings = () => {
                           </Link>
                           <div className="flex items-center justify-end gap-1 flex-wrap">
                             {b.status === "pending" && (
-                              <Button size="sm" variant="ghost" className="text-xs rounded-none h-8" onClick={() => updateStatus(b.id, "confirmed")}>
+                              <Button size="sm" variant="ghost" className="text-xs rounded-none h-8" onClick={() => updateStatus(b, "confirmed")}>
                                 確定
                               </Button>
                             )}
@@ -376,14 +400,20 @@ const Bookings = () => {
                                 <Button size="sm" variant="ghost" className="text-xs rounded-none h-8 w-8 p-0" title="来店完了（売上を入力）" onClick={() => handleComplete(b)}>
                                   <CheckCircle2 className="w-3.5 h-3.5 stroke-[1.5]" />
                                 </Button>
-                                <Button size="sm" variant="ghost" className="text-xs rounded-none h-8 w-8 p-0" title="キャンセル" onClick={() => updateStatus(b.id, "cancelled")}>
+                                <Button size="sm" variant="ghost" className="text-xs rounded-none h-8 w-8 p-0" title={isExternalMirrorBooking(b) ? "外部予約はSalonBoostからキャンセルできません" : "キャンセル"} disabled={isExternalMirrorBooking(b)} onClick={() => updateStatus(b, "cancelled")}>
                                   <XCircle className="w-3.5 h-3.5 stroke-[1.5]" />
                                 </Button>
                               </>
                             )}
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
-                              <Button size="sm" variant="ghost" className="text-xs rounded-none h-8 text-muted-foreground hover:text-destructive" title="予約を削除">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-xs rounded-none h-8 text-muted-foreground hover:text-destructive"
+                                title={isExternalMirrorBooking(b) ? "外部予約はSalonBoostから削除できません" : "予約を削除"}
+                                disabled={isExternalMirrorBooking(b)}
+                              >
                                 <Trash2 className="w-3.5 h-3.5 stroke-[1.5]" />
                               </Button>
                             </AlertDialogTrigger>
@@ -397,7 +427,7 @@ const Bookings = () => {
                               </AlertDialogHeader>
                               <AlertDialogFooter>
                                 <AlertDialogCancel className="rounded-none">キャンセル</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => removeBooking(b.id)} className="rounded-none bg-destructive hover:bg-destructive/90">
+                                <AlertDialogAction onClick={() => removeBooking(b)} className="rounded-none bg-destructive hover:bg-destructive/90">
                                   削除する
                                 </AlertDialogAction>
                               </AlertDialogFooter>

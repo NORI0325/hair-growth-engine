@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useCurrentLocationId } from "@/hooks/useLocations";
 import AppLayout from "@/components/AppLayout";
 import PageHeader from "@/components/PageHeader";
-import { Loader2, FileText } from "lucide-react";
+import { AlertTriangle, Loader2, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { Trash2, RefreshCcw } from "lucide-react";
 import SyncStatusDialog from "@/components/SyncStatusDialog";
+import { getExternalMirrorWarnings, isExternalMirrorBooking } from "@/lib/external-booking";
 
 import FullCalendar from "@fullcalendar/react";
 import resourceTimegridPlugin from "@fullcalendar/resource-timegrid";
@@ -31,7 +32,12 @@ interface Booking {
   total_duration_minutes: number | null;
   customer_id: string;
   external_source: string | null;
+  source_channel: string | null;
   external_reservation_id: string | null;
+  sync_status: string | null;
+  sync_error_message: string | null;
+  needs_manual_review: boolean | null;
+  notes: string | null;
   customers: { full_name: string; phone: string | null } | null;
 }
 
@@ -62,7 +68,7 @@ const CalendarPage = () => {
     const [b, s, prof] = await Promise.all([
       supabase
         .from("bookings")
-        .select("id, booking_date, booking_time, menu, status, staff_id, total_duration_minutes, customer_id, external_source, external_reservation_id, customers(full_name, phone)")
+        .select("id, booking_date, booking_time, menu, status, staff_id, total_duration_minutes, customer_id, external_source, source_channel, external_reservation_id, sync_status, sync_error_message, needs_manual_review, notes, customers(full_name, phone)")
         .eq("location_id", locationId)
         .gte("booking_date", new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10))
         .order("booking_date"),
@@ -92,14 +98,19 @@ const CalendarPage = () => {
       const start = `${b.booking_date}T${b.booking_time}`;
       const end = new Date(new Date(start).getTime() + dur * 60000).toISOString();
       const c = statusColor(b.status);
+      const isMirror = isExternalMirrorBooking(b);
       return {
         id: b.id,
         resourceId: b.staff_id || "_unassigned",
-        title: `${b.customers?.full_name || "—"} / ${b.menu}`,
+        title: `${isMirror ? "外部 " : ""}${b.customers?.full_name || "—"} / ${b.menu}`,
         start,
         end,
+        editable: !isMirror,
+        startEditable: !isMirror,
+        durationEditable: !isMirror,
+        resourceEditable: !isMirror,
         backgroundColor: c.bg,
-        borderColor: c.bg,
+        borderColor: isMirror ? "hsl(35 85% 45%)" : c.bg,
         textColor: c.text,
         extendedProps: { booking: b },
       };
@@ -116,6 +127,11 @@ const CalendarPage = () => {
     const b: Booking | undefined = info.event.extendedProps?.booking;
     if (!b) return;
     if (b.status === "cancelled") { info.revert(); toast.warning("キャンセル済の予約は変更できません"); return; }
+    if (isExternalMirrorBooking(b)) {
+      info.revert();
+      toast.warning("外部予約はSalonBoostから変更できません。サロンボード本体で確認・変更してください。");
+      return;
+    }
 
     const start: Date = info.event.start;
     const end: Date | null = info.event.end;
@@ -145,35 +161,52 @@ const CalendarPage = () => {
     load();
   };
 
-  const updateStatus = async (id: string, status: "pending" | "confirmed" | "completed" | "cancelled" | "no_show") => {
-    const { error } = await supabase.from("bookings").update({ status }).eq("id", id);
+  const updateStatus = async (booking: Booking, status: "pending" | "confirmed" | "completed" | "cancelled" | "no_show") => {
+    if ((status === "cancelled" || status === "no_show") && isExternalMirrorBooking(booking)) {
+      toast.warning("外部予約はSalonBoostからキャンセルできません。サロンボード本体で操作してください。");
+      return;
+    }
+    if (status === "confirmed" && isExternalMirrorBooking(booking) && (booking.needs_manual_review || booking.sync_status === "needs_review")) {
+      toast.warning("要確認の外部予約はSalonBoost上で確定にできません。サロンボード本体で内容を確認してください。");
+      return;
+    }
+    const { error } = await supabase.from("bookings").update({ status }).eq("id", booking.id);
     if (error) { toast.error("更新失敗: " + error.message); return; }
     toast.success("ステータスを更新しました");
     if (status === "cancelled" || status === "no_show") {
       supabase.functions.invoke("sync-cancel-to-salonboard", {
-        body: { booking_id: id, no_show: status === "no_show" },
+        body: { booking_id: booking.id, no_show: status === "no_show" },
       }).catch((e) => console.error("[sync-cancel] error:", e));
     }
     setSelected(null);
     load();
   };
 
-  const cancelBooking = async (id: string) => {
+  const cancelBooking = async (booking: Booking) => {
+    if (isExternalMirrorBooking(booking)) {
+      toast.warning("外部予約はSalonBoostからキャンセルできません。サロンボード本体で操作してください。");
+      return;
+    }
     if (!confirm("この予約をキャンセル扱いにします。よろしいですか？\n（あとで「キャンセルを取り消す」から復元できます）")) return;
-    await updateStatus(id, "cancelled");
+    await updateStatus(booking, "cancelled");
   };
 
-  const deleteBooking = async (id: string) => {
-    const { error } = await supabase.from("bookings").delete().eq("id", id);
+  const deleteBooking = async (booking: Booking) => {
+    if (isExternalMirrorBooking(booking)) {
+      toast.warning("外部予約はSalonBoostから削除できません。サロンボード本体で確認してください。");
+      return;
+    }
+    const { error } = await supabase.from("bookings").delete().eq("id", booking.id);
     if (error) { toast.error("削除失敗: " + error.message); return; }
     toast.success("予約データを完全に削除しました");
     setSelected(null);
     load();
   };
 
-  const restoreBooking = async (id: string) => {
+  const restoreBooking = async () => {
     if (!confirm("この予約のキャンセルを取り消し、「確定」に戻します。よろしいですか？")) return;
-    await updateStatus(id, "confirmed");
+    if (!selected) return;
+    await updateStatus(selected, "confirmed");
   };
 
   return (
@@ -236,12 +269,27 @@ const CalendarPage = () => {
           </DialogHeader>
           {selected && (
             <div className="space-y-3 text-sm">
+              {getExternalMirrorWarnings(selected).length > 0 && (
+                <div className="border border-amber-200 bg-amber-50 text-amber-900 px-3 py-2 space-y-1">
+                  {getExternalMirrorWarnings(selected).map((warning) => (
+                    <div key={warning} className="flex items-start gap-2 text-xs leading-relaxed">
+                      <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                      <span>{warning}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
               <Row label="お客様">{selected.customers?.full_name || "—"} {selected.customers?.phone && <span className="text-muted-foreground text-xs">/ {selected.customers.phone}</span>}</Row>
-              <Row label="日時">{selected.booking_date} {selected.booking_time?.slice(0, 5)}（{selected.total_duration_minutes ?? 60}分）</Row>
+              <Row label="日時">
+                {selected.booking_date} {selected.booking_time?.slice(0, 5)}
+                （{selected.total_duration_minutes == null ? "所要時間未取得" : `${selected.total_duration_minutes}分`}）
+              </Row>
               <Row label="メニュー">{selected.menu}</Row>
               <Row label="担当">{staff.find((s) => s.id === selected.staff_id)?.name || "未割当"}</Row>
               <Row label="ステータス">{selected.status}</Row>
               {selected.external_source && <Row label="取込元"><span className="eyebrow text-[10px]">{selected.external_source}</span></Row>}
+              {selected.source_channel && <Row label="チャネル"><span className="eyebrow text-[10px]">{selected.source_channel}</span></Row>}
+              {selected.sync_status && <Row label="同期状態"><span className="eyebrow text-[10px]">{selected.sync_status}</span></Row>}
               <div className="flex gap-2 pt-3 border-t border-border flex-wrap">
                 <Link
                   to={`/customers/${selected.customer_id}/chart`}
@@ -254,20 +302,43 @@ const CalendarPage = () => {
                   <RefreshCcw className="w-3.5 h-3.5 mr-1" />同期状態を確認
                 </Button>
                 {selected.status === "pending" && (
-                  <Button size="sm" className="rounded-none" onClick={() => updateStatus(selected.id, "confirmed")}>確定にする</Button>
+                  <Button
+                    size="sm"
+                    className="rounded-none"
+                    disabled={isExternalMirrorBooking(selected) && (selected.needs_manual_review || selected.sync_status === "needs_review")}
+                    title={isExternalMirrorBooking(selected) ? "要確認の外部予約はサロンボード本体で確認してください" : undefined}
+                    onClick={() => updateStatus(selected, "confirmed")}
+                  >
+                    確定にする
+                  </Button>
                 )}
                 {(selected.status === "pending" || selected.status === "confirmed") && (
-                  <Button size="sm" className="rounded-none" onClick={() => updateStatus(selected.id, "completed")}>来店済にする</Button>
+                  <Button size="sm" className="rounded-none" onClick={() => updateStatus(selected, "completed")}>来店済にする</Button>
                 )}
                 {(selected.status === "pending" || selected.status === "confirmed") && (
-                  <Button size="sm" variant="destructive" className="rounded-none" onClick={() => cancelBooking(selected.id)}>予約をキャンセル</Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    className="rounded-none"
+                    disabled={isExternalMirrorBooking(selected)}
+                    title={isExternalMirrorBooking(selected) ? "外部予約はSalonBoostからキャンセルできません" : undefined}
+                    onClick={() => cancelBooking(selected)}
+                  >
+                    予約をキャンセル
+                  </Button>
                 )}
                 {selected.status === "cancelled" && (
-                  <Button size="sm" className="rounded-none" onClick={() => restoreBooking(selected.id)}>キャンセルを取り消す</Button>
+                  <Button size="sm" className="rounded-none" onClick={() => restoreBooking()}>キャンセルを取り消す</Button>
                 )}
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
-                    <Button size="sm" variant="ghost" className="rounded-none text-muted-foreground hover:text-destructive" title="予約データを完全に削除">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="rounded-none text-muted-foreground hover:text-destructive"
+                      title={isExternalMirrorBooking(selected) ? "外部予約はSalonBoostから削除できません" : "予約データを完全に削除"}
+                      disabled={isExternalMirrorBooking(selected)}
+                    >
                       <Trash2 className="w-3.5 h-3.5 mr-1" />完全に削除
                     </Button>
                   </AlertDialogTrigger>
@@ -281,7 +352,7 @@ const CalendarPage = () => {
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                       <AlertDialogCancel className="rounded-none">キャンセル</AlertDialogCancel>
-                      <AlertDialogAction className="rounded-none bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => deleteBooking(selected.id)}>
+                      <AlertDialogAction className="rounded-none bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => deleteBooking(selected)}>
                         完全に削除する
                       </AlertDialogAction>
                     </AlertDialogFooter>
@@ -298,7 +369,7 @@ const CalendarPage = () => {
       </Dialog>
 
       {selected && (
-        <SyncStatusDialog bookingId={selected.id} open={syncOpen} onOpenChange={setSyncOpen} />
+        <SyncStatusDialog bookingId={selected.id} open={syncOpen} onOpenChange={setSyncOpen} booking={selected} />
       )}
     </AppLayout>
   );

@@ -10,6 +10,7 @@
 // 6) 失敗時は dispatcher 側で needs_review に落ちる
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
+import { isExternalMirrorBooking, logExternalMirrorBlocked } from "../_shared/external-mirror-booking.ts";
 
 function fmtDate(d: string): string { return d.replaceAll("-", ""); }
 
@@ -54,7 +55,7 @@ Deno.serve(async (req) => {
 
     const { data: booking } = await supabase
       .from("bookings")
-      .select("id, owner_id, location_id, booking_date, booking_time, status, external_reservation_id, staff_id, sync_status, customer_id, total_duration_minutes, customers(full_name)")
+      .select("id, owner_id, location_id, booking_date, booking_time, status, external_reservation_id, staff_id, sync_status, customer_id, total_duration_minutes, source_channel, external_source, needs_manual_review, customers(full_name)")
       .eq("id", booking_id).maybeSingle();
     if (!booking) {
       return new Response(JSON.stringify({ error: "booking_not_found" }), {
@@ -71,6 +72,18 @@ Deno.serve(async (req) => {
           status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
+    }
+
+    if (isExternalMirrorBooking(booking)) {
+      const code = "EXTERNAL_MIRROR_BOOKING_UPDATE_BLOCKED";
+      await logExternalMirrorBlocked(supabase, booking, "update", code);
+      return new Response(JSON.stringify({
+        ok: false,
+        success: false,
+        code,
+        error: code,
+        message: "External SalonBoard mirror bookings cannot be updated from SalonBoost.",
+      }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     // キャンセル済みは update 対象外

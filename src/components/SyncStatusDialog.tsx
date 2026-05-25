@@ -5,6 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, AlertTriangle, CheckCircle2, FileSearch, ServerCrash, Send, Download, GitMerge } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { isExternalMirrorBooking } from "@/lib/external-booking";
+import type { ExternalMirrorBookingLike } from "@/lib/external-booking";
 
 type Result = "local_only" | "external_only" | "match" | "conflict" | "error";
 
@@ -12,6 +14,7 @@ interface Props {
   bookingId: string;
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  booking?: ExternalMirrorBookingLike | null;
 }
 
 const RESULT_LABEL: Record<Result, { text: string; tone: string; icon: any }> = {
@@ -22,7 +25,7 @@ const RESULT_LABEL: Record<Result, { text: string; tone: string; icon: any }> = 
   error: { text: "確認失敗 — 接続エラー / 設定不備", tone: "bg-muted text-foreground border", icon: ServerCrash },
 };
 
-export default function SyncStatusDialog({ bookingId, open, onOpenChange }: Props) {
+export default function SyncStatusDialog({ bookingId, open, onOpenChange, booking }: Props) {
   const [loading, setLoading] = useState(false);
   const [acting, setActing] = useState<null | "resend" | "import" | "resolve">(null);
   const [data, setData] = useState<any>(null);
@@ -46,6 +49,10 @@ export default function SyncStatusDialog({ bookingId, open, onOpenChange }: Prop
   };
 
   const resendToSalonboard = async () => {
+    if (isExternalMirrorBooking(data?.local ?? booking)) {
+      toast.warning("外部予約はSalonBoostからサロンボードへ再送できません。元の予約管理画面で確認してください。");
+      return;
+    }
     if (!confirm("サロンボードへ再送信します。\n\n直前にもう一度サロンボード側を照合し、外部に予約が無い場合のみ送信します。\n外部に候補が見つかった場合は二重予約防止のため送信を中止します。\n\n実行しますか？")) return;
     setActing("resend");
     const { data: res, error } = await supabase.functions.invoke("sync-resend-to-salonboard", {
@@ -61,6 +68,10 @@ export default function SyncStatusDialog({ bookingId, open, onOpenChange }: Prop
   };
 
   const resendUpdateToSalonboard = async () => {
+    if (isExternalMirrorBooking(data?.local ?? booking)) {
+      toast.warning("外部予約はSalonBoostから変更を再送できません。元の予約管理画面で確認してください。");
+      return;
+    }
     if (!confirm("SalonBoost側の最新内容（日時 / 担当 / 所要時間）でサロンボードを更新します。\nメニュー変更は対象外です。\n\n実行しますか？")) return;
     setActing("resend");
     const { data: res, error } = await supabase.functions.invoke("sync-update-to-salonboard", {
@@ -102,6 +113,10 @@ export default function SyncStatusDialog({ bookingId, open, onOpenChange }: Prop
   };
 
   const resolveConflict = async (decision: "A" | "B" | "C") => {
+    if (decision === "A" && isExternalMirrorBooking(data?.local ?? booking)) {
+      toast.warning("外部予約はSalonBoostの内容でサロンボードを上書きできません。");
+      return;
+    }
     const labels: Record<string, string> = {
       A: "SalonBoost の内容でサロンボードを更新します。サロンボード側の予約が書き換わります。",
       B: "サロンボードの内容で SalonBoost を更新します（時刻 / external_id のみ）。",
@@ -138,6 +153,7 @@ export default function SyncStatusDialog({ bookingId, open, onOpenChange }: Prop
   const result: Result | null = data?.result ?? null;
   const label = result ? RESULT_LABEL[result] : null;
   const Icon = label?.icon;
+  const externalMirror = isExternalMirrorBooking(data?.local ?? booking);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -150,6 +166,12 @@ export default function SyncStatusDialog({ bookingId, open, onOpenChange }: Prop
             アプリ側とサロンボード側の予約を読み取り専用で照合します。<br />
             この操作では再送信・上書き・取り込みは一切行いません。
           </p>
+          {externalMirror && (
+            <div className="border border-amber-200 bg-amber-50 text-amber-900 px-3 py-2 flex items-start gap-2 text-xs leading-relaxed">
+              <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+              <span>この予約は外部由来のミラー予約です。SalonBoostからサロンボードへ再送・変更送信はできません。元の予約管理画面で確認してください。</span>
+            </div>
+          )}
 
           {!data && !loading && (
             <Button className="rounded-none w-full" onClick={run}>
@@ -175,6 +197,8 @@ export default function SyncStatusDialog({ bookingId, open, onOpenChange }: Prop
                 <Row k="メニュー">{data.local.menu}</Row>
                 <Row k="担当">{data.local.staff_name ?? <span className="text-muted-foreground">未指定 → サロンボード「フリー(0000000000)」に割当</span>}</Row>
                 <Row k="external_reservation_id">{data.local.external_reservation_id ?? "—"}</Row>
+                <Row k="source_channel">{data.local.source_channel ?? "—"}</Row>
+                <Row k="external_source">{data.local.external_source ?? "—"}</Row>
                 <Row k="staff_mapping">
                   {data.local.staff_id ? (
                     data.local.staff_mapping?.external_staff_id
@@ -224,13 +248,13 @@ export default function SyncStatusDialog({ bookingId, open, onOpenChange }: Prop
 
                 {/* result に応じたアクション */}
                 {result === "local_only" && (
-                  <Button className="rounded-none w-full" onClick={resendToSalonboard} disabled={!!acting}>
+                  <Button className="rounded-none w-full" onClick={resendToSalonboard} disabled={!!acting || externalMirror}>
                     {acting === "resend" ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
                     サロンボードへ再送信（直前照合あり）
                   </Button>
                 )}
                 {(result === "match" || result === "conflict") && data?.local?.external_reservation_id && (
-                  <Button variant="outline" className="rounded-none w-full" onClick={resendUpdateToSalonboard} disabled={!!acting}>
+                  <Button variant="outline" className="rounded-none w-full" onClick={resendUpdateToSalonboard} disabled={!!acting || externalMirror}>
                     {acting === "resend" ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
                     サロンボードへ変更を再送（日時 / 担当 / 所要時間）
                   </Button>
@@ -244,9 +268,11 @@ export default function SyncStatusDialog({ bookingId, open, onOpenChange }: Prop
                 {result === "conflict" && (
                   <div className="space-y-1">
                     <div className="text-[11px] text-muted-foreground flex items-center gap-1"><GitMerge className="w-3 h-3" />差分の解消（自動上書きはしません）</div>
-                    <Button variant="outline" size="sm" className="rounded-none w-full" disabled={!!acting} onClick={() => resolveConflict("A")}>
-                      A. SalonBoost の内容でサロンボードを更新
-                    </Button>
+                    {!externalMirror && (
+                      <Button variant="outline" size="sm" className="rounded-none w-full" disabled={!!acting} onClick={() => resolveConflict("A")}>
+                        A. SalonBoost の内容でサロンボードを更新
+                      </Button>
+                    )}
                     <Button variant="outline" size="sm" className="rounded-none w-full" disabled={!!acting} onClick={() => resolveConflict("B")}>
                       B. サロンボードの内容で SalonBoost を更新
                     </Button>
