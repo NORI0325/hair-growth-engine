@@ -47,6 +47,7 @@ function extractCharset(contentType: string | null | undefined): string | null {
 }
 
 const hasReadableJapanese = (s: string) => /[ぁ-んァ-ヶ一-龠々〆ヵヶ]/.test(s);
+const hasMojibakeSignals = (s: string) => /(?:\u7e3a|\u7e67|\u7e5d|\u8373|\ufffd|\x1b\$B)/.test(s);
 const hasIso2022JpEscape = (s: string) => /\x1b\$B|\x1b\(B/i.test(s);
 const hasStrippedIso2022JpMarkers = (s: string) => /(^|[^\x1b])\$B[!-~]{3,}/.test(s) && /(^|[^\x1b])\(B/.test(s);
 const looksQuotedPrintable = (s: string) => /=\r?\n/.test(s) || ((s.match(/=[0-9A-F]{2}/gi) || []).length >= 3);
@@ -119,7 +120,7 @@ function decodeEmailText(input: string, headers: Record<string, string> = {}, fa
   meta.content_type = contentType || null;
 
   let text = decodeMimeWords(input);
-  const alreadyReadable = hasReadableJapanese(text) && !hasIso2022JpEscape(text) && !hasStrippedIso2022JpMarkers(text) && !looksQuotedPrintable(text);
+  const alreadyReadable = hasReadableJapanese(text) && !hasMojibakeSignals(text) && !hasIso2022JpEscape(text) && !hasStrippedIso2022JpMarkers(text) && !looksQuotedPrintable(text);
   if (alreadyReadable) {
     meta.decode_status = "already_utf8";
     return { text, meta };
@@ -166,6 +167,25 @@ function withDecodeMeta(parsedData: any, meta: DecodeMeta, rawTextUtf8: string):
       raw_text_utf8: rawTextUtf8.slice(0, 8000),
     },
   };
+}
+
+const UNRESOLVED_EMAIL_MENU = "メール取込メニュー未取得";
+
+function isUnresolvedEmailMenu(value: unknown): boolean {
+  const menu = String(value ?? "").trim();
+  if (!menu) return true;
+  return (
+    menu === UNRESOLVED_EMAIL_MENU ||
+    menu.includes("文字化け") ||
+    menu.includes("未取得") ||
+    menu.includes("メニュー未指定") ||
+    hasMojibakeSignals(menu)
+  );
+}
+
+function appendReviewNote(notes: unknown, message: string): string {
+  const base = String(notes ?? "").trim();
+  return [base, message].filter(Boolean).join("\n").slice(0, 500);
 }
 
 // Resend Inbound API から本文を取得（webhookにはメタデータしか含まれないため）
@@ -885,8 +905,8 @@ Deno.serve(async (req) => {
   if (garbleRescue) {
     extracted.customer_name = `予約 ${extracted.external_reservation_id}`;
     extracted._garble_rescued = true;
-    if (!extracted.menu) extracted.menu = "（文字化けのため未取得）";
-    confidence = "high"; // 識別子+日時があるので登録は許可（needs_reviewは別途で残す）
+    if (!extracted.menu) extracted.menu = UNRESOLVED_EMAIL_MENU;
+    // 識別子+日時だけでは通常予約として確定しない。後続のsalonboard厳格チェックでneeds_reviewに止める。
   }
 
   // 信頼度lowで氏名なしなら、自動登録せず needs_review として人手確認に
@@ -907,10 +927,11 @@ Deno.serve(async (req) => {
   if (source === "salonboard") {
     const missing: string[] = [];
     if (!extracted.customer_name) missing.push("customer_name");
+    if (extracted._garble_rescued) missing.push("customer_name_unverified");
     if (!extracted.booking_date) missing.push("booking_date");
     if (!extracted.booking_time || !/^\d{2}:\d{2}$/.test(extracted.booking_time)) missing.push("booking_time");
-    if (!extracted.menu && !extracted.notes) missing.push("menu_or_notes");
-    if (confidence === "low" && !garbleRescue) missing.push("low_confidence");
+    if (isUnresolvedEmailMenu(extracted.menu)) missing.push("menu");
+    if (confidence === "low") missing.push("low_confidence");
     if (missing.length > 0) {
       await supabase.from("external_reservation_logs").insert({
         owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
@@ -1075,8 +1096,18 @@ Deno.serve(async (req) => {
   // external_reservation_id が無い、もしくはメニュー解決が不完全な場合は枠は確保しつつ needs_review
   const isSalonboard = source === "salonboard";
   const hasExtIdFinal = !!(extracted.external_reservation_id && String(extracted.external_reservation_id).trim());
-  const menuResolved = !!extracted.menu;
-  const sbIncomplete = isSalonboard && (!hasExtIdFinal || !menuResolved);
+  const menuResolved = !!extracted.menu && !isUnresolvedEmailMenu(extracted.menu);
+  const customerResolved = !!extracted.customer_name && !extracted._garble_rescued;
+  const sbReviewReasons = [
+    !hasExtIdFinal ? "no_ext_id" : null,
+    !customerResolved ? "customer_unresolved" : null,
+    !menuResolved ? "menu_unresolved" : null,
+    confidence === "low" ? "low_confidence" : null,
+  ].filter(Boolean) as string[];
+  const sbIncomplete = isSalonboard && sbReviewReasons.length > 0;
+  const bookingNotes = sbIncomplete
+    ? appendReviewNote(extracted.notes, `メール取込時に顧客名/メニュー未取得: ${sbReviewReasons.join(",")}`)
+    : (extracted.notes ? String(extracted.notes).slice(0, 500) : null);
 
   const insertPayload: any = {
     owner_id: ownerId,
@@ -1084,14 +1115,14 @@ Deno.serve(async (req) => {
     customer_id: customerId,
     booking_date: extracted.booking_date,
     booking_time: bookingTime,
-    menu: (extracted.menu || "メニュー未指定").toString().slice(0, 200),
-    notes: extracted.notes ? String(extracted.notes).slice(0, 500) : null,
+    menu: (menuResolved ? extracted.menu : UNRESOLVED_EMAIL_MENU).toString().slice(0, 200),
+    notes: bookingNotes,
     revenue: extracted.revenue || 0,
     external_reservation_id: externalId,
   };
 
   if (isSalonboard) {
-    insertPayload.status = "confirmed";
+    insertPayload.status = sbIncomplete ? "pending" : "confirmed";
     insertPayload.external_source = "salonboard_email";
     insertPayload.source_channel = "salonboard";
     insertPayload.sync_status = sbIncomplete ? "needs_review" : "success";
@@ -1124,7 +1155,7 @@ Deno.serve(async (req) => {
     owner_id: ownerId, source, raw_to: to, raw_from: from, raw_subject: subject, raw_text: text.slice(0, 4000), inbound_message_id: inboundMessageId, idempotency_key: idempotencyKey,
     parsed_data: withDecodeMeta(extracted, decodeMeta, text), status: sbIncomplete ? "needs_review" : "created",
     matched_customer_id: customerId, created_booking_id: booking.id,
-    error: sbIncomplete ? `salonboard_partial: ${!hasExtIdFinal ? "no_ext_id " : ""}${!menuResolved ? "no_menu" : ""}`.trim() : null,
+    error: sbIncomplete ? `salonboard_partial: ${sbReviewReasons.join(",")}` : null,
   });
 
   // オーナー通知（メール）
