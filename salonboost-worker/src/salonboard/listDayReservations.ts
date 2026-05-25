@@ -20,12 +20,16 @@ export interface DayReservation {
   route?: string | null;
   source?: string | null;
   coupon_name?: string | null;
+  stylist_id?: string | null;
+  panel_update?: string | null;
+  reserve_type?: string | null;
+  payment_type?: string | null;
   parser_warnings?: string[];
   needs_review_reason?: string | null;
   raw_payload?: Record<string, unknown> | null;
 }
 
-export type CandidateStage = "candidate_extract" | "popup_parse" | "reservation_list" | "detail_fetch" | "detail_parse";
+export type CandidateStage = "candidate_extract" | "panel_reserve" | "popup_parse" | "reservation_list" | "detail_fetch" | "detail_parse";
 
 export interface CandidateDiagnostic {
   reserveId: string | null;
@@ -47,6 +51,7 @@ export interface ListDayReservationsDiagnostics {
   opened_urls: string[];
   view_type: string[];
   schedule_detected_count: number;
+  panel_reserve_detected_count: number;
   reservation_list_detected_count: number;
   deduped_count: number;
   fallback_used_count: number;
@@ -64,11 +69,16 @@ type Candidate = {
   reserveId: string | null;
   detailHref: string | null;
   source: string;
+  time?: string | null;
+  panelDate?: string | null;
   status?: string | null;
   route?: string | null;
   stylistName?: string | null;
+  stylistId?: string | null;
   menu?: string | null;
   customerName?: string | null;
+  panelUpdate?: string | null;
+  reserveType?: string | null;
 };
 
 const DETAIL_FETCH_DAILY_LIMIT = 10;
@@ -196,6 +206,11 @@ function parseClock(text: string | null | undefined): string | null {
   return match ? `${match[1].padStart(2, "0")}:${match[2]}` : null;
 }
 
+function parseCompactClock(text: string | null | undefined): string | null {
+  const match = (text || "").trim().match(/^(\d{1,2})(\d{2})$/);
+  return match ? `${match[1].padStart(2, "0")}:${match[2]}` : null;
+}
+
 function parseTimeRangeAndDuration(text: string | null | undefined): {
   start: string | null;
   end: string | null;
@@ -268,6 +283,7 @@ function createEmptyDiagnostics(date: string): ListDayReservationsDiagnostics {
     opened_urls: [],
     view_type: [],
     schedule_detected_count: 0,
+    panel_reserve_detected_count: 0,
     reservation_list_detected_count: 0,
     deduped_count: 0,
     fallback_used_count: 0,
@@ -291,6 +307,10 @@ function mergeReservation(target: DayReservation, source: DayReservation): void 
   target.route ||= source.route;
   target.source ||= source.source;
   target.coupon_name ||= source.coupon_name;
+  target.stylist_id ||= source.stylist_id;
+  target.panel_update ||= source.panel_update;
+  target.reserve_type ||= source.reserve_type;
+  target.payment_type ||= source.payment_type;
   target.needs_review_reason ||= source.needs_review_reason;
   if (source.raw && !target.raw.includes(source.raw)) {
     target.raw = clip(`${target.raw} ${source.raw}`, 500);
@@ -327,22 +347,30 @@ function addResult(
 function buildFallbackItem(date: string, cand: Candidate, warning: string): DayReservation {
   const item: DayReservation = {
     external_reservation_id: cand.reserveId,
-    date,
-    time: parseClock(cand.text),
+    date: cand.panelDate || date,
+    time: cand.time || parseClock(cand.text),
     customerName: cand.customerName || parseCustomerName(cand.text),
     menu: cand.menu || null,
     stylistName: cand.stylistName || null,
     raw: clip(cand.text || cand.snippet, 300),
     detail_href: cand.detailHref || (cand.reserveId ? fallbackDetailUrl(cand.reserveId) : null),
-    time_source: parseClock(cand.text) ? "popup" : null,
+    time_source: (cand.time || parseClock(cand.text)) ? "popup" : null,
     status: cand.status || null,
     route: cand.route || null,
     source: cand.route || null,
+    stylist_id: cand.stylistId || null,
+    panel_update: cand.panelUpdate || null,
+    reserve_type: cand.reserveType || null,
     parser_warnings: [warning],
     needs_review_reason: warning,
     raw_payload: {
       candidate_source: cand.source,
       candidate_snippet: clip(cand.snippet, 500),
+      panel_date: cand.panelDate || null,
+      panel_start_time: cand.time || null,
+      panel_stylist_id: cand.stylistId || null,
+      panel_update: cand.panelUpdate || null,
+      panel_reserve_type: cand.reserveType || null,
     },
   };
   return item;
@@ -556,6 +584,12 @@ export async function listDayReservations(page: Page, date: string): Promise<Lis
       reserveId: string | null;
       detailHref: string | null;
       source: string;
+      time?: string | null;
+      panelDate?: string | null;
+      customerName?: string | null;
+      stylistId?: string | null;
+      panelUpdate?: string | null;
+      reserveType?: string | null;
     };
 
     const ACTION_TEXTS = new Set([
@@ -580,6 +614,12 @@ export async function listDayReservations(page: Page, date: string): Promise<Lis
       const generic = raw.match(/\b[A-Z]{2}\d{6,}\b/i);
       return generic?.[0]?.toUpperCase() || null;
     };
+    const compactClock = (raw: string | null | undefined) => {
+      const match = (raw || "").trim().match(/^(\d{1,2})(\d{2})$/);
+      return match ? `${match[1].padStart(2, "0")}:${match[2]}` : null;
+    };
+    const cleanCustomerName = (raw: string | null | undefined) =>
+      (raw || "").replace(/\s*様\s*$/, "").replace(/\s*さん\s*$/, "").trim() || null;
     const findDetailHref = (raw: string) => {
       const direct = raw.match(/https?:\/\/[^'"\s<>]+(?:reserve\/)?(?:net\/reserveDetail|ext\/extReserveDetail|reserveDetail)\/?\?reserveId=[A-Z0-9]+/i);
       if (direct?.[0]) return direct[0].replace(/&amp;/g, "&");
@@ -648,6 +688,63 @@ export async function listDayReservations(page: Page, date: string): Promise<Lis
       idx += 1;
     };
 
+    for (const panel of Array.from(document.querySelectorAll("div.panel_reserve, [id^='reserve_item_BF'], .panel_reserve_id")) as HTMLElement[]) {
+      const root =
+        (panel.classList?.contains("panel_reserve") ? panel : null) ||
+        (panel.closest("div.panel_reserve, [id^='reserve_item_BF']") as HTMLElement | null) ||
+        panel;
+      const textOf = (selector: string) => {
+        const el = root.querySelector(selector) as HTMLElement | HTMLInputElement | null;
+        if (!el) return "";
+        if ("value" in el && el.value) return normalize(el.value);
+        return normalize(el.textContent || (el as HTMLElement).innerText || "");
+      };
+      const rootRaw = rawFor(root);
+      const reserveId = textOf(".panel_reserve_id") ||
+        (root.getAttribute("id") || "").match(/reserve_item_([A-Z0-9]+)/i)?.[1]?.toUpperCase() ||
+        findReserveId(rootRaw);
+      if (!reserveId) continue;
+      const panelDate = textOf(".panel_reserve_date");
+      const startRaw = textOf(".panel_reserve_start");
+      const customerName = cleanCustomerName(textOf(".reserveItemCustomer"));
+      const stylistId = textOf(".panel_reserve_stylistId");
+      const panelUpdate = textOf(".panel_reserve_update");
+      const reserveType = textOf(".panel_reserve_reserveTypeFlg");
+      const detailHref = findDetailHref(rootRaw) ||
+        `https://salonboard.com/CLP/bt/reserve/net/reserveDetail/?reserveId=${encodeURIComponent(reserveId)}`;
+      const key = `id:${reserveId}`;
+      const existing = candidateMap.get(key);
+      const candidate = {
+        idx,
+        text: short(root.innerText || root.textContent || `${customerName || ""} ${startRaw}`),
+        snippet: short(root.innerText || root.textContent || rootRaw, 260),
+        reserveId,
+        detailHref,
+        source: "panel_reserve",
+        time: compactClock(startRaw),
+        panelDate: /^\d{8}$/.test(panelDate) ? panelDate : null,
+        customerName,
+        stylistId: stylistId || null,
+        panelUpdate: panelUpdate || null,
+        reserveType: reserveType || null,
+        element: root,
+      };
+      if (existing) {
+        existing.detailHref ||= candidate.detailHref;
+        existing.time ||= candidate.time;
+        existing.panelDate ||= candidate.panelDate;
+        existing.customerName ||= candidate.customerName;
+        existing.stylistId ||= candidate.stylistId;
+        existing.panelUpdate ||= candidate.panelUpdate;
+        existing.reserveType ||= candidate.reserveType;
+        if (!existing.source.includes("panel_reserve")) existing.source = `${existing.source},panel_reserve`;
+        continue;
+      }
+      root.setAttribute("data-sb-list-idx", String(idx));
+      candidateMap.set(key, candidate);
+      idx += 1;
+    }
+
     for (const el of all) {
       const own = normalize(el.innerText || el.textContent || "");
       if (!own) continue;
@@ -676,6 +773,7 @@ export async function listDayReservations(page: Page, date: string): Promise<Lis
   });
 
   diagnostics.detected_count = candidates.length;
+  diagnostics.panel_reserve_detected_count = candidates.filter((cand) => cand.source.includes("panel_reserve")).length;
   diagnostics.schedule_detected_count = candidates.length;
   logger.info({ candidateCount: candidates.length }, "listDayReservations: candidates found");
 
@@ -778,8 +876,8 @@ export async function listDayReservations(page: Page, date: string): Promise<Lis
       const reserveId = popupData?.extractedReserveId || cand.reserveId || null;
       const detailHref = popupData?.detailHref || cand.detailHref || (reserveId ? fallbackDetailUrl(reserveId) : null);
       const popupText = popupData?.popupText || cand.text || "";
-      const customerName = parseCustomerName(popupData?.reserveCustomerName || popupText);
-      const time = parseClock(popupText || cand.text);
+      const customerName = cand.customerName || parseCustomerName(popupData?.reserveCustomerName || popupText);
+      const time = cand.time || parseClock(popupText || cand.text);
 
       if (!popupData?.reserveCustomerName && !reserveId && !detailHref) {
         addDiagnostic(diagnostics.skipped_candidates, {
@@ -802,14 +900,23 @@ export async function listDayReservations(page: Page, date: string): Promise<Lis
         raw: clip(popupText || cand.text, 300),
         detail_href: detailHref,
         time_source: time ? "popup" : null,
+        stylist_id: cand.stylistId || null,
+        panel_update: cand.panelUpdate || null,
+        reserve_type: cand.reserveType || null,
         raw_payload: {
           candidate_source: cand.source,
           candidate_snippet: clip(cand.snippet, 500),
+          panel_date: cand.panelDate || null,
+          panel_start_time: cand.time || null,
+          panel_stylist_id: cand.stylistId || null,
+          panel_update: cand.panelUpdate || null,
+          panel_reserve_type: cand.reserveType || null,
         },
       });
       const item = added.item;
       if (!added.inserted) diagnostics.deduped_count += 1;
 
+      if (cand.source.includes("panel_reserve")) addWarning(item, "panel_reserve_direct");
       if (!popupData?.reserveCustomerName) addWarning(item, "popup_customer_missing");
       if (!time) addWarning(item, "time_missing_from_popup");
     } catch (e) {
@@ -893,6 +1000,7 @@ export async function listDayReservations(page: Page, date: string): Promise<Lis
           phone: "\u96fb\u8a71\u756a\u53f7",
           gender: "\u6027\u5225",
           visitDate: "\u6765\u5e97\u65e5\u6642",
+          payment: "\u304a\u652f\u6255\u3044",
         };
         const normalize = (value: string | null | undefined) =>
           (value || "").replace(/\s+/g, " ").trim();
@@ -931,6 +1039,7 @@ export async function listDayReservations(page: Page, date: string): Promise<Lis
           customerName: findByLabel(labels.customerKanji) || findByLabel(labels.customer),
           phone: findByLabel(labels.phone),
           gender: findByLabel(labels.gender),
+          payment: findByLabel(labels.payment),
           rsvDateText,
           fullText: fullText.slice(0, 1500),
         };
@@ -963,6 +1072,7 @@ export async function listDayReservations(page: Page, date: string): Promise<Lis
       r.menu ||= detailData.menu || null;
       r.coupon_name ||= detailData.coupon || null;
       r.customerName ||= detailData.customerName || null;
+      r.payment_type ||= detailData.payment || null;
       r.raw_payload = {
         ...(r.raw_payload || {}),
         detail: {
@@ -976,6 +1086,7 @@ export async function listDayReservations(page: Page, date: string): Promise<Lis
           customerName: detailData.customerName || null,
           phone_present: !!detailData.phone,
           gender: detailData.gender || null,
+          payment: detailData.payment || null,
           rsvDateText: detailData.rsvDateText || null,
         },
       };
