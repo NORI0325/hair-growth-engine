@@ -14,6 +14,42 @@ function toPositiveInt(value: unknown): number | null {
   return Math.round(parsed);
 }
 
+type BookingRow = {
+  id: string;
+  owner_id: string;
+  location_id: string | null;
+  booking_date: string;
+  booking_time: string;
+  menu: string;
+  total_duration_minutes: number | null;
+  staff_id: string | null;
+  customer_id: string | null;
+  external_reservation_id: string | null;
+  sync_status: string | null;
+  source_channel: string | null;
+  external_source: string | null;
+  needs_manual_review: boolean | null;
+  customers?: {
+    full_name?: string | null;
+    name_kana?: string | null;
+    phone?: string | null;
+    email?: string | null;
+  } | null;
+  staff?: { name?: string | null } | null;
+};
+
+type WorkerReservationItem = {
+  external_reservation_id?: string | null;
+  time?: string | null;
+  customerName?: string | null;
+};
+
+type WorkerFindResponse = {
+  success?: boolean;
+  message?: string;
+  items?: WorkerReservationItem[];
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
@@ -33,13 +69,13 @@ Deno.serve(async (req) => {
     if (!booking_id) return new Response(JSON.stringify({ error: "booking_id_required" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
     const { data: booking } = await supabase.from("bookings").select(`
-      id, owner_id, location_id, booking_date, booking_time, menu, menu_id, total_duration_minutes,
+      id, owner_id, location_id, booking_date, booking_time, menu, total_duration_minutes,
       staff_id, customer_id, external_reservation_id, sync_status, source_channel, external_source, needs_manual_review,
       customers:customer_id(full_name, name_kana, phone, email),
       staff:staff_id(name)
     `).eq("id", booking_id).maybeSingle();
     if (!booking) return new Response(JSON.stringify({ error: "booking_not_found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    const b: any = booking;
+    const b = booking as BookingRow;
     if (b.owner_id !== user.id) return new Response(JSON.stringify({ error: "forbidden" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     if (!b.location_id) return new Response(JSON.stringify({ error: "location_required", message: "店舗未割当の予約は再送信できません" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
@@ -128,10 +164,12 @@ Deno.serve(async (req) => {
     let menuMappingEnabled: boolean | null = null;
     let menuItemId: string | null = null;
     {
-      let menuQuery = supabase.from("menu_items")
-        .select("id").eq("owner_id", b.owner_id).eq("location_id", b.location_id);
-      menuQuery = b.menu_id ? menuQuery.eq("id", b.menu_id) : menuQuery.eq("name", b.menu);
-      const { data: menuRow } = await menuQuery.maybeSingle();
+      const { data: menuRow } = await supabase.from("menu_items")
+        .select("id")
+        .eq("owner_id", b.owner_id)
+        .eq("location_id", b.location_id)
+        .eq("name", b.menu)
+        .maybeSingle();
       menuItemId = menuRow?.id ?? null;
       if (menuItemId) {
         const { data: mcm } = await supabase.from("menu_channel_mappings")
@@ -153,13 +191,12 @@ Deno.serve(async (req) => {
           enabled: mcm.enabled,
         } : { found: false, menu_item_id: menuItemId });
       } else {
-        console.log("[resend] menu_item not found", { owner_id: b.owner_id, location_id: b.location_id, menu_id: b.menu_id, menu: b.menu });
+        console.log("[resend] menu_item not found", { owner_id: b.owner_id, location_id: b.location_id, menu: b.menu });
       }
       if (menuMappingEnabled === false || !setmenuId || !mappingRsvTerm) {
         const message = "メニュー連携情報が不足しているためサロンボード再送できません";
         await markNeedsReview("mapping_not_found", message, {
           menu_item_id: menuItemId,
-          booking_menu_id: b.menu_id ?? null,
           external_id: extMenuId,
           external_setmenu_id: extSetmenuId,
           rsv_term: mappingRsvTerm,
@@ -223,11 +260,11 @@ Deno.serve(async (req) => {
         customer_name: customerName,
       }),
     });
-    const wJson: any = await wRes.json().catch(() => ({}));
+    const wJson = (await wRes.json().catch(() => ({}))) as WorkerFindResponse;
     if (!wJson?.success) {
       return new Response(JSON.stringify({ error: "external_check_failed", message: wJson?.message || `HTTP ${wRes.status}` }), { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
-    const items: any[] = Array.isArray(wJson.items) ? wJson.items : [];
+    const items: WorkerReservationItem[] = Array.isArray(wJson.items) ? wJson.items : [];
     const wantTime = b.booking_time?.slice(0, 5);
     const matchedById = b.external_reservation_id ? items.find((it) => it.external_reservation_id === b.external_reservation_id) : null;
     const candidates = items.filter((it) => {
