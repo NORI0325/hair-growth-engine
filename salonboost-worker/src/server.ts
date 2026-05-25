@@ -158,10 +158,10 @@ app.post("/api/salonboard/list-day-reservations", bearerAuth, async (req, res) =
   const p = parsed.data;
   logger.info({ owner: p.store_id, location: p.location_id ?? null, date: p.date, type: "list_day_reservations" }, "job received");
   try {
-    const items = await withSalonboardSession(p.store_id, p.location_id ?? null, (page) =>
+    const result = await withSalonboardSession(p.store_id, p.location_id ?? null, (page) =>
       listDayReservations(page, p.date),
     );
-    res.json({ success: true, items });
+    res.json({ success: true, items: result.items, ...result.diagnostics, diagnostics: result.diagnostics });
   } catch (e) {
     if (e instanceof WorkerError) res.json({ success: false, error_type: e.errorType, message: e.message });
     else { logger.error({ err: e }, "list-day-reservations failed"); res.json({ success: false, error_type: "unknown_error", message: e instanceof Error ? e.message : String(e) }); }
