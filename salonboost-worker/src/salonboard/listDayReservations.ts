@@ -106,6 +106,7 @@ type ScheduleCandidateCollection = {
   candidates: Candidate[];
   panelReserveIds: string[];
   nonBfReserveIdCount: number;
+  nonNumericBfIdCount: number;
 };
 
 const DETAIL_FETCH_DAILY_LIMIT = 10;
@@ -179,15 +180,15 @@ function addWarning(item: DayReservation, warning: string): void {
 
 function extractReserveId(text: string | null | undefined): string | null {
   const raw = text || "";
-  const idByName = raw.match(/(?:reserveId|rsvId|reserve_id|reservationId|reserveNo)["'=:\s]*(BF[0-9A-Z]+)/i);
+  const idByName = raw.match(/(?:reserveId|rsvId|reserve_id|reservationId|reserveNo)["'=:\s]*(BF\d{8,})/i);
   if (idByName?.[1]) return idByName[1].toUpperCase();
-  const bf = raw.match(/\bBF[0-9A-Z]+\b/i);
+  const bf = raw.match(/\bBF\d{8,}\b/i);
   if (bf?.[0]) return bf[0].toUpperCase();
   return null;
 }
 
 function isDetailHref(href: string | null | undefined): boolean {
-  return !!href && /(?:net\/reserveDetail|ext\/extReserveDetail|reserveDetail)\/?\?reserveId=BF[0-9A-Z]+/i.test(href);
+  return !!href && /(?:net\/reserveDetail|ext\/extReserveDetail|reserveDetail)\/?\?reserveId=BF\d{8,}/i.test(href);
 }
 
 function fallbackDetailUrl(reserveId: string): string {
@@ -631,16 +632,16 @@ async function collectReservationListCandidates(
           (value || "").replace(/\s+/g, " ").trim();
         const short = (value: string | null | undefined, len = 260) => normalize(value).slice(0, len);
         const findReserveId = (raw: string) => {
-          const idByName = raw.match(/(?:reserveId|rsvId|reserve_id|reservationId|reserveNo)["'=:\s]*(BF[0-9A-Z]+)/i);
+          const idByName = raw.match(/(?:reserveId|rsvId|reserve_id|reservationId|reserveNo)["'=:\s]*(BF\d{8,})/i);
           if (idByName?.[1]) return idByName[1].toUpperCase();
-          const bf = raw.match(/\bBF[0-9A-Z]+\b/i);
+          const bf = raw.match(/\bBF\d{8,}\b/i);
           if (bf?.[0]) return bf[0].toUpperCase();
           return null;
         };
         const findDetailHref = (raw: string) => {
-          const direct = raw.match(/https?:\/\/[^'"\s<>]+(?:reserve\/)?(?:net\/reserveDetail|ext\/extReserveDetail|reserveDetail)\/?\?reserveId=BF[0-9A-Z]+/i);
+          const direct = raw.match(/https?:\/\/[^'"\s<>]+(?:reserve\/)?(?:net\/reserveDetail|ext\/extReserveDetail|reserveDetail)\/?\?reserveId=BF\d{8,}/i);
           if (direct?.[0]) return direct[0].replace(/&amp;/g, "&");
-          const relative = raw.match(/(?:\/CLP\/bt\/)?(?:reserve\/)?(?:net\/reserveDetail|ext\/extReserveDetail|reserveDetail)\/?\?reserveId=BF[0-9A-Z]+/i);
+          const relative = raw.match(/(?:\/CLP\/bt\/)?(?:reserve\/)?(?:net\/reserveDetail|ext\/extReserveDetail|reserveDetail)\/?\?reserveId=BF\d{8,}/i);
           if (relative?.[0]) {
             try { return new URL(relative[0].replace(/&amp;/g, "&"), location.href).href; } catch (_) { return relative[0].replace(/&amp;/g, "&"); }
           }
@@ -685,7 +686,7 @@ async function collectReservationListCandidates(
         for (const el of Array.from(document.querySelectorAll("a[href], [onclick], input, tr, li")) as HTMLElement[]) {
           const href = (el as HTMLAnchorElement).href || el.getAttribute("href") || "";
           const raw = `${href} ${el.getAttribute("onclick") || ""} ${el.getAttribute("value") || ""} ${el.outerHTML || ""}`;
-          if (!/(reserveId|rsvId|reserveNo|reserveDetail|extReserveDetail|BF[0-9A-Z]+)/i.test(raw)) continue;
+          if (!/(reserveId|rsvId|reserveNo|reserveDetail|extReserveDetail|BF\d{8,})/i.test(raw)) continue;
           const reserveId = findReserveId(raw);
           const detailHref = findDetailHref(raw);
           if (!reserveId && !detailHref) continue;
@@ -784,17 +785,19 @@ export async function listDayReservations(page: Page, date: string): Promise<Lis
     const panelReserveIds = new Set<string>();
     let idx = 0;
     let nonBfReserveIdCount = 0;
+    let nonNumericBfIdCount = 0;
 
     const normalize = (value: string | null | undefined) =>
       (value || "").replace(/\s+/g, " ").trim();
     const short = (value: string | null | undefined, len = 220) => normalize(value).slice(0, len);
     const findReserveId = (raw: string) => {
-      const idByName = raw.match(/(?:reserveId|rsvId|reserve_id|reservationId|reserveNo)["'=:\s]*(BF[0-9A-Z]+)/i);
+      const idByName = raw.match(/(?:reserveId|rsvId|reserve_id|reservationId|reserveNo)["'=:\s]*(BF\d{8,})/i);
       if (idByName?.[1]) return idByName[1].toUpperCase();
-      const bf = raw.match(/\bBF[0-9A-Z]+\b/i);
+      const bf = raw.match(/\bBF\d{8,}\b/i);
       if (bf?.[0]) return bf[0].toUpperCase();
       return null;
     };
+    const hasNonNumericBfId = (raw: string) => /\bBF(?!\d)[0-9A-Z]+\b/i.test(raw);
     const compactClock = (raw: string | null | undefined) => {
       const match = (raw || "").trim().match(/^(\d{1,2})(\d{2})$/);
       return match ? `${match[1].padStart(2, "0")}:${match[2]}` : null;
@@ -802,9 +805,9 @@ export async function listDayReservations(page: Page, date: string): Promise<Lis
     const cleanCustomerName = (raw: string | null | undefined) =>
       (raw || "").replace(/\s*\u69d8\s*$/, "").replace(/\s*\u3055\u3093\s*$/, "").trim() || null;
     const findDetailHref = (raw: string) => {
-      const direct = raw.match(/https?:\/\/[^'"\s<>]+(?:reserve\/)?(?:net\/reserveDetail|ext\/extReserveDetail|reserveDetail)\/?\?reserveId=BF[0-9A-Z]+/i);
+      const direct = raw.match(/https?:\/\/[^'"\s<>]+(?:reserve\/)?(?:net\/reserveDetail|ext\/extReserveDetail|reserveDetail)\/?\?reserveId=BF\d{8,}/i);
       if (direct?.[0]) return direct[0].replace(/&amp;/g, "&");
-      const relative = raw.match(/(?:\/CLP\/bt\/)?(?:reserve\/)?(?:net\/reserveDetail|ext\/extReserveDetail|reserveDetail)\/?\?reserveId=BF[0-9A-Z]+/i);
+      const relative = raw.match(/(?:\/CLP\/bt\/)?(?:reserve\/)?(?:net\/reserveDetail|ext\/extReserveDetail|reserveDetail)\/?\?reserveId=BF\d{8,}/i);
       if (relative?.[0]) {
         try { return new URL(relative[0].replace(/&amp;/g, "&"), location.href).href; } catch (_) { return relative[0].replace(/&amp;/g, "&"); }
       }
@@ -882,7 +885,7 @@ export async function listDayReservations(page: Page, date: string): Promise<Lis
       };
       const rootRaw = rawFor(root);
       const reserveId = textOf(".panel_reserve_id") ||
-        (root.getAttribute("id") || "").match(/reserve_item_(BF[0-9A-Z]+)/i)?.[1]?.toUpperCase() ||
+        (root.getAttribute("id") || "").match(/reserve_item_(BF\d{8,})/i)?.[1]?.toUpperCase() ||
         findReserveId(rootRaw);
       if (!reserveId) continue;
       panelReserveIds.add(reserveId);
@@ -939,12 +942,17 @@ export async function listDayReservations(page: Page, date: string): Promise<Lis
 
     for (const el of all) {
       const raw = rawFor(el);
-      if (!/(reserveId|rsvId|reserve_id|reservationId|reserveNo|reserveDetail|extReserveDetail|BF[0-9A-Z]+)/i.test(raw)) {
+      if (!/(reserveId|rsvId|reserve_id|reservationId|reserveNo|reserveDetail|extReserveDetail|BF\d{8,})/i.test(raw)) {
+        if (hasNonNumericBfId(raw)) nonNumericBfIdCount += 1;
         continue;
       }
       const reserveId = findReserveId(raw);
       const detailHref = findDetailHref(raw);
       if (!reserveId && !detailHref) {
+        if (hasNonNumericBfId(raw)) {
+          nonNumericBfIdCount += 1;
+          continue;
+        }
         nonBfReserveIdCount += 1;
         continue;
       }
@@ -958,10 +966,11 @@ export async function listDayReservations(page: Page, date: string): Promise<Lis
         .map(({ element: _element, ...candidate }) => candidate),
       panelReserveIds: Array.from(panelReserveIds),
       nonBfReserveIdCount,
+      nonNumericBfIdCount,
     };
   }).catch((e: unknown) => {
     logger.warn({ e: e instanceof Error ? e.message : String(e) }, "listDayReservations: candidate eval failed");
-    return { candidates: [] as Candidate[], panelReserveIds: [], nonBfReserveIdCount: 0 };
+    return { candidates: [] as Candidate[], panelReserveIds: [], nonBfReserveIdCount: 0, nonNumericBfIdCount: 0 };
   });
 
   const initialScheduleCandidates = await collectScheduleCandidates();
@@ -969,6 +978,9 @@ export async function listDayReservations(page: Page, date: string): Promise<Lis
   initialScheduleCandidates.panelReserveIds.forEach((id) => addUniqueString(diagnostics.panel_reserve_ids, id));
   if (initialScheduleCandidates.nonBfReserveIdCount > 0) {
     addInvalidCandidateReason(diagnostics, "non_bf_reserve_id", initialScheduleCandidates.nonBfReserveIdCount);
+  }
+  if (initialScheduleCandidates.nonNumericBfIdCount > 0) {
+    addInvalidCandidateReason(diagnostics, "non_numeric_bf_id", initialScheduleCandidates.nonNumericBfIdCount);
   }
 
   diagnostics.has_new_reservation_notification = await detectNewReservationNotification(page);
@@ -980,6 +992,9 @@ export async function listDayReservations(page: Page, date: string): Promise<Lis
     refreshedScheduleCandidates.panelReserveIds.forEach((id) => addUniqueString(diagnostics.panel_reserve_ids, id));
     if (refreshedScheduleCandidates.nonBfReserveIdCount > 0) {
       addInvalidCandidateReason(diagnostics, "non_bf_reserve_id", refreshedScheduleCandidates.nonBfReserveIdCount);
+    }
+    if (refreshedScheduleCandidates.nonNumericBfIdCount > 0) {
+      addInvalidCandidateReason(diagnostics, "non_numeric_bf_id", refreshedScheduleCandidates.nonNumericBfIdCount);
     }
     diagnostics.after_refresh_detected_count = refreshedScheduleCandidates.candidates.length;
     diagnostics.after_refresh_panel_reserve_count = refreshedScheduleCandidates.candidates.filter((cand) => cand.source.includes("panel_reserve")).length;
@@ -1071,16 +1086,16 @@ export async function listDayReservations(page: Page, date: string): Promise<Lis
         const normalize = (value: string | null | undefined) =>
           (value || "").replace(/\s+/g, " ").trim();
         const findReserveId = (raw: string) => {
-          const idByName = raw.match(/(?:reserveId|rsvId|reserve_id|reservationId|reserveNo)["'=:\s]*(BF[0-9A-Z]+)/i);
+          const idByName = raw.match(/(?:reserveId|rsvId|reserve_id|reservationId|reserveNo)["'=:\s]*(BF\d{8,})/i);
           if (idByName?.[1]) return idByName[1].toUpperCase();
-          const bf = raw.match(/\bBF[0-9A-Z]+\b/i);
+          const bf = raw.match(/\bBF\d{8,}\b/i);
           if (bf?.[0]) return bf[0].toUpperCase();
           return null;
         };
         const findDetailHref = (raw: string) => {
-          const direct = raw.match(/https?:\/\/[^'"\s<>]+(?:reserve\/)?(?:net\/reserveDetail|ext\/extReserveDetail|reserveDetail)\/?\?reserveId=BF[0-9A-Z]+/i);
+          const direct = raw.match(/https?:\/\/[^'"\s<>]+(?:reserve\/)?(?:net\/reserveDetail|ext\/extReserveDetail|reserveDetail)\/?\?reserveId=BF\d{8,}/i);
           if (direct?.[0]) return direct[0].replace(/&amp;/g, "&");
-          const relative = raw.match(/(?:\/CLP\/bt\/)?(?:reserve\/)?(?:net\/reserveDetail|ext\/extReserveDetail|reserveDetail)\/?\?reserveId=BF[0-9A-Z]+/i);
+          const relative = raw.match(/(?:\/CLP\/bt\/)?(?:reserve\/)?(?:net\/reserveDetail|ext\/extReserveDetail|reserveDetail)\/?\?reserveId=BF\d{8,}/i);
           if (relative?.[0]) {
             try { return new URL(relative[0].replace(/&amp;/g, "&"), location.href).href; } catch (_) { return relative[0].replace(/&amp;/g, "&"); }
           }
@@ -1333,7 +1348,7 @@ export async function listDayReservations(page: Page, date: string): Promise<Lis
         const rsvDateText = normalize((document.querySelector("#rsvDate") as HTMLElement | null)?.innerText || "") ||
           findByLabel(labels.visitDate);
         const reserveId = findByLabel(labels.reservationNo) ||
-          (fullText.match(/\bBF[0-9A-Z]+\b/i)?.[0] || "");
+          (fullText.match(/\bBF\d{8,}\b/i)?.[0] || "");
         return {
           reserveId,
           status: findByLabel(labels.status),
