@@ -35,6 +35,7 @@ type DaySummary = {
   local_only_count: number;
   conflict_count: number;
   needs_review_count: number;
+  worker_diagnostics?: Record<string, unknown> | null;
   items: Array<ExternalItem & {
     classification: Classification;
     matched_booking_id?: string | null;
@@ -139,6 +140,7 @@ const classifyDay = async (
   locationId: string | null,
   date: string,
   externalItems: ExternalItem[],
+  workerDiagnostics: Record<string, unknown> | null = null,
 ): Promise<DaySummary> => {
   let localQuery = supabase
     .from("bookings")
@@ -233,6 +235,7 @@ const classifyDay = async (
     local_only_count,
     conflict_count,
     needs_review_count,
+    worker_diagnostics: workerDiagnostics,
     items: classified,
   };
 };
@@ -279,6 +282,9 @@ const fetchDayFromWorker = async (
     return {
       ok: true as const,
       items: Array.isArray(body.items) ? body.items as ExternalItem[] : [],
+      diagnostics: typeof body?.diagnostics === "object" && body.diagnostics !== null
+        ? body.diagnostics as Record<string, unknown>
+        : null,
     };
   } catch (error) {
     const errorType = error instanceof DOMException && error.name === "AbortError" ? "timeout" : "worker_failed";
@@ -411,7 +417,7 @@ Deno.serve(async (req) => {
         const isCritical = CRITICAL_ERROR_TYPES.has(fetched.error_type);
         throw new Error(`${isCritical ? "critical_" : ""}${fetched.error_type}: ${fetched.error_message}`);
       }
-      const summary = await classifyDay(supabase, ownerId, locationId, date, fetched.items);
+      const summary = await classifyDay(supabase, ownerId, locationId, date, fetched.items, fetched.diagnostics);
       daySummaries.push(summary);
     }
 
@@ -455,6 +461,7 @@ Deno.serve(async (req) => {
             local_only_count: day.local_only_count,
             conflict_count: day.conflict_count,
             needs_review_count: day.needs_review_count,
+            worker_diagnostics: day.worker_diagnostics ?? null,
           })),
         },
       })

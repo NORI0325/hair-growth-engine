@@ -64,6 +64,7 @@ Deno.serve(async (req) => {
 
     const t0 = Date.now();
     let externalItems: ExternalItem[] = [];
+    let workerDiagnostics: Record<string, unknown> | null = null;
     let workerError: string | null = null;
     try {
       const wRes = await fetch(`${workerUrl.replace(/\/+$/, "")}/api/salonboard/list-day-reservations`, {
@@ -85,6 +86,9 @@ Deno.serve(async (req) => {
       } catch (_) { /* ignore log failure */ }
       if (wJson?.success) {
         externalItems = Array.isArray(wJson.items) ? wJson.items : [];
+        workerDiagnostics = typeof wJson.diagnostics === "object" && wJson.diagnostics !== null
+          ? wJson.diagnostics as Record<string, unknown>
+          : null;
       } else {
         workerError = wJson?.error_type || wJson?.message || `HTTP ${wRes.status}`;
       }
@@ -208,6 +212,7 @@ Deno.serve(async (req) => {
       location_id,
       total_external: externalItems.length,
       total_local: local.length,
+      worker_diagnostics: workerDiagnostics,
       items: classified,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {

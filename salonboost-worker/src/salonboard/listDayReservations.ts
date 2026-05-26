@@ -1003,6 +1003,18 @@ export async function listDayReservations(page: Page, date: string): Promise<Lis
 
   for (const cand of candidates) {
     try {
+      if (cand.source.includes("panel_reserve") && cand.reserveId) {
+        const item = buildFallbackItem(date, cand, "panel_reserve_direct");
+        addWarning(item, "partial_panel_reserve_item");
+        const added = addResult(results, resultMap, item);
+        diagnostics.fallback_used_count += 1;
+        if (!added.inserted) {
+          diagnostics.deduped_count += 1;
+          addUniqueString(diagnostics.deduped_reserve_ids, added.item.external_reservation_id || cand.reserveId);
+        }
+        continue;
+      }
+
       const sel = `[data-sb-list-idx="${cand.idx}"]`;
       const hasClickTarget = (await page.locator(sel).count()) > 0;
       if (!hasClickTarget) {
