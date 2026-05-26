@@ -39,6 +39,10 @@ export interface CandidateDiagnostic {
   stage: CandidateStage;
 }
 
+export interface DroppedCandidateDiagnostic extends CandidateDiagnostic {
+  kept_as_partial_item?: boolean;
+}
+
 export interface ListDayReservationsDiagnostics {
   date: string;
   detected_count: number;
@@ -64,6 +68,14 @@ export interface ListDayReservationsDiagnostics {
   before_refresh_panel_reserve_count: number | null;
   after_refresh_panel_reserve_count: number | null;
   invalid_candidate_reasons: Record<string, number>;
+  panel_reserve_ids: string[];
+  candidate_reserve_ids: string[];
+  deduped_reserve_ids: string[];
+  detail_fetch_attempted_ids: string[];
+  detail_fetch_success_ids: string[];
+  detail_fetch_failed_ids: string[];
+  final_item_reserve_ids: string[];
+  dropped_candidate_ids: DroppedCandidateDiagnostic[];
 }
 
 export interface ListDayReservationsResult {
@@ -92,6 +104,7 @@ type Candidate = {
 
 type ScheduleCandidateCollection = {
   candidates: Candidate[];
+  panelReserveIds: string[];
   nonBfReserveIdCount: number;
 };
 
@@ -140,6 +153,23 @@ function addDiagnostic(
 ): void {
   if (list.length >= MAX_DIAGNOSTIC_CANDIDATES) return;
   list.push({ ...entry, snippet: clip(entry.snippet, 220) });
+}
+
+function addDroppedCandidate(
+  list: DroppedCandidateDiagnostic[],
+  entry: DroppedCandidateDiagnostic,
+): void {
+  if (list.length >= MAX_DIAGNOSTIC_CANDIDATES) return;
+  list.push({ ...entry, snippet: clip(entry.snippet, 220) });
+}
+
+function addUniqueString(list: string[], value: string | null | undefined): void {
+  if (!value) return;
+  if (!list.includes(value)) list.push(value);
+}
+
+function uniqueStrings(values: Array<string | null | undefined>): string[] {
+  return Array.from(new Set(values.filter((value): value is string => !!value)));
 }
 
 function addWarning(item: DayReservation, warning: string): void {
@@ -379,6 +409,14 @@ function createEmptyDiagnostics(date: string): ListDayReservationsDiagnostics {
     before_refresh_panel_reserve_count: null,
     after_refresh_panel_reserve_count: null,
     invalid_candidate_reasons: {},
+    panel_reserve_ids: [],
+    candidate_reserve_ids: [],
+    deduped_reserve_ids: [],
+    detail_fetch_attempted_ids: [],
+    detail_fetch_success_ids: [],
+    detail_fetch_failed_ids: [],
+    final_item_reserve_ids: [],
+    dropped_candidate_ids: [],
   };
 }
 
@@ -743,6 +781,7 @@ export async function listDayReservations(page: Page, date: string): Promise<Lis
     ]);
     const all = Array.from(document.querySelectorAll("body *")) as HTMLElement[];
     const candidateMap = new Map<string, OutCandidate & { element: HTMLElement }>();
+    const panelReserveIds = new Set<string>();
     let idx = 0;
     let nonBfReserveIdCount = 0;
 
@@ -846,6 +885,7 @@ export async function listDayReservations(page: Page, date: string): Promise<Lis
         (root.getAttribute("id") || "").match(/reserve_item_(BF[0-9A-Z]+)/i)?.[1]?.toUpperCase() ||
         findReserveId(rootRaw);
       if (!reserveId) continue;
+      panelReserveIds.add(reserveId);
       const panelDate = textOf(".panel_reserve_date");
       const startRaw = textOf(".panel_reserve_start");
       const customerName = cleanCustomerName(textOf(".reserveItemCustomer"));
@@ -916,15 +956,17 @@ export async function listDayReservations(page: Page, date: string): Promise<Lis
         .sort((a, b) => a.idx - b.idx)
         .slice(0, 160)
         .map(({ element: _element, ...candidate }) => candidate),
+      panelReserveIds: Array.from(panelReserveIds),
       nonBfReserveIdCount,
     };
   }).catch((e: unknown) => {
     logger.warn({ e: e instanceof Error ? e.message : String(e) }, "listDayReservations: candidate eval failed");
-    return { candidates: [] as Candidate[], nonBfReserveIdCount: 0 };
+    return { candidates: [] as Candidate[], panelReserveIds: [], nonBfReserveIdCount: 0 };
   });
 
   const initialScheduleCandidates = await collectScheduleCandidates();
   let candidates = initialScheduleCandidates.candidates;
+  initialScheduleCandidates.panelReserveIds.forEach((id) => addUniqueString(diagnostics.panel_reserve_ids, id));
   if (initialScheduleCandidates.nonBfReserveIdCount > 0) {
     addInvalidCandidateReason(diagnostics, "non_bf_reserve_id", initialScheduleCandidates.nonBfReserveIdCount);
   }
@@ -935,6 +977,7 @@ export async function listDayReservations(page: Page, date: string): Promise<Lis
     diagnostics.before_refresh_panel_reserve_count = candidates.filter((cand) => cand.source.includes("panel_reserve")).length;
     diagnostics.refresh_success = await attemptRefreshForNewReservationNotification(page, date, diagnostics);
     const refreshedScheduleCandidates = await collectScheduleCandidates();
+    refreshedScheduleCandidates.panelReserveIds.forEach((id) => addUniqueString(diagnostics.panel_reserve_ids, id));
     if (refreshedScheduleCandidates.nonBfReserveIdCount > 0) {
       addInvalidCandidateReason(diagnostics, "non_bf_reserve_id", refreshedScheduleCandidates.nonBfReserveIdCount);
     }
@@ -949,6 +992,10 @@ export async function listDayReservations(page: Page, date: string): Promise<Lis
   diagnostics.detected_count = candidates.length;
   diagnostics.panel_reserve_detected_count = candidates.filter((cand) => cand.source.includes("panel_reserve")).length;
   diagnostics.schedule_detected_count = candidates.length;
+  candidates
+    .filter((cand) => cand.source.includes("panel_reserve"))
+    .forEach((cand) => addUniqueString(diagnostics.panel_reserve_ids, cand.reserveId));
+  diagnostics.candidate_reserve_ids = uniqueStrings(candidates.map((cand) => cand.reserveId));
   logger.info({ candidateCount: candidates.length }, "listDayReservations: candidates found");
 
   const results: DayReservation[] = [];
@@ -962,7 +1009,10 @@ export async function listDayReservations(page: Page, date: string): Promise<Lis
         if (cand.reserveId || cand.detailHref) {
           const added = addResult(results, resultMap, buildFallbackItem(date, cand, "click_target_missing"));
           diagnostics.fallback_used_count += 1;
-          if (!added.inserted) diagnostics.deduped_count += 1;
+          if (!added.inserted) {
+            diagnostics.deduped_count += 1;
+            addUniqueString(diagnostics.deduped_reserve_ids, added.item.external_reservation_id || cand.reserveId);
+          }
         } else {
           addDiagnostic(diagnostics.skipped_candidates, {
             reserveId: cand.reserveId,
@@ -989,7 +1039,10 @@ export async function listDayReservations(page: Page, date: string): Promise<Lis
         if (cand.reserveId || cand.detailHref) {
           const added = addResult(results, resultMap, buildFallbackItem(date, cand, "popup_not_found"));
           diagnostics.fallback_used_count += 1;
-          if (!added.inserted) diagnostics.deduped_count += 1;
+          if (!added.inserted) {
+            diagnostics.deduped_count += 1;
+            addUniqueString(diagnostics.deduped_reserve_ids, added.item.external_reservation_id || cand.reserveId);
+          }
         } else {
           addDiagnostic(diagnostics.skipped_candidates, {
             reserveId: cand.reserveId,
@@ -1087,7 +1140,10 @@ export async function listDayReservations(page: Page, date: string): Promise<Lis
         },
       });
       const item = added.item;
-      if (!added.inserted) diagnostics.deduped_count += 1;
+      if (!added.inserted) {
+        diagnostics.deduped_count += 1;
+        addUniqueString(diagnostics.deduped_reserve_ids, item.external_reservation_id || cand.reserveId);
+      }
 
       if (cand.source.includes("panel_reserve")) addWarning(item, "panel_reserve_direct");
       if (!popupData?.reserveCustomerName) addWarning(item, "popup_customer_missing");
@@ -1104,6 +1160,39 @@ export async function listDayReservations(page: Page, date: string): Promise<Lis
     }
   }
 
+  for (const cand of candidates) {
+    if (!cand.reserveId) continue;
+    const alreadyKept = resultMap.has(`id:${cand.reserveId}`);
+    if (alreadyKept) continue;
+    if (cand.source.includes("panel_reserve")) {
+      const fallback = buildFallbackItem(date, cand, "panel_reserve_retained_without_detail");
+      addWarning(fallback, "partial_panel_reserve_item");
+      const added = addResult(results, resultMap, fallback);
+      diagnostics.fallback_used_count += 1;
+      if (!added.inserted) {
+        diagnostics.deduped_count += 1;
+        addUniqueString(diagnostics.deduped_reserve_ids, cand.reserveId);
+      }
+      addDroppedCandidate(diagnostics.dropped_candidate_ids, {
+        reserveId: cand.reserveId,
+        reason: "kept_as_partial_panel_reserve_item",
+        source: cand.source,
+        snippet: cand.snippet || cand.text,
+        stage: "panel_reserve",
+        kept_as_partial_item: true,
+      });
+      continue;
+    }
+    addDroppedCandidate(diagnostics.dropped_candidate_ids, {
+      reserveId: cand.reserveId,
+      reason: "candidate_not_converted_to_item",
+      source: cand.source,
+      snippet: cand.snippet || cand.text,
+      stage: "candidate_extract",
+      kept_as_partial_item: false,
+    });
+  }
+
   const reservationListCandidates = await collectReservationListCandidates(page, date, diagnostics);
   diagnostics.reservation_list_detected_count = reservationListCandidates.length;
   diagnostics.detected_count = diagnostics.schedule_detected_count + diagnostics.reservation_list_detected_count;
@@ -1116,7 +1205,10 @@ export async function listDayReservations(page: Page, date: string): Promise<Lis
     }
     const added = addResult(results, resultMap, item);
     diagnostics.fallback_used_count += 1;
-    if (!added.inserted) diagnostics.deduped_count += 1;
+    if (!added.inserted) {
+      diagnostics.deduped_count += 1;
+      addUniqueString(diagnostics.deduped_reserve_ids, added.item.external_reservation_id || cand.reserveId);
+    }
   }
 
   let detailFetched = 0;
@@ -1127,17 +1219,28 @@ export async function listDayReservations(page: Page, date: string): Promise<Lis
       r.time_source = r.time_source || "not_fetched_limit";
       r.detail_fetch_skipped_reason = "daily_detail_fetch_limit";
       diagnostics.detail_fetch_limited_count += 1;
+      addUniqueString(diagnostics.detail_fetch_failed_ids, r.external_reservation_id);
       addWarning(r, "detail_fetch_limited");
+      addDroppedCandidate(diagnostics.dropped_candidate_ids, {
+        reserveId: r.external_reservation_id,
+        reason: "daily_detail_fetch_limit",
+        source: "detail",
+        snippet: href,
+        stage: "detail_fetch",
+        kept_as_partial_item: true,
+      });
       continue;
     }
     detailFetched += 1;
     const detailUrl = resolveSalonboardUrl(href);
     r.detail_url = detailUrl;
+    addUniqueString(diagnostics.detail_fetch_attempted_ids, r.external_reservation_id || extractReserveId(detailUrl));
     try {
       await page.goto(detailUrl, { waitUntil: "domcontentloaded", timeout: 20000 });
       await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
       if (/\/login/i.test(page.url())) {
         r.detail_fetch_error = "session_expired";
+        addUniqueString(diagnostics.detail_fetch_failed_ids, r.external_reservation_id || extractReserveId(detailUrl));
         addDiagnostic(diagnostics.failed_candidates, {
           reserveId: r.external_reservation_id,
           reason: "session_expired",
@@ -1145,17 +1248,34 @@ export async function listDayReservations(page: Page, date: string): Promise<Lis
           snippet: detailUrl,
           stage: "detail_fetch",
         });
+        addDroppedCandidate(diagnostics.dropped_candidate_ids, {
+          reserveId: r.external_reservation_id,
+          reason: "session_expired",
+          source: "detail",
+          snippet: detailUrl,
+          stage: "detail_fetch",
+          kept_as_partial_item: true,
+        });
         break;
       }
       const body = await page.locator("body").innerText().catch(() => "");
       if (/\u753b\u50cf\u8a8d\u8a3c|\u30ad\u30e3\u30d7\u30c1\u30e3|captcha|reCAPTCHA/i.test(body)) {
         r.detail_fetch_error = "captcha_required";
+        addUniqueString(diagnostics.detail_fetch_failed_ids, r.external_reservation_id || extractReserveId(detailUrl));
         addDiagnostic(diagnostics.failed_candidates, {
           reserveId: r.external_reservation_id,
           reason: "captcha_required",
           source: "detail",
           snippet: detailUrl,
           stage: "detail_fetch",
+        });
+        addDroppedCandidate(diagnostics.dropped_candidate_ids, {
+          reserveId: r.external_reservation_id,
+          reason: "captcha_required",
+          source: "detail",
+          snippet: detailUrl,
+          stage: "detail_fetch",
+          kept_as_partial_item: true,
         });
         break;
       }
@@ -1218,6 +1338,29 @@ export async function listDayReservations(page: Page, date: string): Promise<Lis
         };
       });
 
+      const detailReserveId = extractReserveId(detailData.reserveId);
+      if (r.external_reservation_id && detailReserveId && detailReserveId !== r.external_reservation_id) {
+        r.detail_fetch_error = "detail_reserve_id_mismatch";
+        addWarning(r, "detail_reserve_id_mismatch");
+        addUniqueString(diagnostics.detail_fetch_failed_ids, r.external_reservation_id);
+        addDiagnostic(diagnostics.failed_candidates, {
+          reserveId: r.external_reservation_id,
+          reason: `detail_reserve_id_mismatch:${detailReserveId}`,
+          source: "detail",
+          snippet: detailUrl,
+          stage: "detail_parse",
+        });
+        addDroppedCandidate(diagnostics.dropped_candidate_ids, {
+          reserveId: r.external_reservation_id,
+          reason: `detail_reserve_id_mismatch:${detailReserveId}`,
+          source: "detail",
+          snippet: detailUrl,
+          stage: "detail_parse",
+          kept_as_partial_item: true,
+        });
+        continue;
+      }
+      addUniqueString(diagnostics.detail_fetch_success_ids, r.external_reservation_id || detailReserveId);
       const timeSourceText = `${detailData.rsvDateText || ""} ${detailData.fullText || ""}`;
       const parsed = parseTimeRangeAndDuration(timeSourceText);
       if (parsed.start) {
@@ -1228,6 +1371,7 @@ export async function listDayReservations(page: Page, date: string): Promise<Lis
       } else {
         r.detail_fetch_error ||= "time_range_not_found";
         addWarning(r, "detail_time_range_not_found");
+        addUniqueString(diagnostics.detail_fetch_failed_ids, r.external_reservation_id || detailReserveId);
         addDiagnostic(diagnostics.failed_candidates, {
           reserveId: r.external_reservation_id,
           reason: "time_range_not_found",
@@ -1235,9 +1379,17 @@ export async function listDayReservations(page: Page, date: string): Promise<Lis
           snippet: timeSourceText,
           stage: "detail_parse",
         });
+        addDroppedCandidate(diagnostics.dropped_candidate_ids, {
+          reserveId: r.external_reservation_id || detailReserveId,
+          reason: "time_range_not_found",
+          source: "detail",
+          snippet: timeSourceText,
+          stage: "detail_parse",
+          kept_as_partial_item: true,
+        });
       }
 
-      r.external_reservation_id ||= extractReserveId(detailData.reserveId);
+      r.external_reservation_id ||= detailReserveId;
       r.status ||= detailData.status || null;
       r.route ||= detailData.route || null;
       r.source ||= detailData.route || null;
@@ -1266,6 +1418,7 @@ export async function listDayReservations(page: Page, date: string): Promise<Lis
     } catch (e) {
       r.detail_fetch_error = "detail_fetch_error";
       addWarning(r, "detail_fetch_error");
+      addUniqueString(diagnostics.detail_fetch_failed_ids, r.external_reservation_id || extractReserveId(detailUrl));
       addDiagnostic(diagnostics.failed_candidates, {
         reserveId: r.external_reservation_id,
         reason: e instanceof Error ? e.message : String(e),
@@ -1273,9 +1426,32 @@ export async function listDayReservations(page: Page, date: string): Promise<Lis
         snippet: detailUrl,
         stage: "detail_fetch",
       });
+      addDroppedCandidate(diagnostics.dropped_candidate_ids, {
+        reserveId: r.external_reservation_id || extractReserveId(detailUrl),
+        reason: e instanceof Error ? e.message : String(e),
+        source: "detail",
+        snippet: detailUrl,
+        stage: "detail_fetch",
+        kept_as_partial_item: true,
+      });
       logger.warn({ href, e: e instanceof Error ? e.message : String(e) }, "listDayReservations: detail fetch failed");
     }
     await page.waitForTimeout(500);
+  }
+
+  diagnostics.final_item_reserve_ids = uniqueStrings(results.map((item) => item.external_reservation_id));
+  const finalIds = new Set(diagnostics.final_item_reserve_ids);
+  for (const candidateId of diagnostics.candidate_reserve_ids) {
+    if (finalIds.has(candidateId)) continue;
+    const cand = candidates.find((candidate) => candidate.reserveId === candidateId);
+    addDroppedCandidate(diagnostics.dropped_candidate_ids, {
+      reserveId: candidateId,
+      reason: "candidate_missing_from_final_items",
+      source: cand?.source || "unknown",
+      snippet: cand?.snippet || cand?.text || "",
+      stage: "candidate_extract",
+      kept_as_partial_item: false,
+    });
   }
 
   diagnostics.parsed_count = results.length;
