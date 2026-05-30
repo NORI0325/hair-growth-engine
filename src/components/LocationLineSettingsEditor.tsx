@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Loader2, Save, MessageCircle, Sparkles } from "lucide-react";
 import { toast } from "sonner";
+import { normalizeLineOfficialAccountId } from "@/lib/lineLink";
 
 /**
  * 店舗別 LINE 公式アカウント設定。
@@ -24,6 +25,7 @@ export default function LocationLineSettingsEditor() {
     line_channel_access_token: "",
     line_channel_secret: "",
     line_add_friend_url: "",
+    line_official_account_id: "",
     owner_notification_email: "",
   });
   const [settingMenu, setSettingMenu] = useState(false);
@@ -34,16 +36,17 @@ export default function LocationLineSettingsEditor() {
     (async () => {
       const { data } = await supabase
         .from("locations")
-        .select("line_channel_access_token, line_channel_secret, line_add_friend_url, owner_notification_email")
+        .select("line_channel_access_token, line_channel_secret, line_add_friend_url, line_official_account_id, owner_notification_email")
         .eq("id", currentLocationId)
         .maybeSingle();
       const d = (data || {}) as any;
-      const has = !!(d.line_channel_access_token || d.line_channel_secret || d.line_add_friend_url);
+      const has = !!(d.line_channel_access_token || d.line_channel_secret || d.line_add_friend_url || d.line_official_account_id);
       setUsePerLocation(has);
       setForm({
         line_channel_access_token: d.line_channel_access_token || "",
         line_channel_secret: d.line_channel_secret || "",
         line_add_friend_url: d.line_add_friend_url || "",
+        line_official_account_id: d.line_official_account_id || "",
         owner_notification_email: d.owner_notification_email || "",
       });
       setLoading(false);
@@ -52,18 +55,25 @@ export default function LocationLineSettingsEditor() {
 
   const save = async () => {
     if (!currentLocationId) return;
+    const normalizedLineId = normalizeLineOfficialAccountId(form.line_official_account_id);
+    if (usePerLocation && form.line_official_account_id.trim() && !normalizedLineId) {
+      toast.error("LINE公式アカウントIDは @ から始まるIDで入力してください");
+      return;
+    }
     setSaving(true);
     const payload = usePerLocation
       ? {
           line_channel_access_token: form.line_channel_access_token.trim() || null,
           line_channel_secret: form.line_channel_secret.trim() || null,
           line_add_friend_url: form.line_add_friend_url.trim() || null,
+          line_official_account_id: normalizedLineId,
           owner_notification_email: form.owner_notification_email.trim() || null,
         }
       : {
           line_channel_access_token: null,
           line_channel_secret: null,
           line_add_friend_url: null,
+          line_official_account_id: null,
           // owner_notification_email は店舗別の通知先として残す選択もあり得るためクリアしない
         };
     const { error } = await supabase
@@ -118,6 +128,16 @@ export default function LocationLineSettingsEditor() {
               onChange={e => setForm({ ...form, line_add_friend_url: e.target.value })}
               placeholder="https://lin.ee/xxxxxx"
               className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
+          </div>
+          <div>
+            <Label className="mb-2 block font-serif text-sm">LINE公式アカウントID（店舗専用）</Label>
+            <Input value={form.line_official_account_id}
+              onChange={e => setForm({ ...form, line_official_account_id: e.target.value })}
+              placeholder="@salon"
+              className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
+            <p className="text-[10px] text-muted-foreground mt-1">
+              顧客別QRでLINEトークを開き、連携コードを入力済みにするために使います。
+            </p>
           </div>
           <div>
             <Label className="mb-2 block font-serif text-sm">チャネルアクセストークン（店舗専用）</Label>

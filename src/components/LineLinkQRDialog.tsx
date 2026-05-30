@@ -7,6 +7,7 @@ import { Loader2, Copy, Check, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import LocalQrCode from "@/components/LocalQrCode";
 import { getLineLinkConfig } from "@/lib/line-link-config";
+import { buildLineOaMessageUrl } from "@/lib/lineLink";
 
 interface Props {
   open: boolean;
@@ -14,11 +15,19 @@ interface Props {
   customerId: string;
   customerName: string;
   lineAddFriendUrl?: string | null;
+  lineOfficialAccountId?: string | null;
 }
 
 const DEFAULT_PUBLIC_APP_ORIGIN = "https://saronboost.com";
 
-const LineLinkQRDialog = ({ open, onOpenChange, customerId, customerName, lineAddFriendUrl }: Props) => {
+const LineLinkQRDialog = ({
+  open,
+  onOpenChange,
+  customerId,
+  customerName,
+  lineAddFriendUrl,
+  lineOfficialAccountId,
+}: Props) => {
   const { user } = useAuth();
   const [token, setToken] = useState<string>("");
   const [liffId, setLiffId] = useState<string | null>(null);
@@ -90,7 +99,8 @@ const LineLinkQRDialog = ({ open, onOpenChange, customerId, customerName, lineAd
   const linkText = token ? `連携:${token}` : "連携:";
   const appOrigin = (publicAppOrigin || DEFAULT_PUBLIC_APP_ORIGIN).replace(/\/+$/, "");
   const appLinkUrl = token ? `${appOrigin}/line-link?token=${encodeURIComponent(token)}` : "";
-  const qrData = appLinkUrl || linkText;
+  const lineMessageUrl = token ? buildLineOaMessageUrl(lineOfficialAccountId || lineAddFriendUrl, linkText) : null;
+  const qrData = (liffId && appLinkUrl) || lineMessageUrl || appLinkUrl || linkText;
 
   const copyToken = async () => {
     if (!token) return;
@@ -110,7 +120,7 @@ const LineLinkQRDialog = ({ open, onOpenChange, customerId, customerName, lineAd
         <div className="space-y-4 mt-2">
           <p className="text-xs text-muted-foreground">
             <span className="font-bold text-foreground">{customerName}</span> 様専用のLINE連携QRです。
-            QRを読み込むと連携ページが開きます。LIFF設定済みの場合は、LINE上で確認するだけで顧客情報と紐づきます。
+            LIFF設定済みの場合はLINE上で確認するだけで紐づきます。未設定の場合は、LINEトークに連携コードが入力済みで開きます。
           </p>
 
           {loading ? (
@@ -123,15 +133,16 @@ const LineLinkQRDialog = ({ open, onOpenChange, customerId, customerName, lineAd
                 <LocalQrCode value={qrData} title="LINE連携QR" className="w-56 h-56 bg-white p-2" />
               </div>
 
-              {!liffId && (
+              {!liffId && !lineMessageUrl && (
                 <div className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 p-3">
                   {configUnavailable
-                    ? "LIFF設定を取得できませんでした。QRはアプリ内の連携ページを開きます。自動連携にはLINE_LIFF_ID設定が必要です。"
-                    : "LIFF IDが未設定のため、QRはアプリ内の連携ページを開きます。自動連携を有効にするにはLINE_LIFF_IDを設定してください。"}
+                    ? "LIFF設定を取得できませんでした。QRはアプリ内の連携ページを開きます。"
+                    : "LIFF IDとLINE公式アカウントIDが未設定のため、QRはアプリ内の連携ページを開きます。"}
+                  自動連携にはLINE_LIFF_ID、送信ボタン方式にはLINE公式アカウントIDを設定してください。
                 </div>
               )}
 
-              {!publicAppOrigin && (
+              {!publicAppOrigin && liffId && (
                 <div className="text-[11px] text-red-700 bg-red-50 border border-red-200 p-3">
                   公開アプリURLを取得できなかったため、既定の https://saronboost.com でQRを作成しています。
                   環境設定にはPUBLIC_APP_ORIGIN=https://saronboost.com を登録してください。
@@ -147,7 +158,8 @@ const LineLinkQRDialog = ({ open, onOpenChange, customerId, customerName, lineAd
                   </Button>
                 </div>
                 <p className="text-[10px] text-muted-foreground mt-2">
-                  QR連携が使えない場合は、この連携コードをLINE公式アカウントのトークへ送信してください。既存方式はfallbackとして残しています。
+                  QR連携が使えない場合は、この連携コードをLINE公式アカウントのトークへ送信してください。
+                  30日間有効・1回限りです。
                 </p>
               </div>
 

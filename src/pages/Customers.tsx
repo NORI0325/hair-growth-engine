@@ -204,15 +204,37 @@ const Customers = () => {
   const [addOpen, setAddOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<EditableCustomer | null>(null);
   const [qrTarget, setQrTarget] = useState<{ id: string; name: string } | null>(null);
-  const [lineAddUrl, setLineAddUrl] = useState<string | null>(null);
+  const [lineLinkSettings, setLineLinkSettings] = useState<{
+    lineAddFriendUrl: string | null;
+    lineOfficialAccountId: string | null;
+  }>({ lineAddFriendUrl: null, lineOfficialAccountId: null });
   const [bulkLineOpen, setBulkLineOpen] = useState(false);
   const [messageTarget, setMessageTarget] = useState<Customer | null>(null);
   const [recentlyAddedId, setRecentlyAddedId] = useState<string | null>(null);
 
   useEffect(() => {
-    supabase.from("profiles").select("line_add_friend_url").maybeSingle()
-      .then(({ data }) => setLineAddUrl(data?.line_add_friend_url || null));
-  }, []);
+    let active = true;
+    (async () => {
+      const [profileResult, locationResult] = await Promise.all([
+        supabase.from("profiles").select("line_add_friend_url, line_official_account_id").maybeSingle(),
+        locationId
+          ? supabase
+              .from("locations")
+              .select("line_add_friend_url, line_official_account_id")
+              .eq("id", locationId)
+              .maybeSingle()
+          : Promise.resolve({ data: null }),
+      ]);
+      if (!active) return;
+      const profile = (profileResult.data || {}) as any;
+      const location = (locationResult.data || {}) as any;
+      setLineLinkSettings({
+        lineAddFriendUrl: location.line_add_friend_url || profile.line_add_friend_url || null,
+        lineOfficialAccountId: location.line_official_account_id || profile.line_official_account_id || null,
+      });
+    })();
+    return () => { active = false; };
+  }, [locationId]);
 
   const load = useCallback(async () => {
     if (!locationId) {
@@ -530,7 +552,8 @@ const Customers = () => {
           onOpenChange={(v) => !v && setQrTarget(null)}
           customerId={qrTarget.id}
           customerName={qrTarget.name}
-          lineAddFriendUrl={lineAddUrl}
+          lineAddFriendUrl={lineLinkSettings.lineAddFriendUrl}
+          lineOfficialAccountId={lineLinkSettings.lineOfficialAccountId}
         />
       )}
 
