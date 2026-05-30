@@ -4,7 +4,7 @@ import { List, type RowComponentProps } from "react-window";
 import { supabase } from "@/integrations/supabase/client";
 import AppLayout from "@/components/AppLayout";
 import PageHeader from "@/components/PageHeader";
-import AddCustomerDialog from "@/components/AddCustomerDialog";
+import AddCustomerDialog, { type AddedCustomer } from "@/components/AddCustomerDialog";
 import EditCustomerDialog, { type EditableCustomer } from "@/components/EditCustomerDialog";
 import PendingLineFriends from "@/components/PendingLineFriends";
 import LineLinkQRDialog from "@/components/LineLinkQRDialog";
@@ -36,12 +36,20 @@ interface Customer {
   line_unfollowed_at?: string | null;
   opt_out_automation?: boolean | null;
   notes?: string | null;
-  gender?: string | null;
+  gender?: "female" | "male" | "other" | "unknown" | null;
+  created_at?: string | null;
 }
 
 type SegKey = "active" | "at_risk" | "dormant" | "new";
 type FilterKey = "all" | SegKey | "birthday" | "no_line" | "vip";
 type SortKey = "recent" | "spent" | "visits" | "name";
+
+const CUSTOMER_SELECT =
+  "id, full_name, email, phone, birthday, last_visit_date, visit_count, total_spent, line_user_id, line_unfollowed_at, opt_out_automation, notes, gender, created_at";
+
+const MAX_CUSTOMER_ROWS = 5000;
+
+const escapeSearch = (value: string) => value.replace(/[%_]/g, "\\$&");
 
 const segmentOf = (lastVisit: string | null): SegKey => {
   if (!lastVisit) return "new";
@@ -187,6 +195,7 @@ const CustomerRow = ({ index, style, customers, selected, toggle, onEdit, onQr, 
 const Customers = () => {
   const locationId = useCurrentLocationId();
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [totalCount, setTotalCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterKey>("all");
@@ -198,29 +207,63 @@ const Customers = () => {
   const [lineAddUrl, setLineAddUrl] = useState<string | null>(null);
   const [bulkLineOpen, setBulkLineOpen] = useState(false);
   const [messageTarget, setMessageTarget] = useState<Customer | null>(null);
+  const [recentlyAddedId, setRecentlyAddedId] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.from("profiles").select("line_add_friend_url").maybeSingle()
       .then(({ data }) => setLineAddUrl(data?.line_add_friend_url || null));
   }, []);
 
-  const load = async () => {
-    if (!locationId) { setCustomers([]); setLoading(false); return; }
+  const load = useCallback(async () => {
+    if (!locationId) {
+      setCustomers([]);
+      setTotalCount(0);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
-    const { data } = await supabase
+    const term = search.trim();
+    let query = supabase
       .from("customers")
-      .select("id, full_name, email, phone, birthday, last_visit_date, visit_count, total_spent, line_user_id, line_unfollowed_at, opt_out_automation, notes, gender")
-      .eq("location_id", locationId)
-      .order("last_visit_date", { ascending: false, nullsFirst: false })
-      .limit(5000);
-    setCustomers(data || []);
+      .select(CUSTOMER_SELECT, { count: "exact" })
+      .eq("location_id", locationId);
+
+    if (term) {
+      const escaped = escapeSearch(term);
+      query = query.or(`full_name.ilike.%${escaped}%,email.ilike.%${escaped}%,phone.ilike.%${escaped}%`);
+    }
+
+    const { data, error, count } = await query
+      .order("created_at", { ascending: false })
+      .limit(MAX_CUSTOMER_ROWS);
+
+    if (error) {
+      console.warn("[customers:list] fetch failed", {
+        message: error.message,
+        locationId,
+        hasSearch: Boolean(term),
+      });
+      toast.error("顧客一覧の読み込みに失敗しました");
+      setCustomers([]);
+      setTotalCount(0);
+    } else {
+      setCustomers((data || []) as Customer[]);
+      setTotalCount(count ?? data?.length ?? 0);
+    }
     setLoading(false);
-  };
-  useEffect(() => { load(); /* reset selection on tenant change */ setSelected(new Set()); }, [locationId]);
+  }, [locationId, search]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      void load();
+      setSelected(new Set());
+    }, search.trim() ? 250 : 0);
+    return () => window.clearTimeout(timeout);
+  }, [load, search]);
 
   // Counts for KPI strip
   const counts = useMemo(() => {
-    const c = { all: customers.length, active: 0, at_risk: 0, dormant: 0, new: 0, birthday: 0, no_line: 0, vip: 0 };
+    const c = { all: totalCount ?? customers.length, active: 0, at_risk: 0, dormant: 0, new: 0, birthday: 0, no_line: 0, vip: 0 };
     for (const cu of customers) {
       const seg = segmentOf(cu.last_visit_date);
       c[seg]++;
@@ -230,7 +273,7 @@ const Customers = () => {
       if (tier === "gold" || tier === "platinum") c.vip++;
     }
     return c;
-  }, [customers]);
+  }, [customers, totalCount]);
 
   const filtered = useMemo(() => {
     const s = search.trim().toLowerCase();
@@ -254,6 +297,10 @@ const Customers = () => {
     });
 
     list = [...list].sort((a, b) => {
+      if (recentlyAddedId) {
+        if (a.id === recentlyAddedId && b.id !== recentlyAddedId) return -1;
+        if (b.id === recentlyAddedId && a.id !== recentlyAddedId) return 1;
+      }
       switch (sort) {
         case "spent":   return b.total_spent - a.total_spent;
         case "visits":  return b.visit_count - a.visit_count;
@@ -267,7 +314,7 @@ const Customers = () => {
       }
     });
     return list;
-  }, [customers, search, filter, sort]);
+  }, [customers, search, filter, sort, recentlyAddedId]);
 
   const toggle = useCallback((id: string) => {
     setSelected((prev) => {
@@ -287,6 +334,16 @@ const Customers = () => {
     () => customers.filter((c) => selected.has(c.id)),
     [customers, selected]
   );
+
+  const handleCustomerAdded = useCallback((customer?: AddedCustomer) => {
+    if (customer?.id) {
+      const added = customer as Customer;
+      setRecentlyAddedId(added.id);
+      setCustomers((prev) => [added, ...prev.filter((c) => c.id !== added.id)]);
+      setTotalCount((prev) => (typeof prev === "number" ? prev + (customers.some((c) => c.id === added.id) ? 0 : 1) : prev));
+    }
+    void load();
+  }, [customers, load]);
 
   const exportCsv = () => {
     if (selectedAll.length === 0) return;
@@ -325,7 +382,7 @@ const Customers = () => {
         <PageHeader
           eyebrow="No.02 — Guests"
           title="顧客一覧"
-          description={`${customers.length} 名の大切なお客様。今日やるべきことが、ここから始まります。`}
+          description={`${(totalCount ?? customers.length).toLocaleString()} 名の大切なお客様。今日やるべきことが、ここから始まります。`}
         />
         <Button onClick={() => setAddOpen(true)}
           className="rounded-none px-5 py-5 text-xs tracking-luxury bg-primary hover:bg-primary-glow shrink-0 mt-2">
@@ -333,7 +390,7 @@ const Customers = () => {
         </Button>
       </div>
 
-      <AddCustomerDialog open={addOpen} onOpenChange={setAddOpen} onAdded={load} />
+      <AddCustomerDialog open={addOpen} onOpenChange={setAddOpen} onAdded={handleCustomerAdded} />
       <ErrorBoundary fallbackTitle="顧客情報の読み込みに失敗しました">
         <EditCustomerDialog
           customer={editTarget}
@@ -421,7 +478,7 @@ const Customers = () => {
             rowComponent={CustomerRow}
             rowCount={filtered.length}
             rowHeight={68}
-            rowProps={{ customers: filtered, selected, toggle, onEdit: (c) => setEditTarget(c as any), onQr: (c) => setQrTarget({ id: c.id, name: c.full_name }), onMessage: (c) => setMessageTarget(c) }}
+            rowProps={{ customers: filtered, selected, toggle, onEdit: (c) => setEditTarget(c), onQr: (c) => setQrTarget({ id: c.id, name: c.full_name }), onMessage: (c) => setMessageTarget(c) }}
             style={{ height: "calc(100vh - 480px)", minHeight: 400 }}
             overscanCount={5}
           />
@@ -460,7 +517,7 @@ const Customers = () => {
           phone: c.phone,
           line_user_id: c.line_user_id,
           birthday: c.birthday,
-          gender: (c as any).gender,
+          gender: c.gender,
           last_visit_date: c.last_visit_date,
           visit_count: c.visit_count,
           total_spent: c.total_spent,

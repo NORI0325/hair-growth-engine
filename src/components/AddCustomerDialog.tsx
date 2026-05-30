@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { useCurrentLocationId } from "@/hooks/useLocations";
+import { useCurrentLocation } from "@/hooks/useLocations";
 
 const schema = z.object({
   full_name: z.string().trim().min(1, "お名前は必須です").max(100),
@@ -25,12 +25,42 @@ const schema = z.object({
 interface Props {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  onAdded: () => void;
+  onAdded: (customer?: AddedCustomer) => void;
 }
+
+export interface AddedCustomer {
+  id: string;
+  full_name: string;
+  email: string | null;
+  phone: string | null;
+  birthday: string | null;
+  last_visit_date: string | null;
+  visit_count: number;
+  total_spent: number;
+  line_user_id?: string | null;
+  line_unfollowed_at?: string | null;
+  opt_out_automation?: boolean | null;
+  notes?: string | null;
+  gender?: "female" | "male" | "other" | "unknown" | null;
+  created_at?: string | null;
+}
+
+const customerSelect =
+  "id, full_name, email, phone, birthday, last_visit_date, visit_count, total_spent, line_user_id, line_unfollowed_at, opt_out_automation, notes, gender, created_at";
+
+const friendlyInsertError = (error: { code?: string; message?: string }) => {
+  if (error.code === "23505") {
+    return "同じ電話番号または外部IDの顧客が既に登録されています。既存顧客を検索してください。";
+  }
+  if (error.message?.toLowerCase().includes("row-level security")) {
+    return "顧客を追加する権限、または店舗の所属情報を確認してください。";
+  }
+  return error.message ? `登録に失敗しました: ${error.message}` : "登録に失敗しました";
+};
 
 const AddCustomerDialog = ({ open, onOpenChange, onAdded }: Props) => {
   const { user } = useAuth();
-  const locationId = useCurrentLocationId();
+  const { currentLocationId: locationId, currentLocation } = useCurrentLocation();
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({ full_name: "", phone: "", email: "", birthday: "", last_visit_date: "", visit_count: "0", total_spent: "0", line_user_id: "", gender: "unknown" as "female"|"male"|"other"|"unknown" });
 
@@ -38,11 +68,13 @@ const AddCustomerDialog = ({ open, onOpenChange, onAdded }: Props) => {
     e.preventDefault();
     if (!user) return;
     if (!locationId) { toast.error("店舗が選択されていません"); return; }
+    const ownerId = currentLocation?.tenant_id;
+    if (!ownerId) { toast.error("店舗の所属情報を取得できませんでした。画面を再読み込みしてください。"); return; }
     const parsed = schema.safeParse(form);
     if (!parsed.success) { toast.error(parsed.error.errors[0].message); return; }
     setLoading(true);
-    const { error } = await supabase.from("customers").insert({
-      owner_id: user.id,
+    const { data, error } = await supabase.from("customers").insert({
+      owner_id: ownerId,
       location_id: locationId,
       full_name: parsed.data.full_name,
       phone: parsed.data.phone || null,
@@ -53,13 +85,22 @@ const AddCustomerDialog = ({ open, onOpenChange, onAdded }: Props) => {
       total_spent: parsed.data.total_spent ?? 0,
       line_user_id: parsed.data.line_user_id || null,
       gender: form.gender,
-    } as any);
+    }).select(customerSelect).single();
     setLoading(false);
-    if (error) { toast.error("登録に失敗しました"); return; }
+    if (error) {
+      console.warn("[customers:add] insert failed", {
+        code: error.code,
+        message: error.message,
+        ownerId,
+        locationId,
+      });
+      toast.error(friendlyInsertError(error));
+      return;
+    }
     toast.success("顧客を追加しました");
     setForm({ full_name: "", phone: "", email: "", birthday: "", last_visit_date: "", visit_count: "0", total_spent: "0", line_user_id: "", gender: "unknown" });
     onOpenChange(false);
-    onAdded();
+    onAdded(data as AddedCustomer);
   };
 
   return (
