@@ -98,7 +98,7 @@ const LineLinkQRDialog = ({
   const appOrigin = (publicAppOrigin || DEFAULT_PUBLIC_APP_ORIGIN).replace(/\/+$/, "");
   const appLinkUrl = token ? `${appOrigin}/line-link?token=${encodeURIComponent(token)}` : "";
   const lineMessageUrl = token ? buildLineOaMessageUrl(lineAddFriendUrl, linkText) : null;
-  const qrData = (liffId && appLinkUrl) || lineMessageUrl || appLinkUrl || linkText;
+  const qrData = lineMessageUrl || (liffId && appLinkUrl) || appLinkUrl || linkText;
 
   const copyToken = async () => {
     if (!token) return;

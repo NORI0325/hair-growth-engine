@@ -29,6 +29,9 @@ const getPublicAppOrigin = () =>
       DEFAULT_PUBLIC_APP_ORIGIN,
   ) || DEFAULT_PUBLIC_APP_ORIGIN;
 
+const isEnabled = (value: string | null | undefined) =>
+  ["1", "true", "yes", "on"].includes((value || "").trim().toLowerCase());
+
 const getRequestToken = async (req: Request) => {
   if (req.method === "GET") {
     return (new URL(req.url).searchParams.get("token") || "").trim().toUpperCase();
@@ -94,7 +97,9 @@ Deno.serve(async (req) => {
     return json({ configured: false, liffId: null, error: "method_not_allowed" }, 405);
   }
 
-  const liffId = (Deno.env.get("LINE_LIFF_ID") || "").trim();
+  const liffId = isEnabled(Deno.env.get("LINE_LIFF_ENABLED"))
+    ? (Deno.env.get("LINE_LIFF_ID") || "").trim()
+    : "";
   const publicAppOrigin = getPublicAppOrigin();
   const token = await getRequestToken(req);
   const lineAddFriendUrl = await getLineAddFriendUrl(token);

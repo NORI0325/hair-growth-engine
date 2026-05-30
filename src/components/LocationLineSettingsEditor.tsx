@@ -142,11 +142,11 @@ export default function LocationLineSettingsEditor() {
       {usePerLocation && (
         <div className="space-y-4 pl-2 border-l-2 border-gold/30">
           <div>
-            <Label className="mb-2 block font-serif text-sm">LINE 友だち追加URL（店舗専用）</Label>
+            <Label className="mb-2 block font-serif text-sm">LINE 友だち追加URL または 公式アカウントID（店舗専用）</Label>
             <Input
               value={form.line_add_friend_url}
               onChange={(e) => setForm({ ...form, line_add_friend_url: e.target.value })}
-              placeholder="https://lin.ee/xxxxxx"
+              placeholder="https://lin.ee/xxxxxx または @salon"
               className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold"
             />
           </div>

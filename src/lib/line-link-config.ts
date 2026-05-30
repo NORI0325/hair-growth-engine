@@ -9,8 +9,14 @@ export interface LineLinkConfig {
 
 const configPromises = new Map<string, Promise<LineLinkConfig>>();
 
+const isLiffEnabled = () => {
+  const value = String(import.meta.env.VITE_LINE_LIFF_ENABLED || "").trim().toLowerCase();
+  return ["1", "true", "yes", "on"].includes(value);
+};
+
 const normalizeConfig = (data: any): LineLinkConfig => {
-  const liffId = typeof data?.liffId === "string" ? data.liffId.trim() : "";
+  const rawLiffId = typeof data?.liffId === "string" ? data.liffId.trim() : "";
+  const liffId = isLiffEnabled() ? rawLiffId : "";
   const publicAppOrigin = typeof data?.publicAppOrigin === "string" ? data.publicAppOrigin.trim().replace(/\/+$/, "") : "";
   const lineAddFriendUrl = typeof data?.lineAddFriendUrl === "string" ? data.lineAddFriendUrl.trim() : "";
   return {

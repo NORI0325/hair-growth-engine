@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { AlertCircle, CheckCircle2, Copy, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { getLineLinkConfig } from "@/lib/line-link-config";
+import { buildLineOaMessageUrl } from "@/lib/lineLink";
 
 type LiffApi = {
   init: (config: { liffId: string }) => Promise<void>;
@@ -21,7 +22,7 @@ declare global {
 }
 
 type OpenMode = "normal_browser" | "line_browser" | "liff";
-type LinkState = "linking" | "success" | "error" | "config_required" | "open_in_line";
+type LinkState = "linking" | "success" | "error" | "config_required" | "open_in_line" | "manual";
 
 const errorMessages: Record<string, string> = {
   invalid_token: "連携コードが見つかりません。QRを再度読み込んでください。",
@@ -173,12 +174,18 @@ const LineLink = () => {
         const config = await getLineLinkConfig(token);
         const liffId = config.liffId;
         const nextLiffAutoLinkUrl = liffId ? buildLiffAutoLinkUrl(liffId, token) : null;
-        setLineAddFriendUrl(config.lineAddFriendUrl);
+        const linkText = `連携:${token}`;
+        const lineMessageUrl = buildLineOaMessageUrl(config.lineAddFriendUrl, linkText);
+        setLineAddFriendUrl(lineMessageUrl || config.lineAddFriendUrl);
         setLiffAutoLinkUrl(nextLiffAutoLinkUrl);
         if (!liffId) {
-          warnLineLink("show_config_required", { mode: openMode, token, configured: false });
-          setState("config_required");
-          setMessage(errorMessages.liff_config_missing);
+          warnLineLink("show_manual_link_fallback", { mode: openMode, token, configured: false });
+          setState("manual");
+          setMessage(
+            lineMessageUrl
+              ? "下のボタンからLINE公式アカウントのトークを開き、入力済みの連携コードを送信してください。"
+              : "下の連携コードをコピーして、LINE公式アカウントのトークに送信してください。"
+          );
           return;
         }
 
@@ -322,13 +329,13 @@ const LineLink = () => {
 
         <p className="text-sm leading-7 text-foreground">{message}</p>
 
-        {state === "open_in_line" && (
+        {(state === "open_in_line" || state === "manual") && (
           <div className="mt-6 space-y-3">
             <p className="text-xs leading-6 text-muted-foreground">
-              下のボタンを押してLINEで自動連携してください。
+              下のボタンが表示されている場合は、LINE公式アカウントのトークを開いて連携コードを送信してください。
               うまく開けない場合は、連携コードをLINE公式アカウントのトークへ送信してください。
             </p>
-            {liffAutoLinkUrl && (
+            {state === "open_in_line" && liffAutoLinkUrl && (
               <Button asChild className="w-full rounded-none bg-[#06C755] text-white hover:bg-[#05b84f]">
                 <a href={liffAutoLinkUrl}>LINEで自動連携する</a>
               </Button>
@@ -347,7 +354,7 @@ const LineLink = () => {
           </div>
         )}
 
-        {(state === "error" || state === "config_required" || state === "open_in_line") && token && (
+        {(state === "error" || state === "config_required" || state === "open_in_line" || state === "manual") && token && (
           <div className="mt-6 space-y-3">
             <p className="text-xs leading-6 text-muted-foreground">
               うまく開けない場合は、下の連携コードをLINE公式アカウントのトークへ送信してください。
