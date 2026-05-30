@@ -204,10 +204,7 @@ const Customers = () => {
   const [addOpen, setAddOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<EditableCustomer | null>(null);
   const [qrTarget, setQrTarget] = useState<{ id: string; name: string } | null>(null);
-  const [lineLinkSettings, setLineLinkSettings] = useState<{
-    lineAddFriendUrl: string | null;
-    lineOfficialAccountId: string | null;
-  }>({ lineAddFriendUrl: null, lineOfficialAccountId: null });
+  const [lineAddUrl, setLineAddUrl] = useState<string | null>(null);
   const [bulkLineOpen, setBulkLineOpen] = useState(false);
   const [messageTarget, setMessageTarget] = useState<Customer | null>(null);
   const [recentlyAddedId, setRecentlyAddedId] = useState<string | null>(null);
@@ -216,11 +213,11 @@ const Customers = () => {
     let active = true;
     (async () => {
       const [profileResult, locationResult] = await Promise.all([
-        supabase.from("profiles").select("line_add_friend_url, line_official_account_id").maybeSingle(),
+        supabase.from("profiles").select("line_add_friend_url").maybeSingle(),
         locationId
           ? supabase
               .from("locations")
-              .select("line_add_friend_url, line_official_account_id")
+              .select("line_add_friend_url")
               .eq("id", locationId)
               .maybeSingle()
           : Promise.resolve({ data: null }),
@@ -228,10 +225,7 @@ const Customers = () => {
       if (!active) return;
       const profile = (profileResult.data || {}) as any;
       const location = (locationResult.data || {}) as any;
-      setLineLinkSettings({
-        lineAddFriendUrl: location.line_add_friend_url || profile.line_add_friend_url || null,
-        lineOfficialAccountId: location.line_official_account_id || profile.line_official_account_id || null,
-      });
+      setLineAddUrl(location.line_add_friend_url || profile.line_add_friend_url || null);
     })();
     return () => { active = false; };
   }, [locationId]);
@@ -552,8 +546,7 @@ const Customers = () => {
           onOpenChange={(v) => !v && setQrTarget(null)}
           customerId={qrTarget.id}
           customerName={qrTarget.name}
-          lineAddFriendUrl={lineLinkSettings.lineAddFriendUrl}
-          lineOfficialAccountId={lineLinkSettings.lineOfficialAccountId}
+          lineAddFriendUrl={lineAddUrl}
         />
       )}
 

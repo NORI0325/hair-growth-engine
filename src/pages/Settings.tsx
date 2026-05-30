@@ -21,7 +21,6 @@ import ParkingSettingsEditor from "@/components/ParkingSettingsEditor";
 import ReactivationStagesEditor, { type ReactivationStage } from "@/components/ReactivationStagesEditor";
 import NotificationRecipientsBadge from "@/components/NotificationRecipientsBadge";
 import LocationLineSettingsEditor from "@/components/LocationLineSettingsEditor";
-import { normalizeLineOfficialAccountId } from "@/lib/lineLink";
 
 const WEBHOOK_URL = "https://miyedioemkzhetphjzzg.supabase.co/functions/v1/line-webhook";
 
@@ -53,7 +52,6 @@ const Settings = () => {
     salon_name: "",
     google_review_url: "",
     line_add_friend_url: "",
-    line_official_account_id: "",
     line_channel_access_token: "",
     line_channel_secret: "",
     owner_notification_email: "",
@@ -103,7 +101,6 @@ const Settings = () => {
           salon_name: d.salon_name || "",
           google_review_url: d.google_review_url || "",
           line_add_friend_url: d.line_add_friend_url || "",
-          line_official_account_id: d.line_official_account_id || "",
           line_channel_access_token: d.line_channel_access_token || "",
           line_channel_secret: d.line_channel_secret || "",
           owner_notification_email: d.owner_notification_email || "",
@@ -161,11 +158,6 @@ const Settings = () => {
       toast.error("離脱客ステップは最低1段階必要です");
       return;
     }
-    const normalizedLineId = normalizeLineOfficialAccountId(form.line_official_account_id);
-    if (form.line_official_account_id.trim() && !normalizedLineId) {
-      toast.error("LINE公式アカウントIDは @ から始まるIDで入力してください");
-      return;
-    }
     setSaving(true);
     const { error } = await supabase
       .from("profiles")
@@ -173,7 +165,6 @@ const Settings = () => {
         salon_name: form.salon_name || null,
         google_review_url: form.google_review_url.trim() || null,
         line_add_friend_url: form.line_add_friend_url.trim() || null,
-        line_official_account_id: normalizedLineId,
         line_channel_access_token: form.line_channel_access_token.trim() || null,
         line_channel_secret: form.line_channel_secret.trim() || null,
         owner_notification_email: form.owner_notification_email.trim() || null,
@@ -825,15 +816,6 @@ const Settings = () => {
                 <Input value={form.line_add_friend_url} onChange={e => setForm({...form, line_add_friend_url: e.target.value})}
                   placeholder="https://lin.ee/xxxxxx"
                   className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
-              </div>
-              <div>
-                <Label className="mb-2 block font-serif text-sm">LINE公式アカウントID</Label>
-                <Input value={form.line_official_account_id} onChange={e => setForm({...form, line_official_account_id: e.target.value})}
-                  placeholder="@salon"
-                  className="rounded-none border-x-0 border-t-0 px-0 focus-visible:ring-0 focus-visible:border-gold" />
-                <p className="text-[10px] text-muted-foreground mt-1">
-                  顧客別QRでLINEトークを開き、連携コードを入力済みにするために使います。
-                </p>
               </div>
               <div>
                 <Label className="mb-2 block font-serif text-sm">チャネルアクセストークン</Label>

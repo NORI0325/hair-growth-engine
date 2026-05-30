@@ -15,7 +15,6 @@ interface Props {
   customerId: string;
   customerName: string;
   lineAddFriendUrl?: string | null;
-  lineOfficialAccountId?: string | null;
 }
 
 const DEFAULT_PUBLIC_APP_ORIGIN = "https://saronboost.com";
@@ -26,7 +25,6 @@ const LineLinkQRDialog = ({
   customerId,
   customerName,
   lineAddFriendUrl,
-  lineOfficialAccountId,
 }: Props) => {
   const { user } = useAuth();
   const [token, setToken] = useState<string>("");
@@ -99,7 +97,7 @@ const LineLinkQRDialog = ({
   const linkText = token ? `連携:${token}` : "連携:";
   const appOrigin = (publicAppOrigin || DEFAULT_PUBLIC_APP_ORIGIN).replace(/\/+$/, "");
   const appLinkUrl = token ? `${appOrigin}/line-link?token=${encodeURIComponent(token)}` : "";
-  const lineMessageUrl = token ? buildLineOaMessageUrl(lineOfficialAccountId || lineAddFriendUrl, linkText) : null;
+  const lineMessageUrl = token ? buildLineOaMessageUrl(lineAddFriendUrl, linkText) : null;
   const qrData = (liffId && appLinkUrl) || lineMessageUrl || appLinkUrl || linkText;
 
   const copyToken = async () => {
