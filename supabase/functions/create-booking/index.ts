@@ -394,6 +394,7 @@ Deno.serve(async (req) => {
         .from("channel_integrations")
         .select("channel")
         .eq("owner_id", customer.owner_id)
+        .eq("location_id", customerLocationId)
         .eq("enabled", true)
         .eq("sync_enabled", true);
 
