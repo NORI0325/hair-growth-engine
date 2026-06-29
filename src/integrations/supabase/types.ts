@@ -1827,7 +1827,6 @@ export type Database = {
           inbound_key: string | null
           is_primary: boolean
           line_add_friend_url: string | null
-          line_official_account_id: string | null
           line_channel_access_token: string | null
           line_channel_secret: string | null
           line_rich_menu_id: string | null
@@ -1849,7 +1848,6 @@ export type Database = {
           inbound_key?: string | null
           is_primary?: boolean
           line_add_friend_url?: string | null
-          line_official_account_id?: string | null
           line_channel_access_token?: string | null
           line_channel_secret?: string | null
           line_rich_menu_id?: string | null
@@ -1871,7 +1869,6 @@ export type Database = {
           inbound_key?: string | null
           is_primary?: boolean
           line_add_friend_url?: string | null
-          line_official_account_id?: string | null
           line_channel_access_token?: string | null
           line_channel_secret?: string | null
           line_rich_menu_id?: string | null
@@ -2157,7 +2154,6 @@ export type Database = {
           info_collection_append_to_thanks: boolean
           info_collection_enabled: boolean
           line_add_friend_url: string | null
-          line_official_account_id: string | null
           line_booking_paused: boolean
           line_booking_paused_message: string | null
           line_channel_access_token: string | null
@@ -2211,7 +2207,6 @@ export type Database = {
           info_collection_append_to_thanks?: boolean
           info_collection_enabled?: boolean
           line_add_friend_url?: string | null
-          line_official_account_id?: string | null
           line_booking_paused?: boolean
           line_booking_paused_message?: string | null
           line_channel_access_token?: string | null
@@ -2265,7 +2260,6 @@ export type Database = {
           info_collection_append_to_thanks?: boolean
           info_collection_enabled?: boolean
           line_add_friend_url?: string | null
-          line_official_account_id?: string | null
           line_booking_paused?: boolean
           line_booking_paused_message?: string | null
           line_channel_access_token?: string | null
