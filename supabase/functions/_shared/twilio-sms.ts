@@ -24,9 +24,15 @@ export function toE164JP(raw: string | null | undefined): string | null {
 }
 
 export async function sendSms(toRaw: string, body: string, fromOverride?: string): Promise<SmsResult> {
+  // 緊急停止スイッチ: MESSAGING_KILL_SWITCH=true の間はSMSを一切送らない
+  if ((Deno.env.get("MESSAGING_KILL_SWITCH") ?? "").toLowerCase() === "true") {
+    return { ok: false, skipped: true, reason: "messaging_kill_switch" };
+  }
+
   const lovableKey = Deno.env.get("LOVABLE_API_KEY");
   const twilioKey = Deno.env.get("TWILIO_API_KEY");
   const fromNumber = fromOverride || Deno.env.get("TWILIO_FROM_NUMBER") || Deno.env.get("TWILIO_PHONE_NUMBER");
+
 
   if (!lovableKey || !twilioKey) {
     return { ok: false, skipped: true, reason: "twilio_not_connected" };
