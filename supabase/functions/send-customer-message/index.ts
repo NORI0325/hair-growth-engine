@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
 import { sendLinePush, getLineCredentials } from "../_shared/line-push.ts";
+import { authenticateRequest, canAccessOwner } from "../_shared/request-auth.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -8,25 +9,16 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const supabaseAuth = createClient(
+    const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
-    const { data: userData, error: userErr } = await supabaseAuth.auth.getUser();
-    if (userErr || !userData.user) {
+    const identity = await authenticateRequest(req, supabase);
+    if (identity.kind !== "user") {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    const ownerId = userData.user.id;
 
     const body = await req.json();
     const customerId = String(body.customer_id || "");
@@ -37,22 +29,18 @@ Deno.serve(async (req) => {
       });
     }
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
-
     const { data: customer } = await supabase
       .from("customers")
       .select("id, full_name, line_user_id, owner_id, location_id")
       .eq("id", customerId)
       .maybeSingle();
 
-    if (!customer || customer.owner_id !== ownerId) {
+    if (!customer || !await canAccessOwner(supabase, identity.userId, customer.owner_id)) {
       return new Response(JSON.stringify({ error: "not_found" }), {
         status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+    const ownerId = customer.owner_id;
 
     if (!customer.line_user_id) {
       return new Response(JSON.stringify({

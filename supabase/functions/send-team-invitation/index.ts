@@ -23,6 +23,9 @@ Deno.serve(async (req) => {
     if (!email || !role || !tenant_id) {
       return new Response(JSON.stringify({ success: false, error: "missing_params" }), { status: 400, headers: corsHeaders });
     }
+    if (!['manager', 'staff'].includes(String(role))) {
+      return new Response(JSON.stringify({ success: false, error: "invalid_role" }), { status: 400, headers: corsHeaders });
+    }
     const locIds: string[] | null = Array.isArray(location_ids) && location_ids.length > 0 ? location_ids : null;
 
     // 権限チェック：オーナーのみ
@@ -35,6 +38,17 @@ Deno.serve(async (req) => {
 
     if (!ownerCheck || (ownerCheck.role !== "owner" && ownerCheck.role !== "super_admin")) {
       return new Response(JSON.stringify({ success: false, error: "forbidden" }), { status: 403, headers: corsHeaders });
+    }
+
+    if (locIds) {
+      const { data: tenantLocations, error: locationsError } = await supabase
+        .from("locations")
+        .select("id")
+        .eq("tenant_id", tenant_id)
+        .in("id", locIds);
+      if (locationsError || (tenantLocations ?? []).length !== new Set(locIds).size) {
+        return new Response(JSON.stringify({ success: false, error: "invalid_location_ids" }), { status: 400, headers: corsHeaders });
+      }
     }
 
     // トークン生成
@@ -51,7 +65,7 @@ Deno.serve(async (req) => {
     // 招待メール送信（正式テンプレート使用）
     const { data: tenantProfile } = await supabase.from("profiles").select("salon_name").eq("id", tenant_id).maybeSingle();
     const { data: inviterProfile } = await supabase.from("profiles").select("full_name").eq("id", user.id).maybeSingle();
-    const appUrl = Deno.env.get("APP_URL") ?? "https://hair-growth-engine.lovable.app";
+    const appUrl = (Deno.env.get("PUBLIC_APP_ORIGIN") ?? Deno.env.get("APP_URL") ?? "https://saronboost.com").replace(/\/$/, "");
     const redirectTo = `${appUrl}/invite/${token}`;
 
     // ===== マジックリンク方式：パスワード不要で1クリックでログイン → 自動受諾 =====

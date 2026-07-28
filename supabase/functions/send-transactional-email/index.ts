@@ -2,10 +2,11 @@ import * as React from 'npm:react@18.3.1'
 import { renderAsync } from 'npm:@react-email/components@0.0.22'
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { TEMPLATES } from '../_shared/transactional-email-templates/registry.ts'
+import { requireInternalRequest } from '../_shared/request-auth.ts'
 
 // Configuration baked in at scaffold time — do NOT change these manually.
 // To update, re-run the email domain setup flow.
-const SITE_NAME = "hair-growth-engine"
+const SITE_NAME = "SalonBoost"
 // SENDER_DOMAIN is the verified sender subdomain FQDN (e.g., "notify.example.com").
 // It MUST match the subdomain delegated to Lovable's nameservers — never the root domain.
 // The email API looks up this exact domain; a mismatch causes "No email domain record found".
@@ -30,9 +31,8 @@ function generateToken(): string {
     .join('')
 }
 
-// Auth note: this function uses verify_jwt = true in config.toml, so Supabase's
-// gateway validates the caller's JWT (anon or service_role) before the request
-// reaches this code. No in-function auth check is needed.
+// Only trusted Edge-to-Edge callers may enqueue transactional email. The
+// gateway check alone is insufficient because an anon JWT is public.
 
 Deno.serve(async (req) => {
   // Handle CORS preflight
@@ -52,6 +52,14 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       }
     )
+  }
+
+  const serviceClient = createClient(supabaseUrl, supabaseServiceKey)
+  const identity = await requireInternalRequest(req, serviceClient)
+  if (identity instanceof Response) {
+    const headers = new Headers(identity.headers)
+    for (const [key, value] of Object.entries(corsHeaders)) headers.set(key, value)
+    return new Response(identity.body, { status: identity.status, headers })
   }
 
   // Parse request body
@@ -123,7 +131,7 @@ Deno.serve(async (req) => {
   }
 
   // Create Supabase client with service role (bypasses RLS)
-  const supabase = createClient(supabaseUrl, supabaseServiceKey)
+  const supabase = serviceClient
 
   // 2. Check suppression list (fail-closed: if we can't verify, don't send)
   const { data: suppressed, error: suppressionError } = await supabase

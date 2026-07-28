@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
+import { authenticateRequest, canAccessOwner } from "../_shared/request-auth.ts";
 
 // 顧客の来店履歴・属性からAIインサイトを生成しキャッシュに保存
 // 入力: { customer_id, force?: boolean }
@@ -9,25 +10,16 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: "unauthorized" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const supabaseAuth = createClient(
+    const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
-    const { data: userData, error: userErr } = await supabaseAuth.auth.getUser();
-    if (userErr || !userData.user) {
+    const identity = await authenticateRequest(req, supabase);
+    if (identity.kind !== "user") {
       return new Response(JSON.stringify({ error: "unauthorized" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    const ownerId = userData.user.id;
 
     const { customer_id, force = false } = await req.json();
     if (!customer_id) {
@@ -36,10 +28,14 @@ Deno.serve(async (req) => {
       });
     }
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
+    const { data: ownerRow } = await supabase.from("customers").select("owner_id")
+      .eq("id", customer_id).maybeSingle();
+    if (!ownerRow || !await canAccessOwner(supabase, identity.userId, ownerRow.owner_id)) {
+      return new Response(JSON.stringify({ error: "not_found" }), {
+        status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const ownerId = ownerRow.owner_id;
 
     // キャッシュチェック（強制再生成でなければ24時間以内のものは再利用）
     if (!force) {

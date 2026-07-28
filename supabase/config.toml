@@ -46,7 +46,10 @@ project_id = "miyedioemkzhetphjzzg"
   [functions.process-thank-you-jobs]
     verify_jwt = false
   [functions.send-transactional-email]
-    verify_jwt = true
+    # Internal callers are authenticated inside the function with the
+    # service-role key or EDGE_INTERNAL_SECRET. This also supports Lovable's
+    # non-JWT sb_secret_* key format.
+    verify_jwt = false
   [functions.sms-test-send]
     verify_jwt = true
   [functions.verify-booking-token]

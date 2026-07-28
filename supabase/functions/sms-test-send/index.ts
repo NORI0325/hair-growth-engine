@@ -2,37 +2,47 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
 import { sendSmsWithLog, toE164JP } from "../_shared/twilio-sms.ts";
+import { authenticateRequest, canAccessOwner } from "../_shared/request-auth.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: "unauthorized" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const supabaseAuth = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
     const supabaseAdmin = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
-    const { data: { user } } = await supabaseAuth.auth.getUser();
-    if (!user) {
+    const identity = await authenticateRequest(req, supabaseAdmin);
+    if (identity.kind !== "user") {
       return new Response(JSON.stringify({ error: "unauthorized" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const body = await req.json().catch(() => ({}));
+    const ownerId = String(body?.owner_id || "").trim();
+    const locationId = body?.location_id ? String(body.location_id) : null;
     const phoneRaw = String(body?.phone || "").trim();
     const customBody = String(body?.body || "").trim();
+
+    if (!ownerId || !await canAccessOwner(supabaseAdmin, identity.userId, ownerId, ["owner", "manager", "super_admin"])) {
+      return new Response(JSON.stringify({ error: "forbidden" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (locationId) {
+      const { data: location } = await supabaseAdmin
+        .from("locations")
+        .select("id")
+        .eq("id", locationId)
+        .eq("tenant_id", ownerId)
+        .maybeSingle();
+      if (!location) {
+        return new Response(JSON.stringify({ error: "invalid_location" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
 
     const e164 = toE164JP(phoneRaw);
     if (!e164) {
@@ -42,18 +52,18 @@ Deno.serve(async (req) => {
       }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const { data: profile } = await supabaseAuth
+    const { data: profile } = await supabaseAdmin
       .from("profiles")
       .select("salon_name")
-      .eq("id", user.id)
+      .eq("id", ownerId)
       .maybeSingle();
 
     const salonName = profile?.salon_name || "サロン";
     const text = customBody || `【${salonName}】SMS接続テストです🌸 このメッセージが届いていれば設定は正常です。`;
 
     const result = await sendSmsWithLog(supabaseAdmin, {
-      owner_id: user.id,
-      location_id: null,
+      owner_id: ownerId,
+      location_id: locationId,
       customer_id: null,
       phone: phoneRaw,
       message: text,
@@ -95,7 +105,6 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({
         error: "send_failed",
         message: `❌ 送信に失敗しました${hint}`,
-        raw: err,
       }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
@@ -106,7 +115,7 @@ Deno.serve(async (req) => {
     console.error("sms-test-send error:", e);
     return new Response(JSON.stringify({
       error: "internal",
-      message: e instanceof Error ? e.message : "unknown",
+      message: "SMSテスト送信に失敗しました。",
     }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });

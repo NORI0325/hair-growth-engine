@@ -4,6 +4,9 @@ import { sendLinePush } from "../_shared/line-push.ts";
 import { sendSmsWithLog } from "../_shared/twilio-sms.ts";
 import { applySegmentFilter, buildFilterContext, ageGroupOf, type SegmentInput } from "../_shared/segment-filter.ts";
 import { sendTransactionalEmailInternal } from "../_shared/invoke-internal.ts";
+import { authenticateRequest, canAccessOwner } from "../_shared/request-auth.ts";
+
+const MAX_BROADCAST_RECIPIENTS = 500;
 
 const nextSuggestedMenu = (lastMenu: string | null): string => {
   const m = (lastMenu || "").toLowerCase();
@@ -18,34 +21,27 @@ const nextSuggestedMenu = (lastMenu: string | null): string => {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  const authHeader = req.headers.get("Authorization");
-  if (!authHeader) {
-    return new Response(JSON.stringify({ success: false, message: "Unauthorized" }),
-      { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-  }
-
-  const supabaseAuth = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_ANON_KEY")!,
-    { global: { headers: { Authorization: authHeader } } }
-  );
-  const { data: { user } } = await supabaseAuth.auth.getUser();
-  if (!user) {
-    return new Response(JSON.stringify({ success: false, message: "Unauthorized" }),
-      { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-  }
-
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
   );
+  const identity = await authenticateRequest(req, supabase);
+  if (identity.kind !== "user") {
+    return new Response(JSON.stringify({ success: false, message: "Unauthorized" }),
+      { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
 
   try {
     const body = await req.json();
+    const ownerId = typeof body?.owner_id === "string" ? body.owner_id : "";
+    const locationId = typeof body?.location_id === "string" ? body.location_id : "";
+    const broadcastRequestId = typeof body?.broadcast_request_id === "string" && /^[0-9a-f-]{36}$/i.test(body.broadcast_request_id)
+      ? body.broadcast_request_id
+      : crypto.randomUUID();
     const message: string = (body?.message || "").toString().trim();
     const subject: string = (body?.subject || "サロンからのお知らせ").toString().trim();
     const customerIds: string[] = Array.isArray(body?.customer_ids)
-      ? body.customer_ids.filter((x: any) => typeof x === "string") : [];
+      ? [...new Set(body.customer_ids.filter((x: any) => typeof x === "string"))] as string[] : [];
     const channels: string[] = Array.isArray(body?.channels) ? body.channels : [];
     const useLine = channels.includes("line");
     const useSms = channels.includes("sms");
@@ -56,6 +52,24 @@ Deno.serve(async (req) => {
       ? Math.min(90, Math.floor(Number(body.exclude_recent_booking_days))) : 0;
 
     const seg: SegmentInput = (body?.segment || {}) as SegmentInput;
+
+    if (!ownerId || !locationId || !(await canAccessOwner(supabase, identity.userId, ownerId, ["owner", "manager", "super_admin"]))) {
+      return new Response(JSON.stringify({ success: false, message: "配信権限を確認してください" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    const { data: location } = await supabase.from("locations").select("id")
+      .eq("id", locationId).eq("tenant_id", ownerId).maybeSingle();
+    if (!location) {
+      return new Response(JSON.stringify({ success: false, message: "店舗が見つかりません" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    if (customerIds.length > MAX_BROADCAST_RECIPIENTS) {
+      return new Response(JSON.stringify({
+        success: false,
+        code: "BROADCAST_RECIPIENT_LIMIT_EXCEEDED",
+        message: "一度に送信できる上限は500名です。永続配信キュー対応前は分割して実行してください。",
+      }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
     if (!message || message.length < 2) {
       return new Response(JSON.stringify({ success: false, message: "メッセージを入力してください" }),
@@ -73,14 +87,15 @@ Deno.serve(async (req) => {
     const { data: profile } = await supabase
       .from("profiles")
       .select("line_channel_access_token, salon_name")
-      .eq("id", user.id)
+      .eq("id", ownerId)
       .maybeSingle();
     const lineToken = (profile as any)?.line_channel_access_token;
     const salonName = (profile as any)?.salon_name || "サロン";
 
     const { data: targets } = await supabase.from("customers")
       .select("id, full_name, email, phone, line_user_id, line_unfollowed_at, opt_out_automation, birthday, gender, last_visit_date, visit_count, total_spent, location_id")
-      .eq("owner_id", user.id)
+      .eq("owner_id", ownerId)
+      .eq("location_id", locationId)
       .eq("is_test", false)
       // 販促配信: 配信停止顧客は除外（LINE解除はLINEチャネルのみ後段で除外）
       .or("opt_out_automation.is.null,opt_out_automation.eq.false")
@@ -89,7 +104,7 @@ Deno.serve(async (req) => {
     const allCustomers = (targets || []) as any[];
 
     // 補助データ取得
-    const ctx = await buildFilterContext(supabase, user.id, allCustomers.map(c => c.id), excludeRecentBookingDays);
+    const ctx = await buildFilterContext(supabase, ownerId, allCustomers.map(c => c.id), excludeRecentBookingDays);
 
     // セグメントフィルタ適用
     const { matched: list, segmentSkipped, recentBookingSkipped } = applySegmentFilter(allCustomers, seg, ctx);
@@ -104,7 +119,7 @@ Deno.serve(async (req) => {
       const { data: states } = await supabase
         .from("customer_communication_state")
         .select("customer_id, last_sent_at")
-        .eq("owner_id", user.id)
+        .eq("owner_id", ownerId)
         .in("customer_id", finalList.map((c: any) => c.id))
         .gte("last_sent_at", cutoff);
       const recentSet = new Set((states || []).map((s: any) => s.customer_id));
@@ -121,7 +136,8 @@ Deno.serve(async (req) => {
     }
     const staffNames: Record<string, string> = {};
     if (staffIds.size > 0) {
-      const { data: staff } = await supabase.from("staff").select("id, name").in("id", Array.from(staffIds));
+      const { data: staff } = await supabase.from("staff").select("id, name")
+        .eq("owner_id", ownerId).eq("location_id", locationId).in("id", Array.from(staffIds));
       for (const s of staff || []) staffNames[s.id] = s.name;
     }
 
@@ -167,7 +183,8 @@ Deno.serve(async (req) => {
           if (r.ok) { result.line.sent++; anySent = true; lastChannel = "line"; }
           else result.line.failed++;
           lineLogs.push({
-            owner_id: user.id, location_id: c.location_id ?? null, customer_id: c.id, job_type: "broadcast",
+            owner_id: ownerId, location_id: c.location_id ?? null, customer_id: c.id, job_type: "broadcast",
+            template_key: `bulk:${broadcastRequestId}`,
             line_user_id: c.line_user_id, message: personalText,
             status: r.ok ? "sent" : "failed", error: r.ok ? null : r.err,
           });
@@ -179,7 +196,7 @@ Deno.serve(async (req) => {
         if (!c.phone) result.sms.skipped++;
         else {
           const r = await sendSmsWithLog(supabase, {
-            owner_id: user.id,
+            owner_id: ownerId,
             location_id: c.location_id ?? null,
             customer_id: c.id,
             phone: c.phone,
@@ -204,7 +221,7 @@ Deno.serve(async (req) => {
           const r = await sendTransactionalEmailInternal({
             templateName: "campaign-news",
             recipientEmail: c.email,
-            idempotencyKey: `bulk-${Date.now()}-${c.id}`,
+            idempotencyKey: `bulk-${broadcastRequestId}-${c.id}`,
             templateData: {
               customerName: c.full_name || "お客様",
               salonName,
@@ -219,11 +236,11 @@ Deno.serve(async (req) => {
 
       if (anySent) {
         stateUpserts.push({
-          owner_id: user.id,
+          owner_id: ownerId,
           customer_id: c.id,
           last_sent_at: new Date().toISOString(),
           last_channel: lastChannel,
-          last_template_key: "bulk-broadcast",
+          last_template_key: `bulk:${broadcastRequestId}`,
         });
       }
     }

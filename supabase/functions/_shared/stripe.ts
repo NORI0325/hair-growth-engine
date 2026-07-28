@@ -37,6 +37,49 @@ export function createStripeClient(env: StripeEnv): Stripe {
   });
 }
 
+export async function setAdditionalLocationQuantity(
+  env: StripeEnv,
+  subscriptionId: string,
+  quantity: number,
+  idempotencyKey: string,
+): Promise<boolean> {
+  const stripe = createStripeClient(env);
+  const stripeSubscription = await stripe.subscriptions.retrieve(subscriptionId);
+  const prices = await stripe.prices.list({
+    lookup_keys: ["salon_boost_additional_location_monthly"],
+    active: true,
+    limit: 1,
+  });
+  const additionalPriceId = prices.data[0]?.id;
+  if (!additionalPriceId) throw new Error("additional_price_not_found");
+
+  const existingItem = stripeSubscription.items.data.find((item) => item.price.id === additionalPriceId);
+  const normalizedQuantity = Math.max(0, Math.trunc(quantity));
+
+  if (existingItem && normalizedQuantity === 0) {
+    await stripe.subscriptions.update(subscriptionId, {
+      items: [{ id: existingItem.id, deleted: true }],
+      proration_behavior: "create_prorations",
+    }, { idempotencyKey });
+    return true;
+  }
+  if (existingItem) {
+    await stripe.subscriptions.update(subscriptionId, {
+      items: [{ id: existingItem.id, quantity: normalizedQuantity }],
+      proration_behavior: "create_prorations",
+    }, { idempotencyKey });
+    return true;
+  }
+  if (normalizedQuantity > 0) {
+    await stripe.subscriptions.update(subscriptionId, {
+      items: [{ price: additionalPriceId, quantity: normalizedQuantity }],
+      proration_behavior: "create_prorations",
+    }, { idempotencyKey });
+    return true;
+  }
+  return false;
+}
+
 export async function verifyWebhook(req: Request, env: StripeEnv): Promise<{ type: string; data: { object: any } }> {
   const signature = req.headers.get("stripe-signature");
   const body = await req.text();

@@ -1,6 +1,7 @@
 // 拡張機能からスクレイプデータを直接受信して安全にDBへ保存
 // CSVがローカルに残らない設計の核心
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
+import { authenticateRequest, canAccessOwner } from "../_shared/request-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -41,102 +42,66 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const authHeader = req.headers.get("Authorization") || "";
-    const token = authHeader.replace(/^Bearer\s+/i, "");
-    if (!token) {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const admin = createClient(supabaseUrl, serviceKey);
+    const identity = await authenticateRequest(req, admin);
+    if (identity.kind !== "user") {
       return new Response(JSON.stringify({ error: "ログインが必要です" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-    const userClient = createClient(supabaseUrl, anonKey, {
-      global: { headers: { Authorization: `Bearer ${token}` } },
-    });
-    const { data: userData, error: userErr } = await userClient.auth.getUser();
-    if (userErr || !userData?.user) {
-      return new Response(JSON.stringify({ error: "認証に失敗しました" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-    const user = userData.user;
-
-    const admin = createClient(supabaseUrl, serviceKey);
-
-    // サブスク確認
-    const { data: sub } = await admin
-      .from("subscriptions")
-      .select("status, trial_ends_at, current_period_end, owner_id")
-      .or(`owner_id.eq.${user.id}`)
-      .maybeSingle();
-
-    const now = new Date();
-    const isActive = sub && (
-      sub.status === "active" ||
-      (sub.status === "trialing" && sub.trial_ends_at && new Date(sub.trial_ends_at) > now) ||
-      (sub.current_period_end && new Date(sub.current_period_end) > now && sub.status !== "canceled")
-    );
-
-    // owner_id を解決：自分が owner ならそのまま、メンバーなら所属テナントの owner_user_id
-    let ownerId = user.id;
-    if (!isActive) {
-      // 自分が owner でなければ、テナントの owner を取得して再チェック
-      const { data: membership } = await admin
-        .from("tenant_members")
-        .select("tenant_id, role, tenants:tenant_id(owner_user_id)")
-        .eq("user_id", user.id)
-        .limit(1)
-        .maybeSingle();
-
-      if (membership?.tenants && (membership.tenants as any).owner_user_id) {
-        ownerId = (membership.tenants as any).owner_user_id;
-        const { data: ownerSub } = await admin
-          .from("subscriptions")
-          .select("status, trial_ends_at, current_period_end")
-          .eq("owner_id", ownerId)
-          .maybeSingle();
-        const ownerActive = ownerSub && (
-          ownerSub.status === "active" ||
-          (ownerSub.status === "trialing" && ownerSub.trial_ends_at && new Date(ownerSub.trial_ends_at) > now) ||
-          (ownerSub.current_period_end && new Date(ownerSub.current_period_end) > now && ownerSub.status !== "canceled")
-        );
-        if (!ownerActive) {
-          return new Response(JSON.stringify({ error: "ご契約が有効ではありません" }), {
-            status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
-        }
-      } else {
-        return new Response(JSON.stringify({ error: "ご契約が有効ではありません" }), {
-          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-    }
+    const user = { id: identity.userId };
 
     const body = await req.json().catch(() => null);
-    if (!body || !Array.isArray(body.customers)) {
+    if (!body || !Array.isArray(body.customers) || body.customers.length > 10_000) {
       return new Response(JSON.stringify({ error: "customers 配列が必要です" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const locationId: string | null = body.location_id || null;
+    const locationId: string | null = typeof body.location_id === "string" ? body.location_id : null;
     const reservations: any[] = Array.isArray(body.reservations) ? body.reservations : [];
 
-    // location_id の所属確認
-    if (locationId) {
-      const { data: loc } = await admin
-        .from("locations")
-        .select("id, tenant_id")
-        .eq("id", locationId)
-        .maybeSingle();
-      if (!loc) {
-        return new Response(JSON.stringify({ error: "店舗が見つかりません" }), {
-          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
+    if (!locationId) {
+      return new Response(JSON.stringify({ error: "店舗を選択してください" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const { data: loc } = await admin
+      .from("locations")
+      .select("id, tenant_id")
+      .eq("id", locationId)
+      .maybeSingle();
+    if (!loc?.tenant_id) {
+      return new Response(JSON.stringify({ error: "店舗が見つかりません" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const ownerId = String(loc.tenant_id);
+    const canImport = await canAccessOwner(admin, identity.userId, ownerId, ["owner", "manager", "super_admin"]);
+    if (!canImport) {
+      return new Response(JSON.stringify({ error: "顧客を取り込む権限がありません" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const { data: sub } = await admin
+      .from("subscriptions")
+      .select("status, trial_ends_at, current_period_end")
+      .eq("owner_id", ownerId)
+      .maybeSingle();
+    const now = new Date();
+    const isActive = Boolean(sub && (
+      sub.status === "active" ||
+      (sub.status === "trialing" && sub.trial_ends_at && new Date(sub.trial_ends_at) > now) ||
+      (sub.current_period_end && new Date(sub.current_period_end) > now && sub.status !== "canceled")
+    ));
+    if (!isActive) {
+      return new Response(JSON.stringify({ error: "ご契約が有効ではありません" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     let inserted = 0, updated = 0, skipped = 0;
@@ -176,7 +141,7 @@ Deno.serve(async (req) => {
           "詳細_E-MAIL（携帯）", "詳細_E-MAIL(携帯)",
           "詳細_メッセージ配信先情報_E-MAIL（PC）",
           "詳細_メッセージ配信先情報_E-MAIL（携帯）",
-        ]),
+        ]).toLowerCase(),
         birthday: parseDate(pick(c, ["詳細_誕生日"])),
         lastVisit: parseDate(pick(c, ["一覧_前回来店日", "詳細_来店情報_前回来店日"])),
         visitCount: parseInt((pick(c, ["一覧_来店回数", "詳細_来店情報_来店回数"]) || "").replace(/[^\d]/g, ""), 10) || 0,
@@ -190,18 +155,18 @@ Deno.serve(async (req) => {
     const names = [...new Set(normalized.map(n => n.fullName))];
 
     type Existing = {
-      id: string; visit_count: number;
+      id: string; full_name: string; location_id: string | null; visit_count: number;
       phone: string | null; email: string | null; birthday: string | null;
       gender: string | null; last_visit_date: string | null;
       salonboard_customer_id: string | null; salonboard_customer_no: string | null;
     };
-    const bySbId = new Map<string, Existing>();
-    const byPhone = new Map<string, Existing>();
-    const byName = new Map<string, Existing>();
+    const bySbId = new Map<string, Existing[]>();
+    const byPhone = new Map<string, Existing[]>();
+    const byName = new Map<string, Existing[]>();
 
     const CHUNK = 500;
-    const SELECT_COLS = "id, visit_count, phone, email, birthday, gender, last_visit_date, salonboard_customer_id, salonboard_customer_no";
-    async function fetchExisting(col: string, values: string[], target: Map<string, Existing>) {
+    const SELECT_COLS = "id, full_name, location_id, visit_count, phone, email, birthday, gender, last_visit_date, salonboard_customer_id, salonboard_customer_no";
+    async function fetchExisting(col: string, values: string[], target: Map<string, Existing[]>) {
       for (let i = 0; i < values.length; i += CHUNK) {
         const slice = values.slice(i, i + CHUNK);
         const { data, error } = await admin
@@ -212,7 +177,7 @@ Deno.serve(async (req) => {
         if (error) throw error;
         for (const row of (data || []) as any[]) {
           const key = row[col];
-          if (key && !target.has(key)) target.set(key, row as Existing);
+          if (key) target.set(key, [...(target.get(key) || []), row as Existing]);
         }
       }
     }
@@ -225,15 +190,39 @@ Deno.serve(async (req) => {
     const toUpdate: { id: string; payload: any }[] = [];
     const toInsert: any[] = [];
     const seenUpdateIds = new Set<string>();
+    const seenIncomingStrongIds = new Set<string>();
 
     // 受信値が「実質空」かを判定
     const blank = (v: any) => v === null || v === undefined || v === "" || v === "unknown";
 
     for (const n of normalized) {
-      const existing =
-        (n.sbId && bySbId.get(n.sbId)) ||
-        (n.phone && byPhone.get(n.phone)) ||
-        byName.get(n.fullName) || null;
+      const incomingKey = n.sbId ? `sb:${n.sbId}` : n.phone ? `phone:${n.phone}` : "";
+      if (incomingKey && seenIncomingStrongIds.has(incomingKey)) {
+        skipped++;
+        errors.push(`入力データ内で顧客識別子が重複しています (${incomingKey.split(":")[0]})`);
+        continue;
+      }
+      if (incomingKey) seenIncomingStrongIds.add(incomingKey);
+
+      const strongMatches = new Map<string, Existing>();
+      for (const match of n.sbId ? (bySbId.get(n.sbId) || []) : []) strongMatches.set(match.id, match);
+      for (const match of n.phone ? (byPhone.get(n.phone) || []) : []) strongMatches.set(match.id, match);
+      if (strongMatches.size > 1) {
+        skipped++;
+        errors.push("サロンボード顧客IDと電話番号が異なる既存顧客に一致しました");
+        continue;
+      }
+
+      let existing = strongMatches.values().next().value as Existing | undefined;
+      if (!existing && !n.sbId && !n.phone) {
+        const sameLocationNames = (byName.get(n.fullName) || []).filter(row => row.location_id === locationId);
+        if (sameLocationNames.length > 1) {
+          skipped++;
+          errors.push("同名顧客が複数いるため自動統合を停止しました");
+          continue;
+        }
+        existing = sameLocationNames[0];
+      }
 
       if (existing) {
         if (seenUpdateIds.has(existing.id)) { skipped++; continue; }

@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
 import { sendSmsWithLog } from "../_shared/twilio-sms.ts";
+import { requireInternalRequest, withCors } from "../_shared/request-auth.ts";
 
 // LINE Messaging API: Push Message
 async function sendLinePush(token: string, userId: string, text: string): Promise<{ ok: boolean; err?: string }> {
@@ -60,12 +61,15 @@ function isWithinSendWindow(): boolean {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  const auth = await requireInternalRequest(req);
+  if (auth instanceof Response) return withCors(auth, corsHeaders);
+
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
   );
 
-  const APP_ORIGIN = Deno.env.get("APP_ORIGIN") || "https://hair-growth-engine.lovable.app";
+  const APP_ORIGIN = (Deno.env.get("PUBLIC_APP_ORIGIN") || Deno.env.get("APP_ORIGIN") || "https://saronboost.com").replace(/\/+$/, "");
 
   try {
     const { data: jobs, error } = await supabase

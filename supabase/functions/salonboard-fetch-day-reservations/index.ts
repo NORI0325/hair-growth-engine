@@ -2,6 +2,7 @@
 // DBには書き込まない（worker_request_logs のみ記録）。
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
+import { authenticateRequest, canAccessOwner } from "../_shared/request-auth.ts";
 
 interface ExternalItem {
   external_reservation_id: string | null;
@@ -27,19 +28,12 @@ function normalize(s: string | null | undefined): string {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
-    const authHeader = req.headers.get("Authorization") || "";
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
-    const userClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } },
-    );
-    const { data: userData } = await userClient.auth.getUser();
-    const user = userData?.user;
-    if (!user) {
+    const identity = await authenticateRequest(req, supabase);
+    if (identity.kind !== "user") {
       return new Response(JSON.stringify({ error: "unauthorized" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -47,10 +41,25 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const date: string | undefined = body.date;             // YYYY-MM-DD
-    const location_id: string | null = body.location_id ?? null;
+    const location_id: string | null = typeof body.location_id === "string" ? body.location_id : null;
     if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return new Response(JSON.stringify({ error: "invalid_date" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (!location_id) {
+      return new Response(JSON.stringify({ error: "location_required" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const { data: location } = await supabase.from("locations")
+      .select("tenant_id")
+      .eq("id", location_id)
+      .maybeSingle();
+    const ownerId = String(location?.tenant_id || "");
+    if (!ownerId || !(await canAccessOwner(supabase, identity.userId, ownerId, ["owner", "manager", "super_admin"]))) {
+      return new Response(JSON.stringify({ error: "forbidden" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -70,13 +79,13 @@ Deno.serve(async (req) => {
       const wRes = await fetch(`${workerUrl.replace(/\/+$/, "")}/api/salonboard/list-day-reservations`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${workerKey}` },
-        body: JSON.stringify({ store_id: user.id, location_id, date: fmtDate(date) }),
+        body: JSON.stringify({ store_id: ownerId, location_id, date: fmtDate(date) }),
       });
       const wJson = await wRes.json().catch(() => ({}));
       const latency = Date.now() - t0;
       try {
         await supabase.from("worker_request_logs").insert({
-          owner_id: user.id, location_id, channel: "salonboard",
+          owner_id: ownerId, location_id, channel: "salonboard",
           kind: "list_day_reservations",
           request_payload: { date },
           response_status: wRes.status, response_body: wJson, latency_ms: latency,
@@ -106,7 +115,7 @@ Deno.serve(async (req) => {
     let q = supabase.from("bookings")
       .select(`id, booking_date, booking_time, menu, status, external_reservation_id, external_source, customer_id,
                customers:customer_id(full_name)`)
-      .eq("owner_id", user.id)
+      .eq("owner_id", ownerId)
       .eq("booking_date", date);
     if (location_id) q = q.eq("location_id", location_id);
     const { data: localBookings } = await q;

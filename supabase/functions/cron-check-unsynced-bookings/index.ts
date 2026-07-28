@@ -12,6 +12,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
 import { sendLinePush, getLineCredentials } from "../_shared/line-push.ts";
 import { sendTransactionalEmailInternal } from "../_shared/invoke-internal.ts";
+import { requireInternalRequest, withCors } from "../_shared/request-auth.ts";
 
 const RE_ALERT_URGENT_HOURS = 2;   // <24h案件: 2hおき再通知可
 const RE_ALERT_NORMAL_HOURS = 12;  // 通常: 12hおき再通知可
@@ -20,6 +21,9 @@ function hoursDiff(a: Date, b: Date) { return Math.abs(a.getTime() - b.getTime()
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  const auth = await requireInternalRequest(req);
+  if (auth instanceof Response) return withCors(auth, corsHeaders);
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,

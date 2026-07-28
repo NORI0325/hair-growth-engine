@@ -55,26 +55,51 @@ Deno.serve(async (req) => {
     if (!booking_date || !booking_time) return new Response(JSON.stringify({ error: "datetime_required" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     if (!external_reservation_id) return new Response(JSON.stringify({ error: "external_reservation_id_required", message: "external_reservation_id が無い予約は取り込めません" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
+    const { data: location } = await supabase.from("locations")
+      .select("id, tenant_id")
+      .eq("id", location_id)
+      .maybeSingle();
+    if (!location) return new Response(JSON.stringify({ error: "location_not_found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    const ownerId = location.tenant_id;
+    const { data: membership } = await supabase.from("tenant_members")
+      .select("user_id")
+      .eq("tenant_id", ownerId)
+      .eq("user_id", user.id)
+      .not("accepted_at", "is", null)
+      .maybeSingle();
+    if (!membership) return new Response(JSON.stringify({ error: "forbidden" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
     // 重複チェック
     const { data: dup } = await supabase.from("bookings")
-      .select("id").eq("owner_id", user.id).eq("external_reservation_id", external_reservation_id).maybeSingle();
+      .select("id").eq("owner_id", ownerId).eq("location_id", location_id)
+      .eq("external_reservation_id", external_reservation_id).maybeSingle();
     if (dup) {
       return new Response(JSON.stringify({ action: "skipped", reason: "already_imported", booking_id: dup.id, message: "この external_reservation_id は既に取り込み済みです。" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     // 顧客は名寄せできない場合があるため、暫定: 名前一致 or プレースホルダー
     let customerId: string | null = null;
+    const normalizedPhone = String(customer_phone || "").replace(/\D/g, "") || null;
+    if (normalizedPhone) {
+      const rawPhone = String(customer_phone || "").trim();
+      const { data: byPhone } = await supabase.from("customers")
+        .select("id").eq("owner_id", ownerId).eq("location_id", location_id)
+        .in("phone", Array.from(new Set([rawPhone, normalizedPhone])).filter(Boolean)).limit(1);
+      customerId = byPhone?.[0]?.id ?? null;
+    }
     if (customer_name) {
-      const { data: cust } = await supabase.from("customers")
-        .select("id").eq("owner_id", user.id).eq("full_name", customer_name).maybeSingle();
-      customerId = cust?.id ?? null;
+      const { data: candidates } = await supabase.from("customers")
+        .select("id").eq("owner_id", ownerId).eq("location_id", location_id)
+        .eq("full_name", customer_name).limit(2);
+      if (!customerId && candidates?.length === 1) customerId = candidates[0].id;
     }
     if (!customerId) {
       // 名寄せ未確定: needs_manual_review で「不明顧客」を作成しない方針 — 仮顧客を1件作る
       const { data: newCust } = await supabase.from("customers").insert({
-        owner_id: user.id, location_id,
+        owner_id: ownerId, location_id,
         full_name: customer_name || "（取り込み・要確認）",
-        phone: customer_phone ?? null,
+        phone: normalizedPhone,
+        notes: "サロンボード外部予約取り込み時に作成",
       }).select("id").maybeSingle();
       customerId = newCust?.id ?? null;
     }
@@ -93,7 +118,7 @@ Deno.serve(async (req) => {
       : null;
 
     const { data: ins, error: insErr } = await supabase.from("bookings").insert({
-      owner_id: user.id,
+      owner_id: ownerId,
       location_id,
       customer_id: customerId,
       booking_date,
@@ -105,7 +130,7 @@ Deno.serve(async (req) => {
       external_reservation_id,
       external_source: "salonboard_import",
       source_channel: "salonboard",
-      sync_status: needsReview ? "needs_review" : "success",
+      sync_status: needsReview ? "needs_review" : "not_required",
       needs_manual_review: needsReview,
       last_synced_at: new Date().toISOString(),
     }).select("id").maybeSingle();

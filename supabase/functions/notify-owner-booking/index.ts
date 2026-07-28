@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
 import { sendLinePush, getLineCredentials } from "../_shared/line-push.ts";
 import { sendTransactionalEmailInternal } from "../_shared/invoke-internal.ts";
+import { authenticateRequest, canAccessOwner } from "../_shared/request-auth.ts";
 
 function isPlaceholderReservationName(name: unknown, extId?: string | null): boolean {
   const normalized = String(name || "").replace(/\s+/g, "").trim();
@@ -21,6 +22,7 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
+    const identity = await authenticateRequest(req, supabase);
 
     // テスト送信モード：DBを参照せずダミーデータでメールだけ送る
     if (body?.test === true) {
@@ -29,6 +31,39 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify({ error: "no_recipient" }), {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
+      }
+      if (identity.kind === "anonymous") {
+        return new Response(JSON.stringify({ error: "unauthorized" }), {
+          status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (identity.kind === "user") {
+        const { data: membership } = await supabase
+          .from("tenant_members")
+          .select("tenant_id")
+          .eq("user_id", identity.userId)
+          .not("accepted_at", "is", null)
+          .in("role", ["manager", "owner", "super_admin"])
+          .order("accepted_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        const { data: profile } = membership?.tenant_id
+          ? await supabase.from("profiles")
+            .select("owner_notification_email, notification_recipients")
+            .eq("id", membership.tenant_id)
+            .maybeSingle()
+          : { data: null };
+        const allowedRecipients = new Set<string>([
+          profile?.owner_notification_email,
+          ...(Array.isArray(profile?.notification_recipients)
+            ? profile.notification_recipients.map((entry: { email?: string }) => entry?.email)
+            : []),
+        ].filter((value): value is string => typeof value === "string" && value.length > 0));
+        if (!allowedRecipients.has(String(recipient))) {
+          return new Response(JSON.stringify({ error: "forbidden_recipient" }), {
+            status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
       }
       const r = await sendTransactionalEmailInternal({
         templateName: "booking-alert-owner",
@@ -60,6 +95,11 @@ Deno.serve(async (req) => {
 
     // === 特殊イベント: cancel_needs_review (キャンセルメールが届いたが該当予約特定不能) ===
     if (eventType === "cancel_needs_review") {
+      if (identity.kind !== "internal") {
+        return new Response(JSON.stringify({ error: "unauthorized" }), {
+          status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       const ownerId = bodyOwnerId;
       if (!ownerId) {
         return new Response(JSON.stringify({ error: "missing_owner_id" }), {
@@ -125,7 +165,7 @@ Deno.serve(async (req) => {
 
     const { data: booking } = await supabase
       .from("bookings")
-      .select("id, owner_id, location_id, booking_date, booking_time, menu, notes, customer_id, sync_status, source_channel, external_reservation_id")
+      .select("id, owner_id, location_id, booking_date, booking_time, menu, notes, customer_id, sync_status, source_channel, external_source, external_reservation_id, created_at")
       .eq("id", bookingId)
       .maybeSingle();
 
@@ -133,6 +173,31 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "booking_not_found" }), {
         status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    if (identity.kind === "user") {
+      const allowed = await canAccessOwner(
+        supabase,
+        identity.userId,
+        booking.owner_id,
+        ["staff", "manager", "owner", "super_admin"],
+      );
+      if (!allowed) {
+        return new Response(JSON.stringify({ error: "forbidden" }), {
+          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    } else if (identity.kind === "anonymous") {
+      const createdAt = booking.created_at ? new Date(booking.created_at).getTime() : 0;
+      const publicCreatedNotification = eventType === "created"
+        && booking.source_channel === "line"
+        && booking.external_source === "public_form"
+        && createdAt > Date.now() - 10 * 60_000;
+      if (!publicCreatedNotification) {
+        return new Response(JSON.stringify({ error: "unauthorized" }), {
+          status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
     const [{ data: profile }, { data: customer }] = await Promise.all([

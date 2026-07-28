@@ -2,11 +2,15 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
 import { sendLinePush, getLineCredentials } from "../_shared/line-push.ts";
 import { sendTransactionalEmailInternal } from "../_shared/invoke-internal.ts";
+import { requireInternalRequest, withCors } from "../_shared/request-auth.ts";
 
 // 同期失敗時、店舗オーナー/管理者へ即時通知（LINE優先・メールフォールバック）
 // 二重通知防止: bookings.salonboard_alert_sent_at
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  const auth = await requireInternalRequest(req);
+  if (auth instanceof Response) return withCors(auth, corsHeaders);
 
   try {
     const { bookingId, ownerId, channel, errorMessage } = await req.json();
@@ -28,6 +32,11 @@ Deno.serve(async (req) => {
     if (!bk) {
       return new Response(JSON.stringify({ skipped: "booking_not_found" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (bk.owner_id !== ownerId) {
+      return new Response(JSON.stringify({ error: "owner_mismatch" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
     if (bk.salonboard_alert_sent_at) {

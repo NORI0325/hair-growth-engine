@@ -10,8 +10,8 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { tenant_id, environment, returnUrl } = await req.json();
-    const env: StripeEnv = environment === "live" ? "live" : "sandbox";
+    const { tenant_id } = await req.json();
+    const env: StripeEnv = Deno.env.get("STRIPE_ENV") === "live" ? "live" : "sandbox";
 
     const auth = req.headers.get("Authorization");
     const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -31,12 +31,12 @@ Deno.serve(async (req) => {
     const prices = await stripe.prices.list({ lookup_keys: ["standard_monthly_jpy"] });
     if (!prices.data.length) return new Response(JSON.stringify({ error: "price_not_found" }), { status: 500, headers: corsHeaders });
 
-    const baseUrl = Deno.env.get("APP_URL") ?? "https://hair-growth-engine.lovable.app";
+    const baseUrl = (Deno.env.get("PUBLIC_APP_ORIGIN") ?? Deno.env.get("APP_URL") ?? "https://saronboost.com").replace(/\/$/, "");
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       line_items: [{ price: prices.data[0].id, quantity: 1 }],
       customer_email: user.email,
-      success_url: returnUrl ?? `${baseUrl}/billing?checkout=success`,
+      success_url: `${baseUrl}/billing?checkout=success`,
       cancel_url: `${baseUrl}/billing?checkout=cancelled`,
       metadata: { tenant_id, user_id: user.id },
       subscription_data: { metadata: { tenant_id, user_id: user.id } },

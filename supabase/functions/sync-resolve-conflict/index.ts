@@ -5,6 +5,8 @@
 // 自動上書きはしない。必ず管理者の明示的な選択に基づいて動く。
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
+import { canAccessOwner } from "../_shared/request-auth.ts";
+import { isExternalMirrorBooking, logExternalMirrorBlocked } from "../_shared/external-mirror-booking.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -32,7 +34,9 @@ Deno.serve(async (req) => {
       staff:staff_id(name)
     `).eq("id", booking_id).maybeSingle();
     if (!b) return new Response(JSON.stringify({ error: "booking_not_found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    if ((b as any).owner_id !== user.id) return new Response(JSON.stringify({ error: "forbidden" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    if (!await canAccessOwner(supabase, user.id, (b as any).owner_id, ["owner", "manager", "super_admin"])) {
+      return new Response(JSON.stringify({ error: "forbidden" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
     if (decision === "C") {
       await supabase.from("bookings").update({ needs_manual_review: false, sync_status: "not_required" }).eq("id", booking_id);
@@ -40,6 +44,13 @@ Deno.serve(async (req) => {
     }
 
     if (decision === "A") {
+      if (isExternalMirrorBooking(b as any)) {
+        const code = "EXTERNAL_MIRROR_BOOKING_UPDATE_BLOCKED";
+        await logExternalMirrorBlocked(supabase, b as any, "conflict_update", code);
+        return new Response(JSON.stringify({ ok: false, code, error: code, message: "外部予約はSalonBoostから更新できません。" }), {
+          status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       // SalonBoost の内容でサロンボードを更新
       if (!(b as any).external_reservation_id) {
         return new Response(JSON.stringify({ error: "no_external_id", message: "external_reservation_id が無いため更新できません。先に「取り込み」または「再送信」を行ってください。" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });

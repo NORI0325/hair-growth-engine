@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
 import { invokeInternal } from "../_shared/invoke-internal.ts";
+import { requireInternalRequest, withCors } from "../_shared/request-auth.ts";
 
 // 受信メッセージをAIで分類（バックグラウンドで line-webhook から非同期invoke）
 // 入力: { inbound_id }
@@ -8,6 +9,9 @@ import { invokeInternal } from "../_shared/invoke-internal.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  const auth = await requireInternalRequest(req);
+  if (auth instanceof Response) return withCors(auth, corsHeaders);
 
   try {
     const { inbound_id } = await req.json();
@@ -174,24 +178,21 @@ ${customerCtx || "（未連携の方）"}
         };
         try {
           const r = await invokeInternal("send-transactional-email", {
-            to: notifyTo,
-            subject: `${urgencyLabel} LINE: ${intentLabels[parsed.intent] || parsed.intent} - ${parsed.summary}`,
-            html: `
-<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
-  <h2 style="color:${parsed.urgency === "critical" ? "#c0392b" : "#d68910"}">${urgencyLabel} LINE受信通知</h2>
-  <p style="color:#555">${prof?.salon_name || "サロン"}</p>
-  <table style="width:100%;border-collapse:collapse;margin:16px 0">
-    <tr><td style="padding:8px;background:#f5f5f5;width:120px"><b>意図</b></td><td style="padding:8px">${intentLabels[parsed.intent] || parsed.intent}</td></tr>
-    <tr><td style="padding:8px;background:#f5f5f5"><b>要約</b></td><td style="padding:8px">${parsed.summary}</td></tr>
-    <tr><td style="padding:8px;background:#f5f5f5"><b>推奨対応</b></td><td style="padding:8px">${parsed.suggested_action}</td></tr>
-  </table>
-  <div style="border-left:3px solid #C9A961;padding:12px 16px;background:#faf8f3;margin:16px 0">
-    <p style="margin:0;color:#555;font-size:12px">受信メッセージ全文</p>
-    <p style="margin:8px 0 0;white-space:pre-wrap">${(inbound.message_text || "").slice(0, 1000)}</p>
-  </div>
-  <p style="font-size:12px;color:#888">管理画面の「受信トレイ」からAI下書きで返信できます。</p>
-</div>`,
-            template_name: "line_inbound_alert",
+            templateName: "internal-notification",
+            recipientEmail: notifyTo,
+            templateData: {
+              subject: `${urgencyLabel} LINE: ${intentLabels[parsed.intent] || parsed.intent} - ${parsed.summary}`,
+              title: `${urgencyLabel} LINE受信通知`,
+              salonName: prof?.salon_name || "サロン",
+              message: (inbound.message_text || "").slice(0, 1000),
+              details: [
+                { label: "意図", value: intentLabels[parsed.intent] || parsed.intent },
+                { label: "要約", value: parsed.summary },
+                { label: "推奨対応", value: parsed.suggested_action },
+              ],
+              actionLabel: "受信トレイを開く",
+              actionUrl: `${(Deno.env.get("PUBLIC_APP_ORIGIN") ?? Deno.env.get("APP_URL") ?? "https://saronboost.com").replace(/\/+$/, "")}/inbox`,
+            },
           }, { timeoutMs: 15000 });
           if (!r.ok) console.error("[ai-classify-inbound] notify email fail", r);
         } catch (e) {

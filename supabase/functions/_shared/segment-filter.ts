@@ -35,6 +35,27 @@ export interface FilterContext {
   recentBookingSet: Set<string>;
 }
 
+async function fetchAllPages<T>(makeQuery: () => any, pageSize = 1000): Promise<T[]> {
+  const rows: T[] = [];
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await makeQuery().range(offset, offset + pageSize - 1);
+    if (error) throw error;
+    const page = (data || []) as T[];
+    rows.push(...page);
+    if (page.length < pageSize) return rows;
+  }
+}
+
+function tokyoDateOffset(offsetDays: number): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(new Date());
+  const year = Number(parts.find(part => part.type === "year")?.value);
+  const month = Number(parts.find(part => part.type === "month")?.value);
+  const day = Number(parts.find(part => part.type === "day")?.value);
+  return new Date(Date.UTC(year, month - 1, day + offsetDays)).toISOString().slice(0, 10);
+}
+
 export const ageGroupOf = (birthday: string | null | undefined): string | null => {
   if (!birthday) return null;
   const b = new Date(birthday);
@@ -162,14 +183,14 @@ export async function buildFilterContext(
   if (customerIds.length === 0) return ctx;
 
   // 最新トリートメント
-  const { data: treats } = await supabase
+  const treats = await fetchAllPages<any>(() => supabase
     .from("chart_treatments")
     .select("customer_id, menu_summary, staff_id, treatment_date")
     .eq("owner_id", ownerId)
     .in("customer_id", customerIds)
-    .order("treatment_date", { ascending: false });
+    .order("treatment_date", { ascending: false }));
   const seen = new Set<string>();
-  for (const t of treats || []) {
+  for (const t of treats) {
     if (seen.has(t.customer_id)) continue;
     seen.add(t.customer_id);
     ctx.lastMenu[t.customer_id] = t.menu_summary;
@@ -177,29 +198,29 @@ export async function buildFilterContext(
   }
 
   // タグ
-  const { data: tags } = await supabase
+  const tags = await fetchAllPages<any>(() => supabase
     .from("customer_tag_assignments")
     .select("customer_id, tag_id")
     .eq("owner_id", ownerId)
-    .in("customer_id", customerIds);
-  for (const t of tags || []) {
+    .in("customer_id", customerIds));
+  for (const t of tags) {
     if (!ctx.customerTagIds[t.customer_id]) ctx.customerTagIds[t.customer_id] = new Set();
     ctx.customerTagIds[t.customer_id].add(t.tag_id);
   }
 
   // 直近予約（今日以降 〜 excludeRecentBookingDays 日先まで）
   if (excludeRecentBookingDays > 0) {
-    const today = new Date().toISOString().split("T")[0];
-    const future = new Date(Date.now() + excludeRecentBookingDays * 86400000).toISOString().split("T")[0];
-    const { data: bookings } = await supabase
+    const today = tokyoDateOffset(0);
+    const future = tokyoDateOffset(excludeRecentBookingDays);
+    const bookings = await fetchAllPages<any>(() => supabase
       .from("bookings")
       .select("customer_id, status")
       .eq("owner_id", ownerId)
       .in("customer_id", customerIds)
       .gte("booking_date", today)
       .lte("booking_date", future)
-      .in("status", ["pending", "confirmed"]);
-    for (const b of bookings || []) ctx.recentBookingSet.add(b.customer_id);
+      .in("status", ["pending", "confirmed"]));
+    for (const b of bookings) ctx.recentBookingSet.add(b.customer_id);
   }
 
   return ctx;

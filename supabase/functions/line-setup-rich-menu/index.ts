@@ -3,6 +3,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
 import { getLineCredentials } from "../_shared/line-push.ts";
+import { authenticateRequest, canAccessOwner } from "../_shared/request-auth.ts";
 
 const LINE_API = "https://api.line.me/v2/bot";
 const LINE_DATA_API = "https://api-data.line.me/v2/bot";
@@ -39,20 +40,12 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const auth = req.headers.get("Authorization");
-    if (!auth) {
-      return new Response(JSON.stringify({ error: "unauthorized" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-      { global: { headers: { Authorization: auth } } }
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
+    const identity = await authenticateRequest(req, supabase);
+    if (identity.kind !== "user") {
       return new Response(JSON.stringify({ error: "unauthorized" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -60,12 +53,18 @@ Deno.serve(async (req) => {
 
     let bodyJson: any = {};
     try { bodyJson = await req.json(); } catch (_) {}
-    const locationId: string | null = bodyJson?.location_id || null;
+    const ownerId = String(bodyJson?.owner_id || "");
+    const locationId = bodyJson?.location_id ? String(bodyJson.location_id) : "";
+    if (!ownerId || !locationId || !await canAccessOwner(supabase, identity.userId, ownerId, ["owner", "manager", "super_admin"])) {
+      return new Response(JSON.stringify({ error: "forbidden" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const { data: profile } = await supabase
       .from("profiles")
       .select("salon_name, public_slug, google_review_url")
-      .eq("id", user.id)
+      .eq("id", ownerId)
       .maybeSingle();
 
     let location: any = null;
@@ -74,11 +73,17 @@ Deno.serve(async (req) => {
         .from("locations")
         .select("id, name, public_slug")
         .eq("id", locationId)
+        .eq("tenant_id", ownerId)
         .maybeSingle();
       location = loc;
     }
+    if (!location) {
+      return new Response(JSON.stringify({ error: "invalid_location" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
-    const creds = await getLineCredentials(supabase, user.id, locationId);
+    const creds = await getLineCredentials(supabase, ownerId, locationId);
     if (!creds) {
       return new Response(JSON.stringify({ error: "no_token", message: "先にチャネルアクセストークンを設定してください" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -93,7 +98,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const APP_ORIGIN = Deno.env.get("APP_ORIGIN") || "https://saronboost.com";
+    const APP_ORIGIN = (Deno.env.get("PUBLIC_APP_ORIGIN") || Deno.env.get("APP_ORIGIN") || "https://saronboost.com").replace(/\/+$/, "");
     const bookingUrl = `${APP_ORIGIN}/salon/${slug}`;
 
     // 既存メニュー全削除
@@ -164,9 +169,10 @@ Deno.serve(async (req) => {
     // richMenuId 保存（店舗別 or オーナー共通）
     try {
       if (locationId && creds.source === "location") {
-        await supabase.from("locations").update({ line_rich_menu_id: richMenuId } as any).eq("id", locationId);
+        await supabase.from("locations").update({ line_rich_menu_id: richMenuId } as any)
+          .eq("id", locationId).eq("tenant_id", ownerId);
       } else {
-        await supabase.from("profiles").update({ line_rich_menu_id: richMenuId } as any).eq("id", user.id);
+        await supabase.from("profiles").update({ line_rich_menu_id: richMenuId } as any).eq("id", ownerId);
       }
     } catch (e) {
       console.warn("rich_menu_id save failed:", e instanceof Error ? e.message : "unknown");

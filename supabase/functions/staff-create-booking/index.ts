@@ -81,28 +81,42 @@ Deno.serve(async (req) => {
 
     // 顧客取得 → owner_id 取得（テナント検証）
     const { data: customer } = await supabase
-      .from("customers").select("id, owner_id, full_name, name_kana, phone, email").eq("id", customer_id).maybeSingle();
+      .from("customers").select("id, owner_id, location_id, full_name, name_kana, phone, email").eq("id", customer_id).maybeSingle();
     if (!customer) {
       return new Response(JSON.stringify({ error: "customer_not_found" }), {
         status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // location_id 必須化: 明示指定が無ければ primary location にフォールバック、それも無ければ 400
-    let resolvedLocationId: string | null = location_id || null;
-    if (!resolvedLocationId) {
-      const { data: locs } = await supabase.from("locations")
-        .select("id, is_primary, created_at")
-        .eq("tenant_id", customer.owner_id)
-        .order("is_primary", { ascending: false })
-        .order("created_at", { ascending: true })
-        .limit(1);
-      resolvedLocationId = locs?.[0]?.id || null;
-    }
+    // The caller must choose a location. Falling back to another location can
+    // create a booking and sync job for the wrong Salonboard store.
+    const resolvedLocationId: string | null = typeof location_id === "string" ? location_id : null;
     if (!resolvedLocationId) {
       return new Response(JSON.stringify({ error: "location_not_set", message: "店舗が未設定のため予約を作成できません" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+    const { data: resolvedLocation } = await supabase
+      .from("locations")
+      .select("id")
+      .eq("id", resolvedLocationId)
+      .eq("tenant_id", customer.owner_id)
+      .maybeSingle();
+    if (!resolvedLocation) {
+      return jsonResponse({
+        success: false,
+        error: "STAFF_BOOKING_LOCATION_INVALID",
+        code: "STAFF_BOOKING_LOCATION_INVALID",
+        message: "選択した店舗を確認できません。",
+      }, 400);
+    }
+    if (customer.location_id && customer.location_id !== resolvedLocationId) {
+      return jsonResponse({
+        success: false,
+        error: "STAFF_BOOKING_CUSTOMER_LOCATION_MISMATCH",
+        code: "STAFF_BOOKING_CUSTOMER_LOCATION_MISMATCH",
+        message: "顧客の所属店舗と予約店舗が一致していません。",
+      }, 409);
     }
 
 
@@ -123,6 +137,26 @@ Deno.serve(async (req) => {
         code: "STAFF_BOOKING_SKIP_REQUIRES_MANAGER",
         message: "dispatch_mode=skip is only available to managers.",
       }, 403);
+    }
+
+    if (staff_id) {
+      const { data: selectedStaff } = await supabase
+        .from("staff")
+        .select("id")
+        .eq("id", staff_id)
+        .eq("owner_id", customer.owner_id)
+        .eq("location_id", resolvedLocationId)
+        .eq("active", true)
+        .eq("bookable", true)
+        .maybeSingle();
+      if (!selectedStaff) {
+        return jsonResponse({
+          success: false,
+          error: "STAFF_BOOKING_STAFF_INVALID",
+          code: "STAFF_BOOKING_STAFF_INVALID",
+          message: "選択したスタッフはこの店舗で予約を受け付けていません。",
+        }, 400);
+      }
     }
 
     const { data: salonboardLiveRows, error: salonboardLiveErr } = await supabase
@@ -152,23 +186,41 @@ Deno.serve(async (req) => {
     const menuNamesFallback: string[] = rawMenus.filter((m) => typeof m === "string" && !/^[0-9a-f-]{36}$/i.test(m));
     let menuRows: MenuRow[] = [];
     if (menuIds.length > 0) {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("menu_items").select("id, name, duration_minutes, buffer_minutes, price")
         .eq("owner_id", customer.owner_id)
         .eq("location_id", resolvedLocationId)
         .eq("active", true)
         .in("id", menuIds);
+      if (error) return jsonResponse({ success: false, error: "menu_lookup_failed", message: error.message }, 500);
       menuRows = (data || []) as MenuRow[];
     } else if (menuNamesFallback.length > 0) {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("menu_items").select("id, name, duration_minutes, buffer_minutes, price")
         .eq("owner_id", customer.owner_id)
         .eq("location_id", resolvedLocationId)
         .eq("active", true)
         .in("name", menuNamesFallback);
-      // 同名は最初の1件のみ採用
+      if (error) return jsonResponse({ success: false, error: "menu_lookup_failed", message: error.message }, 500);
+      // Duplicate names are ambiguous and are rejected by the count check below.
       const seen = new Set<string>();
       menuRows = ((data || []) as MenuRow[]).filter((r) => { if (seen.has(r.name)) return false; seen.add(r.name); return true; });
+    }
+    if (menuIds.length > 0 && menuIds.length !== requestedMenuCount) {
+      return jsonResponse({
+        success: false,
+        error: "STAFF_BOOKING_MENU_SELECTION_INVALID",
+        code: "STAFF_BOOKING_MENU_SELECTION_INVALID",
+        message: "メニュー指定が不正です。もう一度選択してください。",
+      }, 400);
+    }
+    if (menuRows.length !== requestedMenuCount) {
+      return jsonResponse({
+        success: false,
+        error: "STAFF_BOOKING_MENU_NOT_FOUND",
+        code: "STAFF_BOOKING_MENU_NOT_FOUND",
+        message: "選択したメニューをこの店舗で確認できません。",
+      }, 409);
     }
     if (salonboardLive) {
       if (requestedMenuCount !== 1) {
@@ -193,6 +245,7 @@ Deno.serve(async (req) => {
         .from("menu_channel_mappings")
         .select("external_id, external_setmenu_id, rsv_term, enabled")
         .eq("owner_id", customer.owner_id)
+        .eq("location_id", resolvedLocationId)
         .eq("menu_id", selectedMenu.id)
         .eq("channel", "salonboard")
         .eq("enabled", true)
@@ -209,7 +262,7 @@ Deno.serve(async (req) => {
       }
 
       const setmenuId = String(mcm?.external_setmenu_id || mcm?.external_id || "").trim();
-      if (!mcm || !setmenuId || !/^SN/i.test(setmenuId) || mcm.rsv_term == null) {
+      if (!mcm || !setmenuId || !/^SN[0-9]+$/i.test(setmenuId) || mcm.rsv_term == null) {
         return jsonResponse({
           success: false,
           error: "STAFF_BOOKING_MENU_NOT_SYNCABLE_TO_SALONBOARD",
@@ -218,14 +271,15 @@ Deno.serve(async (req) => {
         }, 409);
       }
 
-      const { count: optionCount, error: optionErr } = await supabase
+      const { data: optionRows, error: optionErr } = await supabase
         .from("channel_menu_options")
-        .select("id", { count: "exact", head: true })
+        .select("id, rsv_term")
         .eq("owner_id", customer.owner_id)
         .eq("location_id", resolvedLocationId)
         .eq("channel", "salonboard")
         .eq("source_type", "setmenu")
         .eq("setmenu_id", setmenuId)
+        .eq("active", true)
         .not("rsv_term", "is", null);
       if (optionErr) {
         console.error("staff booking channel menu option check error:", optionErr);
@@ -236,7 +290,7 @@ Deno.serve(async (req) => {
           message: "サロンボード側メニュー候補を確認できませんでした。",
         }, 500);
       }
-      if (optionCount !== 1) {
+      if ((optionRows ?? []).length !== 1 || Number(optionRows?.[0]?.rsv_term) !== Number(mcm.rsv_term)) {
         return jsonResponse({
           success: false,
           error: "STAFF_BOOKING_MENU_NOT_SYNCABLE_TO_SALONBOARD",
@@ -254,14 +308,52 @@ Deno.serve(async (req) => {
       totalDuration += (r.duration_minutes || 0) + (r.buffer_minutes || 0);
       totalPrice += (r.price || 0);
     }
+    if (!Number.isFinite(totalDuration) || totalDuration <= 0) {
+      return jsonResponse({
+        success: false,
+        error: "STAFF_BOOKING_DURATION_REQUIRED",
+        code: "STAFF_BOOKING_DURATION_REQUIRED",
+        message: "メニューの所要時間を確認できないため予約を作成できません。",
+      }, 409);
+    }
     const menuNames = menuRows.map((r) => r.name);
     const menuSummary = menuNames.join(" + ").slice(0, 200);
+
+    if (staff_id) {
+      const requestedStart = new Date(`${booking_date}T${booking_time}:00+09:00`);
+      const requestedEnd = new Date(requestedStart.getTime() + totalDuration * 60_000);
+      const { data: existingBookings, error: overlapError } = await supabase
+        .from("bookings")
+        .select("id, booking_time, total_duration_minutes")
+        .eq("owner_id", customer.owner_id)
+        .eq("location_id", resolvedLocationId)
+        .eq("staff_id", staff_id)
+        .eq("booking_date", booking_date)
+        .in("status", ["pending", "confirmed", "pending_sync"]);
+      if (overlapError) {
+        return jsonResponse({ success: false, error: "STAFF_BOOKING_AVAILABILITY_CHECK_FAILED" }, 500);
+      }
+      const overlaps = (existingBookings ?? []).some((existing) => {
+        const existingStart = new Date(`${booking_date}T${existing.booking_time}+09:00`);
+        const duration = Number(existing.total_duration_minutes);
+        const existingEnd = new Date(existingStart.getTime() + (Number.isFinite(duration) && duration > 0 ? duration : 1440) * 60_000);
+        return existingStart < requestedEnd && existingEnd > requestedStart;
+      });
+      if (overlaps) {
+        return jsonResponse({
+          success: false,
+          error: "STAFF_BOOKING_TIME_CONFLICT",
+          code: "STAFF_BOOKING_TIME_CONFLICT",
+          message: "選択したスタッフには同時間帯の予約があります。",
+        }, 409);
+      }
+    }
 
     // notes に付与するメタタグ
     const noteParts: string[] = [];
     if (notes) noteParts.push(String(notes).slice(0, 500));
     if (dispatchMode === "skip") noteParts.push("[dispatch_mode=skip]");
-    if (isTest) noteParts.push("[is_test=true][Phase2実Worker往復テスト]");
+    if (isTest) noteParts.push("[is_test=true][internal_note_booking]");
     const finalNotes = noteParts.length > 0 ? noteParts.join(" ").slice(0, 800) : null;
 
     // bookings INSERT
@@ -279,8 +371,8 @@ Deno.serve(async (req) => {
         total_price: totalPrice || null,
         notes: finalNotes,
         staff_id: staff_id || null,
-        status: "pending", // 仮受付。同期成功で confirmed に昇格
-        sync_status: "pending",
+        status: dispatchMode === "skip" ? "confirmed" : "pending",
+        sync_status: dispatchMode === "skip" ? "not_required" : "pending",
         source_channel: "manual",
         external_source: "manual",
         is_test: isTest,
@@ -294,10 +386,24 @@ Deno.serve(async (req) => {
       });
     }
 
+    if (dispatchMode === "skip") {
+      return jsonResponse({
+        success: true,
+        booking_id: booking.id,
+        status: "confirmed",
+        sync_status: "not_required",
+        dispatch_mode: "skip",
+        is_test: true,
+        sync_job_ids: [],
+      });
+    }
+
     // 連携チェック (location_id を含む)
     let ciQ = supabase.from("channel_integrations")
       .select("channel, location_id, default_rsv_route_id, connection_status, allow_unmapped_booking")
-      .eq("owner_id", customer.owner_id).eq("enabled", true);
+      .eq("owner_id", customer.owner_id)
+      .eq("location_id", resolvedLocationId)
+      .eq("enabled", true);
     if (dispatchMode === "auto") {
       ciQ = ciQ.eq("sync_enabled", true);
     }
@@ -305,7 +411,7 @@ Deno.serve(async (req) => {
 
     const targetIntegrations = ((integrations || []) as ChannelIntegrationRow[]).filter((ci) =>
       ci.channel !== "own_web"
-      && (dispatchMode === "skip" || ci.connection_status === "live")
+      && ci.connection_status === "live"
       && ci.location_id === resolvedLocationId);
 
     if (dispatchMode === "auto" && (!targetIntegrations || targetIntegrations.length === 0)) {
@@ -318,9 +424,11 @@ Deno.serve(async (req) => {
 
     // sync_jobs 生成
     const startISO = new Date(`${booking_date}T${booking_time}:00+09:00`).toISOString();
-    const endISO = new Date(new Date(`${booking_date}T${booking_time}:00+09:00`).getTime() + (totalDuration || 60) * 60_000).toISOString();
+    const endISO = new Date(new Date(`${booking_date}T${booking_time}:00+09:00`).getTime() + totalDuration * 60_000).toISOString();
     const { data: staffRow } = staff_id
-      ? await supabase.from("staff").select("name").eq("id", staff_id).maybeSingle() : { data: null };
+      ? await supabase.from("staff").select("name").eq("id", staff_id)
+        .eq("owner_id", customer.owner_id).eq("location_id", resolvedLocationId).maybeSingle()
+      : { data: null };
 
     const jobsToInsert: Record<string, unknown>[] = [];
     for (const ci of targetIntegrations) {
@@ -328,6 +436,7 @@ Deno.serve(async (req) => {
       if (staff_id) {
         const { data: scm } = await supabase.from("staff_channel_mappings")
           .select("external_name, external_id, enabled")
+          .eq("owner_id", customer.owner_id).eq("location_id", resolvedLocationId)
           .eq("staff_id", staff_id).eq("channel", ci.channel).maybeSingle();
         if (scm?.enabled !== false) {
           extStaffName = scm?.external_name ?? null;
@@ -338,6 +447,7 @@ Deno.serve(async (req) => {
       if (menuRows.length > 0) {
         const { data: mcm } = await supabase.from("menu_channel_mappings")
           .select("external_name, external_id, external_setmenu_id, rsv_term, enabled")
+          .eq("owner_id", customer.owner_id).eq("location_id", resolvedLocationId)
           .eq("menu_id", menuRows[0].id).eq("channel", ci.channel).maybeSingle();
         if (mcm?.enabled !== false) {
           extMenuName = mcm?.external_name ?? null;
@@ -379,38 +489,29 @@ Deno.serve(async (req) => {
       });
     }
     if (jobsToInsert.length === 0) {
-      if (dispatchMode === "skip") {
-        await supabase.from("bookings").update({ sync_status: "pending" }).eq("id", booking.id);
-        return new Response(JSON.stringify({
-          success: true,
-          booking_id: booking.id,
-          status: "pending",
-          sync_status: "pending",
-          dispatch_mode: "skip",
-          is_test: isTest,
-          sync_job_ids: [],
-        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      }
       await supabase.from("bookings").update({ status: "confirmed", sync_status: "not_required" }).eq("id", booking.id);
       return new Response(JSON.stringify({
         success: true, booking_id: booking.id, sync_status: "not_required", status: "confirmed",
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
-    const { data: insertedJobs } = await supabase.from("sync_jobs").insert(jobsToInsert).select("id");
-    await supabase.from("bookings").update({ sync_status: "pending" }).eq("id", booking.id);
-
-    // dispatch_mode='skip' のときは Worker dispatch を呼ばずに pending のまま返す
-    if (dispatchMode === "skip") {
-      return new Response(JSON.stringify({
-        success: true,
-        booking_id: booking.id,
-        status: "pending",
-        sync_status: "pending",
-        dispatch_mode: "skip",
-        is_test: isTest,
-        sync_job_ids: ((insertedJobs || []) as InsertedJobRow[]).map((j) => j.id),
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    const { data: insertedJobs, error: jobsError } = await supabase.from("sync_jobs").insert(jobsToInsert).select("id");
+    if (jobsError) {
+      const { error: cleanupError } = await supabase.from("bookings").delete().eq("id", booking.id);
+      if (cleanupError) {
+        await supabase.from("bookings").update({
+          sync_status: "needs_review",
+          needs_manual_review: true,
+          sync_error_message: "同期ジョブ作成失敗。重複予約防止のため確認してください。",
+        }).eq("id", booking.id);
+      }
+      return jsonResponse({
+        success: false,
+        error: "STAFF_BOOKING_SYNC_JOB_CREATE_FAILED",
+        code: "STAFF_BOOKING_SYNC_JOB_CREATE_FAILED",
+        message: "同期準備に失敗したため予約を確定できませんでした。",
+      }, 500);
     }
+    await supabase.from("bookings").update({ sync_status: "pending" }).eq("id", booking.id);
 
     // dispatch を最大 SYNC_WAIT_MS 待機
     const dispatchPromise = supabase.functions.invoke("sync-job-dispatch", { body: { reservation_id: booking.id } });

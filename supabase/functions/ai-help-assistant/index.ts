@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { corsHeaders } from "../_shared/cors.ts";
+import { authenticateRequest } from "../_shared/request-auth.ts";
 
 // AIヘルプアシスタント
 // 入力: { message, history?: [{role,content}], route?: string, sessionId?: string }
@@ -28,15 +29,14 @@ Deno.serve(async (req) => {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
-
-    // 認証ユーザー
-    const authHeader = req.headers.get("Authorization");
-    let userId: string | null = null;
-    if (authHeader) {
-      const token = authHeader.replace("Bearer ", "");
-      const { data: { user } } = await supabase.auth.getUser(token);
-      userId = user?.id ?? null;
+    const identity = await authenticateRequest(req, supabase);
+    if (identity.kind !== "user") {
+      return new Response(JSON.stringify({ error: "unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
+    const userId = identity.userId;
 
     // 関連記事を検索（route一致 OR キーワード/タイトル部分一致）
     const queryText = message.toLowerCase();

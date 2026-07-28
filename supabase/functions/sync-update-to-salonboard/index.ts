@@ -11,6 +11,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
 import { isExternalMirrorBooking, logExternalMirrorBlocked } from "../_shared/external-mirror-booking.ts";
+import { authenticateRequest } from "../_shared/request-auth.ts";
 
 function fmtDate(d: string): string { return d.replaceAll("-", ""); }
 
@@ -19,7 +20,6 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({}));
     const booking_id: string | undefined = body.booking_id;
-    const internal_secret: string | undefined = body.internal_secret;
     if (!booking_id) {
       return new Response(JSON.stringify({ error: "booking_id_required" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -31,27 +31,13 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // 認可
-    let authorized = false;
-    let userId: string | null = null;
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    if (internal_secret && internal_secret === serviceKey) {
-      authorized = true;
-    } else {
-      const userClient = createClient(
-        Deno.env.get("SUPABASE_URL")!,
-        Deno.env.get("SUPABASE_ANON_KEY")!,
-        { global: { headers: { Authorization: req.headers.get("Authorization") || "" } } },
-      );
-      const { data: ud } = await userClient.auth.getUser();
-      userId = ud?.user?.id ?? null;
-      authorized = !!userId;
-    }
-    if (!authorized) {
+    const identity = await authenticateRequest(req, supabase);
+    if (identity.kind === "anonymous") {
       return new Response(JSON.stringify({ error: "unauthorized" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+    const userId = identity.kind === "user" ? identity.userId : null;
 
     const { data: booking } = await supabase
       .from("bookings")
@@ -60,6 +46,11 @@ Deno.serve(async (req) => {
     if (!booking) {
       return new Response(JSON.stringify({ error: "booking_not_found" }), {
         status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (!booking.location_id) {
+      return new Response(JSON.stringify({ error: "booking_location_required" }), {
+        status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -93,6 +84,19 @@ Deno.serve(async (req) => {
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    if (!booking.total_duration_minutes || booking.total_duration_minutes <= 0) {
+      await supabase.from("bookings").update({
+        sync_status: "needs_review",
+        needs_manual_review: true,
+        sync_error_message: "[salonboard] 所要時間が取得できないため変更同期を停止しました。",
+      }).eq("id", booking.id);
+      return new Response(JSON.stringify({
+        success: false,
+        code: "BOOKING_DURATION_REQUIRED",
+        reason: "duration_missing",
+      }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     // external_reservation_id 必須
     if (!booking.external_reservation_id) {
       await supabase.from("bookings").update({
@@ -113,8 +117,8 @@ Deno.serve(async (req) => {
     const { data: ci } = await ciq.maybeSingle();
     if (!ci?.enabled || !ci?.sync_enabled || ci?.connection_status !== "live") {
       return new Response(JSON.stringify({
-        success: true, skipped: true, reason: "channel_not_live",
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        success: false, code: "SALONBOARD_CHANNEL_NOT_LIVE", reason: "channel_not_live",
+      }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     // staff → external stylistId 解決
@@ -122,6 +126,8 @@ Deno.serve(async (req) => {
     if (booking.staff_id) {
       const { data: m } = await supabase.from("staff_channel_mappings")
         .select("external_id").eq("staff_id", booking.staff_id)
+        .eq("owner_id", booking.owner_id)
+        .eq("location_id", booking.location_id)
         .eq("channel", "salonboard").eq("enabled", true).maybeSingle();
       if (m?.external_id) {
         stylistId = String(m.external_id);
@@ -140,8 +146,7 @@ Deno.serve(async (req) => {
 
     const customerName = (booking as any).customers?.full_name ?? null;
     const timeHHMM = (booking.booking_time ?? "").slice(0, 5).replace(":", "");
-    const rsvTerm = booking.total_duration_minutes && booking.total_duration_minutes > 0
-      ? booking.total_duration_minutes : 60;
+    const rsvTerm = booking.total_duration_minutes;
 
     const requestPayload = {
       external_reservation_id: booking.external_reservation_id,

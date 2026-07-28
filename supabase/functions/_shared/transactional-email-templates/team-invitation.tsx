@@ -99,6 +99,6 @@ export const template: TemplateEntry = {
     salonName: 'Arune hair',
     inviterName: 'オーナー',
     role: 'manager',
-    inviteUrl: 'https://hair-growth-engine.lovable.app/invite/sample-token',
+    inviteUrl: 'https://saronboost.com/invite/sample-token',
   },
 }

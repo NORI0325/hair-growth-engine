@@ -48,11 +48,12 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const {
       date, time, customer_name, menu, external_reservation_id,
-      location_id, duration_minutes, end_time,
+      location_id, duration_minutes, end_time, customer_phone,
     }: {
       date?: string; time?: string; customer_name?: string;
       menu?: string | null; external_reservation_id?: string | null;
       location_id?: string | null; duration_minutes?: number | null; end_time?: string | null;
+      customer_phone?: string | null;
     } = body || {};
 
     if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
@@ -70,13 +71,43 @@ Deno.serve(async (req) => {
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+    if (!location_id) {
+      return new Response(JSON.stringify({ error: "location_required" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const { data: location } = await supabase
+      .from("locations")
+      .select("id, tenant_id")
+      .eq("id", location_id)
+      .maybeSingle();
+    if (!location) {
+      return new Response(JSON.stringify({ error: "location_not_found" }), {
+        status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const ownerId = location.tenant_id;
+    const { data: membership } = await supabase
+      .from("tenant_members")
+      .select("user_id")
+      .eq("tenant_id", ownerId)
+      .eq("user_id", user.id)
+      .not("accepted_at", "is", null)
+      .maybeSingle();
+    if (!membership) {
+      return new Response(JSON.stringify({ error: "forbidden" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // 重複防止: 同じ external_reservation_id が既にある場合は skip
     if (external_reservation_id) {
       const { data: existing } = await supabase
         .from("bookings")
         .select("id, customer_id")
-        .eq("owner_id", user.id)
+        .eq("owner_id", ownerId)
+        .eq("location_id", location_id)
         .eq("external_reservation_id", external_reservation_id)
         .maybeSingle();
       if (existing) {
@@ -87,21 +118,41 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 顧客解決: 名前で完全一致 → なければ作成
+    // Customer matching is scoped to the tenant/location. Phone is stronger
+    // than a name, which can be shared by multiple customers.
     let customerId: string | null = null;
-    const { data: cust } = await supabase
-      .from("customers")
-      .select("id")
-      .eq("owner_id", user.id)
-      .eq("full_name", customer_name)
-      .limit(1)
-      .maybeSingle();
-    if (cust) {
-      customerId = cust.id;
-    } else {
+    const normalizedPhone = String(customer_phone || "").replace(/\D/g, "") || null;
+    if (normalizedPhone) {
+      const rawPhone = String(customer_phone || "").trim();
+      const { data: byPhone } = await supabase
+        .from("customers")
+        .select("id")
+        .eq("owner_id", ownerId)
+        .eq("location_id", location_id)
+        .in("phone", Array.from(new Set([rawPhone, normalizedPhone])).filter(Boolean))
+        .limit(1);
+      customerId = byPhone?.[0]?.id ?? null;
+    }
+    if (!customerId) {
+      const { data: byName } = await supabase
+        .from("customers")
+        .select("id")
+        .eq("owner_id", ownerId)
+        .eq("location_id", location_id)
+        .eq("full_name", customer_name)
+        .limit(2);
+      if (byName?.length === 1) customerId = byName[0].id;
+    }
+    if (!customerId) {
       const { data: created, error: cErr } = await supabase
         .from("customers")
-        .insert({ owner_id: user.id, full_name: customer_name })
+        .insert({
+          owner_id: ownerId,
+          location_id,
+          full_name: customer_name,
+          phone: normalizedPhone,
+          notes: "サロンボード外部予約取り込み時に作成",
+        })
         .select("id")
         .maybeSingle();
       if (cErr || !created) {
@@ -124,8 +175,8 @@ Deno.serve(async (req) => {
       : null;
 
     const insertPayload: Record<string, unknown> = {
-      owner_id: user.id,
-      location_id: location_id ?? null,
+      owner_id: ownerId,
+      location_id,
       customer_id: customerId,
       booking_date: date,
       booking_time: `${time}:00`,
@@ -133,7 +184,7 @@ Deno.serve(async (req) => {
       status: "confirmed",
       external_source: "salonboard_manual",
       source_channel: "salonboard",
-      sync_status: durationNeedsReview ? "needs_review" : "success",
+      sync_status: durationNeedsReview ? "needs_review" : "not_required",
       needs_manual_review: durationNeedsReview,
       external_reservation_id: external_reservation_id ?? null,
       total_duration_minutes: resolvedDuration,

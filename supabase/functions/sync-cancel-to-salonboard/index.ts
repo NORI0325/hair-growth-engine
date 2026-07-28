@@ -5,6 +5,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
 import { isExternalMirrorBooking, logExternalMirrorBlocked } from "../_shared/external-mirror-booking.ts";
+import { authenticateRequest } from "../_shared/request-auth.ts";
 
 function fmtDate(d: string): string { return d.replaceAll("-", ""); }
 
@@ -14,7 +15,6 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const booking_id: string | undefined = body.booking_id;
     const no_show: boolean = !!body.no_show;
-    const internal_secret: string | undefined = body.internal_secret;
     if (!booking_id) {
       return new Response(JSON.stringify({ error: "booking_id_required" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -26,27 +26,13 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // 認可: ユーザーJWT or 内部secret(=SERVICE_ROLE_KEY)
-    let authorized = false;
-    let userId: string | null = null;
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    if (internal_secret && internal_secret === serviceKey) {
-      authorized = true;
-    } else {
-      const userClient = createClient(
-        Deno.env.get("SUPABASE_URL")!,
-        Deno.env.get("SUPABASE_ANON_KEY")!,
-        { global: { headers: { Authorization: req.headers.get("Authorization") || "" } } },
-      );
-      const { data: ud } = await userClient.auth.getUser();
-      userId = ud?.user?.id ?? null;
-      authorized = !!userId;
-    }
-    if (!authorized) {
+    const identity = await authenticateRequest(req, supabase);
+    if (identity.kind === "anonymous") {
       return new Response(JSON.stringify({ error: "unauthorized" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+    const userId = identity.kind === "user" ? identity.userId : null;
 
     const { data: booking } = await supabase
       .from("bookings")
@@ -82,15 +68,19 @@ Deno.serve(async (req) => {
       }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // キャンセル元印を保存（status自体は呼び出し側で更新済みでも未更新でも対応）
-    await supabase.from("bookings").update({
-      status: "cancelled",
-      cancelled_source: "salonboost",
-      cancelled_at: new Date().toISOString(),
-    }).eq("id", booking.id);
-
     // 外部IDがなければサロンボード側同期は不要
     if (!booking.external_reservation_id) {
+      const { error: cancelError } = await supabase.from("bookings").update({
+        status: no_show ? "no_show" : "cancelled",
+        cancelled_source: "salonboost",
+        cancelled_at: new Date().toISOString(),
+        sync_status: "not_required",
+      }).eq("id", booking.id);
+      if (cancelError) {
+        return new Response(JSON.stringify({ error: "booking_update_failed", message: cancelError.message }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       return new Response(JSON.stringify({
         success: true, skipped: true, reason: "no_external_reservation_id",
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -104,8 +94,8 @@ Deno.serve(async (req) => {
     const { data: ci } = await ciq.maybeSingle();
     if (!ci?.enabled || !ci?.sync_enabled || ci?.connection_status !== "live") {
       return new Response(JSON.stringify({
-        success: true, skipped: true, reason: "channel_not_live",
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        success: false, code: "SALONBOARD_CHANNEL_NOT_LIVE", reason: "channel_not_live",
+      }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     // staff → external stylistId 解決（無ければフリー扱い）
@@ -113,6 +103,8 @@ Deno.serve(async (req) => {
     if (booking.staff_id) {
       const { data: m } = await supabase.from("staff_channel_mappings")
         .select("external_id").eq("staff_id", booking.staff_id)
+        .eq("owner_id", booking.owner_id)
+        .eq("location_id", booking.location_id)
         .eq("channel", "salonboard").eq("enabled", true).maybeSingle();
       if (m?.external_id) stylistId = String(m.external_id);
     }
@@ -135,6 +127,7 @@ Deno.serve(async (req) => {
       .in("status", ["pending", "processing"]).maybeSingle();
 
     let jobId: string | null = existing?.id ?? null;
+    let createdJob = false;
     if (!jobId) {
       const { data: ins, error: insErr } = await supabase.from("sync_jobs").insert({
         owner_id: booking.owner_id,
@@ -151,10 +144,26 @@ Deno.serve(async (req) => {
         });
       }
       jobId = ins?.id ?? null;
+      createdJob = !!jobId;
     }
 
-    // bookings.sync_status → pending
-    await supabase.from("bookings").update({ sync_status: "pending" }).eq("id", booking.id);
+    const { error: cancelError } = await supabase.from("bookings").update({
+      status: no_show ? "no_show" : "cancelled",
+      cancelled_source: "salonboost",
+      cancelled_at: new Date().toISOString(),
+      sync_status: "pending",
+    }).eq("id", booking.id);
+    if (cancelError) {
+      if (createdJob && jobId) await supabase.from("sync_jobs").delete().eq("id", jobId);
+      return new Response(JSON.stringify({ error: "booking_update_failed", message: cancelError.message }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (!booking.location_id) {
+      return new Response(JSON.stringify({ error: "booking_location_required" }), {
+        status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // 即時dispatch
     supabase.functions.invoke("sync-job-dispatch", {

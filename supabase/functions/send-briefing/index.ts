@@ -1,5 +1,6 @@
 // 来店前ブリーフィング: 翌日の予約をスタッフへLINE/メールで通知
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { requireInternalRequest, withCors } from "../_shared/request-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -8,6 +9,9 @@ const corsHeaders = {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  const auth = await requireInternalRequest(req);
+  if (auth instanceof Response) return withCors(auth, corsHeaders);
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,

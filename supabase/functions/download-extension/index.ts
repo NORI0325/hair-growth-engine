@@ -1,6 +1,7 @@
 // 拡張機能ZIPを認証＋アクティブサブスク必須でダウンロードさせる
 // マスターファイル流出を防ぐ核心エンドポイント
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
+import { canAccessOwner } from "../_shared/request-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -30,12 +31,14 @@ Deno.serve(async (req) => {
     let consentUnofficial = false;
     let consentRiskSelf = false;
     let consentProperUse = false;
+    let requestedTenantId = "";
     if (req.method === "POST") {
       try {
         const body = await req.json();
         consentUnofficial = body?.consent_unofficial === true;
         consentRiskSelf = body?.consent_risk_self_responsibility === true;
         consentProperUse = body?.consent_proper_use === true;
+        requestedTenantId = typeof body?.tenant_id === "string" ? body.tenant_id : "";
       } catch (_) { /* ignore */ }
     }
 
@@ -65,10 +68,16 @@ Deno.serve(async (req) => {
 
     // サブスクリプション確認（service role で参照）
     const admin = createClient(supabaseUrl, serviceKey);
+    if (!requestedTenantId || !await canAccessOwner(admin, user.id, requestedTenantId, ["owner", "manager", "super_admin"])) {
+      return new Response(
+        JSON.stringify({ error: "このテナントの拡張機能をダウンロードする権限がありません" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
     const { data: sub } = await admin
       .from("subscriptions")
       .select("status, trial_ends_at, current_period_end")
-      .eq("owner_id", user.id)
+      .eq("owner_id", requestedTenantId)
       .maybeSingle();
 
     const now = new Date();
@@ -87,21 +96,13 @@ Deno.serve(async (req) => {
       );
     }
 
-    // テナント取得
-    const { data: membership } = await admin
-      .from("tenant_members")
-      .select("tenant_id")
-      .eq("user_id", user.id)
-      .limit(1)
-      .maybeSingle();
-
     const ip = req.headers.get("x-forwarded-for") ?? null;
     const ua = req.headers.get("user-agent") ?? null;
 
     // 同意ログ記録（法的立証用）
     await admin.from("extension_download_consents").insert({
       user_id: user.id,
-      tenant_id: membership?.tenant_id ?? null,
+      tenant_id: requestedTenantId,
       terms_version: TERMS_VERSION,
       consent_unofficial: consentUnofficial,
       consent_risk_self_responsibility: consentRiskSelf,
@@ -113,7 +114,7 @@ Deno.serve(async (req) => {
     // 監査ログ記録
     await admin.from("extension_download_logs").insert({
       user_id: user.id,
-      tenant_id: membership?.tenant_id ?? null,
+      tenant_id: requestedTenantId,
       ip,
       user_agent: ua,
       version: "2.1.3",

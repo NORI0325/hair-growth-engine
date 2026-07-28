@@ -1,6 +1,10 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { requireInternalRequest } from "../_shared/request-auth.ts";
 
-Deno.serve(async (_req) => {
+Deno.serve(async (req) => {
+  const auth = await requireInternalRequest(req);
+  if (auth instanceof Response) return auth;
+
   const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
   // トライアル期限切れ + クレカ未登録 → locked

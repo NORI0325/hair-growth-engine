@@ -74,6 +74,8 @@ Deno.serve(async (req) => {
     }
 
     // Salonboard live locations only allow one syncable SN setmenu.
+    let salonboardLive = false;
+    let authoritativeSalonboardDuration: number | null = null;
     if (customerLocationId) {
       const { data: salonboardIntegrations, error: salonboardLiveErr } = await supabase
         .from("channel_integrations")
@@ -97,7 +99,7 @@ Deno.serve(async (req) => {
         });
       }
 
-      const salonboardLive = (salonboardIntegrations || []).length > 0;
+      salonboardLive = (salonboardIntegrations || []).length > 0;
       if (salonboardLive) {
         if (menus.length !== 1) {
           return new Response(JSON.stringify({
@@ -137,6 +139,7 @@ Deno.serve(async (req) => {
             .from("menu_channel_mappings")
             .select("menu_id, external_id, external_setmenu_id, rsv_term, enabled")
             .eq("owner_id", customer.owner_id)
+            .eq("location_id", customerLocationId)
             .eq("channel", "salonboard")
             .eq("enabled", true)
             .not("rsv_term", "is", null)
@@ -158,7 +161,7 @@ Deno.serve(async (req) => {
               .map((mapping: any) =>
                 String(mapping.external_setmenu_id || "").trim() || String(mapping.external_id || "").trim()
               )
-              .filter((id: string) => /^SN/i.test(id))
+              .filter((id: string) => /^SN[0-9]+$/i.test(id))
           ));
 
           if (setmenuIds.length > 0) {
@@ -169,6 +172,7 @@ Deno.serve(async (req) => {
               .eq("location_id", customerLocationId)
               .eq("channel", "salonboard")
               .eq("source_type", "setmenu")
+              .eq("active", true)
               .not("rsv_term", "is", null)
               .in("setmenu_id", setmenuIds);
 
@@ -183,19 +187,26 @@ Deno.serve(async (req) => {
               });
             }
 
-            const optionCountBySetmenuId = new Map<string, number>();
+            const optionDurationsBySetmenuId = new Map<string, number[]>();
             for (const option of optionRows || []) {
               const setmenuId = String((option as any).setmenu_id || "").trim();
-              if (!setmenuId) continue;
-              optionCountBySetmenuId.set(setmenuId, (optionCountBySetmenuId.get(setmenuId) || 0) + 1);
+              const optionDuration = Number((option as any).rsv_term);
+              if (!setmenuId || !Number.isFinite(optionDuration) || optionDuration <= 0) continue;
+              const durations = optionDurationsBySetmenuId.get(setmenuId) || [];
+              durations.push(optionDuration);
+              optionDurationsBySetmenuId.set(setmenuId, durations);
             }
 
             for (const mapping of mappings || []) {
               const setmenuId =
                 String((mapping as any).external_setmenu_id || "").trim() ||
                 String((mapping as any).external_id || "").trim();
-              if (!/^SN/i.test(setmenuId) || (mapping as any).rsv_term == null) continue;
-              syncableMenuCount += optionCountBySetmenuId.get(setmenuId) || 0;
+              const mappingDuration = Number((mapping as any).rsv_term);
+              const optionDurations = optionDurationsBySetmenuId.get(setmenuId) || [];
+              if (!/^SN[0-9]+$/i.test(setmenuId) || !Number.isFinite(mappingDuration) || mappingDuration <= 0) continue;
+              if (optionDurations.length !== 1 || optionDurations[0] !== mappingDuration) continue;
+              syncableMenuCount += 1;
+              authoritativeSalonboardDuration = optionDurations[0];
             }
           }
         }
@@ -213,15 +224,52 @@ Deno.serve(async (req) => {
     }
 
     // メニュー合計を計算
-    const { data: menuRows } = await supabase
+    const uniqueMenus = Array.from(new Set(menus));
+    if (uniqueMenus.length !== menus.length) {
+      return new Response(JSON.stringify({
+        error: "duplicate_menu_selection",
+        message: "同じメニューを重複して選択することはできません。",
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const { data: menuRows, error: menuRowsError } = await supabase
       .from("menu_items")
       .select("name, duration_minutes, buffer_minutes, price")
       .eq("owner_id", customer.owner_id)
-      .in("name", menus);
+      .eq("location_id", customerLocationId)
+      .eq("active", true)
+      .in("name", uniqueMenus);
+    if (menuRowsError || !menuRows || menuRows.length !== uniqueMenus.length) {
+      console.error("booking menu lookup failed:", menuRowsError, {
+        expected: uniqueMenus.length,
+        actual: menuRows?.length ?? 0,
+      });
+      return new Response(JSON.stringify({
+        error: "booking_menu_invalid",
+        message: "選択されたメニューを確認できません。もう一度選び直してください。",
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     let totalDuration = 0, totalPrice = 0;
-    for (const r of (menuRows || [])) {
+    for (const r of menuRows) {
       totalDuration += (r.duration_minutes || 0) + (r.buffer_minutes || 0);
       totalPrice += (r.price || 0);
+    }
+    if (salonboardLive && authoritativeSalonboardDuration) {
+      totalDuration = authoritativeSalonboardDuration;
+    }
+    if (!Number.isFinite(totalDuration) || totalDuration <= 0) {
+      return new Response(JSON.stringify({
+        error: "booking_duration_required",
+        message: "メニューの所要時間を確認できないため予約を作成できません。",
+      }), {
+        status: 409,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
     const menuSummary = menus.join(" + ").slice(0, 200);
 
@@ -240,6 +288,7 @@ Deno.serve(async (req) => {
       .from("salon_hours")
       .select("open_time, close_time, closed")
       .eq("owner_id", customer.owner_id)
+      .eq("location_id", customerLocationId)
       .eq("weekday", reqWeekday)
       .maybeSingle();
     if (salonHours?.closed) {
@@ -250,7 +299,7 @@ Deno.serve(async (req) => {
     if (salonHours) {
       const reqEndTimeStr = (() => {
         const e = new Date(`${date}T${time}:00+09:00`);
-        e.setMinutes(e.getMinutes() + (totalDuration || 60));
+        e.setMinutes(e.getMinutes() + totalDuration);
         return `${String(e.getHours()).padStart(2,"0")}:${String(e.getMinutes()).padStart(2,"0")}:00`;
       })();
       if (`${time}:00` < salonHours.open_time || reqEndTimeStr > salonHours.close_time) {
@@ -290,6 +339,7 @@ Deno.serve(async (req) => {
         .select("id")
         .eq("id", staff_id)
         .eq("owner_id", customer.owner_id)
+        .eq("location_id", customerLocationId)
         .eq("active", true)
         .eq("bookable", true)
         .maybeSingle();
@@ -304,18 +354,22 @@ Deno.serve(async (req) => {
 
     // ダブルブッキング防止：指名ありはそのスタッフ、指名なしは「全スタッフ枠が埋まっていないか」をチェック
     const reqStart = new Date(`${date}T${time}:00+09:00`);
-    const reqEnd = new Date(reqStart.getTime() + (totalDuration || 60) * 60_000);
+    const reqEnd = new Date(reqStart.getTime() + totalDuration * 60_000);
     let bookingsQuery = supabase
       .from("bookings")
       .select("booking_time, total_duration_minutes, staff_id, status")
       .eq("owner_id", customer.owner_id)
+      .eq("location_id", customerLocationId)
       .eq("booking_date", date)
+      .is("deleted_at", null)
       .in("status", ["pending", "confirmed"]);
     if (assignedStaffId) bookingsQuery = bookingsQuery.eq("staff_id", assignedStaffId);
     const { data: existing } = await bookingsQuery;
-    const conflict = (existing || []).some((b: any) => {
+    const conflict = assignedStaffId && (existing || []).some((b: any) => {
       const bStart = new Date(`${date}T${b.booking_time}+09:00`);
-      const bEnd = new Date(bStart.getTime() + ((b.total_duration_minutes || 60) * 60_000));
+      const knownDuration = Number(b.total_duration_minutes);
+      const safeDuration = Number.isFinite(knownDuration) && knownDuration > 0 ? knownDuration : 24 * 60;
+      const bEnd = new Date(bStart.getTime() + (safeDuration * 60_000));
       return bStart < reqEnd && bEnd > reqStart;
     });
     if (conflict) {
@@ -332,6 +386,7 @@ Deno.serve(async (req) => {
         .from("staff")
         .select("id, sort_order, staff_schedules!inner(weekday, start_time, end_time, active)")
         .eq("owner_id", customer.owner_id)
+        .eq("location_id", customerLocationId)
         .eq("active", true)
         .eq("bookable", true)
         .eq("staff_schedules.weekday", weekday)
@@ -348,14 +403,27 @@ Deno.serve(async (req) => {
           .from("bookings")
           .select("booking_time, total_duration_minutes")
           .eq("staff_id", c.id)
+          .eq("location_id", customerLocationId)
           .eq("booking_date", date)
+          .is("deleted_at", null)
           .in("status", ["pending", "confirmed"]);
         const busy = (bk || []).some((b: any) => {
           const bs = new Date(`${date}T${b.booking_time}+09:00`);
-          const be = new Date(bs.getTime() + ((b.total_duration_minutes || 60) * 60_000));
+          const knownDuration = Number(b.total_duration_minutes);
+          const safeDuration = Number.isFinite(knownDuration) && knownDuration > 0 ? knownDuration : 24 * 60;
+          const be = new Date(bs.getTime() + (safeDuration * 60_000));
           return bs < reqEnd && be > reqStart;
         });
         if (!busy) { assignedStaffId = c.id; break; }
+      }
+      if (!assignedStaffId) {
+        return new Response(JSON.stringify({
+          error: "slot_taken",
+          message: "申し訳ございません、その時間は満席となりました。別の時間をお選びください。",
+        }), {
+          status: 409,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
     }
 
@@ -374,6 +442,9 @@ Deno.serve(async (req) => {
         notes: notes ? String(notes).slice(0, 500) : null,
         staff_id: assignedStaffId,
         status: "pending",
+        sync_status: "not_required",
+        source_channel: "own_web",
+        external_source: "booking_token",
       })
       .select()
       .single();
@@ -396,17 +467,18 @@ Deno.serve(async (req) => {
         .eq("owner_id", customer.owner_id)
         .eq("location_id", customerLocationId)
         .eq("enabled", true)
-        .eq("sync_enabled", true);
+        .eq("sync_enabled", true)
+        .eq("connection_status", "live");
 
       if (integrations && integrations.length > 0) {
         // 顧客情報・スタッフ・メニューマッピング取得
         const { data: cust2 } = await supabase
           .from("customers").select("full_name, phone, email").eq("id", customer.id).maybeSingle();
         const { data: staffRow } = assignedStaffId
-          ? await supabase.from("staff").select("name").eq("id", assignedStaffId).maybeSingle()
+          ? await supabase.from("staff").select("name").eq("id", assignedStaffId).eq("location_id", customerLocationId).maybeSingle()
           : { data: null };
         const startISO = new Date(`${date}T${time}:00+09:00`).toISOString();
-        const endISO = new Date(new Date(`${date}T${time}:00+09:00`).getTime() + (totalDuration || 60) * 60_000).toISOString();
+        const endISO = new Date(new Date(`${date}T${time}:00+09:00`).getTime() + totalDuration * 60_000).toISOString();
 
         const jobsToInsert: any[] = [];
         for (const ci of integrations) {
@@ -425,7 +497,8 @@ Deno.serve(async (req) => {
           let extMenuName: string | null = null;
           if (menus.length > 0) {
             const { data: menuRow } = await supabase.from("menu_items")
-              .select("id").eq("owner_id", customer.owner_id).eq("name", menus[0]).maybeSingle();
+              .select("id").eq("owner_id", customer.owner_id)
+              .eq("location_id", customerLocationId).eq("name", menus[0]).maybeSingle();
             if (menuRow?.id) {
               const { data: mcm } = await supabase.from("menu_channel_mappings")
                 .select("external_name").eq("menu_id", menuRow.id).eq("channel", ci.channel).maybeSingle();
@@ -435,6 +508,7 @@ Deno.serve(async (req) => {
 
           jobsToInsert.push({
             owner_id: customer.owner_id,
+            location_id: customerLocationId,
             reservation_id: booking.id,
             target_channel: ci.channel,
             job_type: "create_reservation",
@@ -457,15 +531,21 @@ Deno.serve(async (req) => {
         }
 
         if (jobsToInsert.length > 0) {
-          await supabase.from("sync_jobs").insert(jobsToInsert);
-          await supabase.from("bookings").update({ sync_status: "pending", source_channel: "own_web" }).eq("id", booking.id);
+          const { error: jobsError } = await supabase.from("sync_jobs").insert(jobsToInsert);
+          if (jobsError) throw jobsError;
+          await supabase.from("bookings").update({ sync_status: "pending" }).eq("id", booking.id);
           // fire-and-forget dispatch
           supabase.functions.invoke("sync-job-dispatch", { body: { reservation_id: booking.id } })
             .catch((e) => console.error("dispatch error (non-fatal):", e));
         }
       }
     } catch (e) {
-      console.error("sync-job creation error (non-fatal):", e);
+      console.error("sync-job creation error:", e);
+      await supabase.from("bookings").update({
+        sync_status: "needs_review",
+        needs_manual_review: true,
+        sync_error_message: "同期ジョブを作成できませんでした。スタッフ確認が必要です。",
+      }).eq("id", booking.id);
     }
 
     // 予約完了時のLINE即時通知（顧客がLINE連携済みなら）
@@ -485,7 +565,7 @@ Deno.serve(async (req) => {
         .eq("id", customer.owner_id)
         .maybeSingle();
       if (cust?.line_user_id && creds) {
-        const APP_ORIGIN = Deno.env.get("APP_ORIGIN") || "https://hair-growth-engine.lovable.app";
+        const APP_ORIGIN = (Deno.env.get("PUBLIC_APP_ORIGIN") || Deno.env.get("APP_ORIGIN") || "https://saronboost.com").replace(/\/+$/, "");
         const myBookingsLink = `${APP_ORIGIN}/my-bookings/${token}`;
         const text = `🌸 ご予約ありがとうございます\n\n${cust.full_name}様\n${prof?.salon_name || "サロン"}でのご予約が確定しました。\n\n📅 ${date}\n🕐 ${time}\n💇 ${menu}\n\nお会いできるのを楽しみにお待ちしております。\n\nご予約内容を確認したい場合は、このLINEに「予約確認」と送信してください。\n変更・キャンセルをご希望の場合は、このLINEにご返信ください。スタッフが確認いたします。\n\nご予約の確認はこちら：\n→ ${myBookingsLink}`;
         const r = await sendLinePush(creds.accessToken, cust.line_user_id, text);

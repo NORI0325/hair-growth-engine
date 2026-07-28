@@ -1,6 +1,6 @@
 // 店舗を削除 + Stripeサブスクリプションの追加店舗ライセンスを-1
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { type StripeEnv, createStripeClient } from "../_shared/stripe.ts";
+import { type StripeEnv, setAdditionalLocationQuantity } from "../_shared/stripe.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,8 +12,8 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405, headers: corsHeaders });
 
   try {
-    const { location_id, environment } = await req.json();
-    const env: StripeEnv = environment === "live" ? "live" : "sandbox";
+    const { location_id } = await req.json();
+    const env: StripeEnv = Deno.env.get("STRIPE_ENV") === "live" ? "live" : "sandbox";
 
     if (!location_id) {
       return new Response(JSON.stringify({ error: "missing_location_id" }), { status: 400, headers: corsHeaders });
@@ -42,21 +42,19 @@ Deno.serve(async (req) => {
       .select("role")
       .eq("tenant_id", location.tenant_id)
       .eq("user_id", user.id)
+      .not("accepted_at", "is", null)
       .maybeSingle();
     if (!member || (member.role !== "owner" && member.role !== "super_admin")) {
       return new Response(JSON.stringify({ error: "forbidden" }), { status: 403, headers: corsHeaders });
     }
 
-    // 削除（CASCADEで関連データも削除されるが、既存データは owner_id ベースなので明示削除しない）
-    const { error: delErr } = await supabase.from("locations").delete().eq("id", location_id);
-    if (delErr) throw delErr;
-
-    // 残りの店舗数
-    const { count: remaining } = await supabase
+    const { count: currentCount } = await supabase
       .from("locations")
       .select("id", { count: "exact", head: true })
       .eq("tenant_id", location.tenant_id);
-    const additionalCount = Math.max(0, (remaining ?? 1) - 1);
+    const remaining = Math.max(1, (currentCount ?? 1) - 1);
+    const additionalCount = Math.max(0, remaining - 1);
+    const previousAdditionalCount = Math.max(0, (currentCount ?? 1) - 1);
 
     // Stripeサブスクリプションを更新
     const { data: sub } = await supabase
@@ -65,32 +63,47 @@ Deno.serve(async (req) => {
       .eq("tenant_id", location.tenant_id)
       .maybeSingle();
 
+    let stripeUpdated = false;
     if (sub?.stripe_subscription_id && sub.status !== "trialing") {
-      const stripe = createStripeClient(env);
-      const stripeSub = await stripe.subscriptions.retrieve(sub.stripe_subscription_id);
-      const prices = await stripe.prices.list({ lookup_keys: ["salon_boost_additional_location_monthly"] });
-      if (prices.data.length) {
-        const additionalPriceId = prices.data[0].id;
-        const item = stripeSub.items.data.find((it: any) => it.price.id === additionalPriceId);
-        if (item) {
-          if (additionalCount === 0) {
-            await stripe.subscriptions.update(sub.stripe_subscription_id, {
-              items: [{ id: item.id, deleted: true }],
-              proration_behavior: "create_prorations",
-            });
-          } else {
-            await stripe.subscriptions.update(sub.stripe_subscription_id, {
-              items: [{ id: item.id, quantity: additionalCount }],
-              proration_behavior: "create_prorations",
-            });
-          }
-        }
-      }
+      stripeUpdated = await setAdditionalLocationQuantity(
+        env,
+        sub.stripe_subscription_id,
+        additionalCount,
+        `remove-location-${location_id}`,
+      );
     }
 
-    await supabase.from("tenants").update({ location_quota: remaining ?? 1 }).eq("id", location.tenant_id);
+    // Stripe更新後にDBを削除。DB削除失敗時は請求数量を元に戻す。
+    const { error: delErr } = await supabase.from("locations").delete().eq("id", location_id);
+    if (delErr) {
+      if (stripeUpdated && sub?.stripe_subscription_id) {
+        try {
+          await setAdditionalLocationQuantity(
+            env,
+            sub.stripe_subscription_id,
+            previousAdditionalCount,
+            `remove-location-rollback-${location_id}`,
+          );
+        } catch (rollbackError) {
+          console.error("remove-location Stripe compensation failed", { locationId: location_id, rollbackError });
+        }
+      }
+      throw delErr;
+    }
 
-    return new Response(JSON.stringify({ success: true }), {
+    const { error: quotaError } = await supabase
+      .from("tenants")
+      .update({ location_quota: remaining })
+      .eq("id", location.tenant_id);
+    if (quotaError) {
+      console.error("remove-location quota update failed", {
+        tenantId: location.tenant_id,
+        remaining,
+        quotaError,
+      });
+    }
+
+    return new Response(JSON.stringify({ success: true, quota_updated: !quotaError }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {

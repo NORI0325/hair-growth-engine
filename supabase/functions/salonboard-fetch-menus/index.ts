@@ -2,32 +2,38 @@
 // channel_menu_options に保存する。
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
+import { authenticateRequest, canAccessOwner } from "../_shared/request-auth.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   const t0 = Date.now();
   try {
-    const authHeader = req.headers.get("Authorization") || "";
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
-    const userClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } },
-    );
-    const { data: userData } = await userClient.auth.getUser();
-    const user = userData?.user;
-    if (!user) {
+    const identity = await authenticateRequest(req, supabase);
+    if (identity.kind !== "user") {
       return new Response(JSON.stringify({ error: "unauthorized" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const body = await req.json().catch(() => ({}));
-    const owner_id: string = body.owner_id || user.id;
-    const location_id: string | null = body.location_id ?? null;
+    const owner_id = String(body.owner_id || "");
+    const location_id = body.location_id ? String(body.location_id) : "";
+    if (!owner_id || !location_id || !await canAccessOwner(supabase, identity.userId, owner_id, ["owner", "manager", "super_admin"])) {
+      return new Response(JSON.stringify({ error: "forbidden" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const { data: location } = await supabase.from("locations").select("id")
+      .eq("id", location_id).eq("tenant_id", owner_id).maybeSingle();
+    if (!location) {
+      return new Response(JSON.stringify({ error: "invalid_location" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const workerUrl = Deno.env.get("EXTERNAL_WORKER_API_URL");
     const workerKey = Deno.env.get("EXTERNAL_WORKER_API_KEY");

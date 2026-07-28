@@ -4,6 +4,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
 import { isExternalMirrorBooking, logExternalMirrorBlocked } from "../_shared/external-mirror-booking.ts";
+import { canAccessOwner } from "../_shared/request-auth.ts";
 
 function fmtDate(d: string) { return d.replaceAll("-", ""); }
 function fmtTime(t: string) { return t.slice(0, 5).replace(":", ""); }
@@ -76,7 +77,9 @@ Deno.serve(async (req) => {
     `).eq("id", booking_id).maybeSingle();
     if (!booking) return new Response(JSON.stringify({ error: "booking_not_found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     const b = booking as BookingRow;
-    if (b.owner_id !== user.id) return new Response(JSON.stringify({ error: "forbidden" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    if (!await canAccessOwner(supabase, user.id, b.owner_id, ["owner", "manager", "super_admin"])) {
+      return new Response(JSON.stringify({ error: "forbidden" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
     if (!b.location_id) return new Response(JSON.stringify({ error: "location_required", message: "店舗未割当の予約は再送信できません" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
     if (isExternalMirrorBooking(b)) {

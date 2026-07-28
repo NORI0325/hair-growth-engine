@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { corsHeaders } from "../_shared/cors.ts";
 import { invokeInternal } from "../_shared/invoke-internal.ts";
+import { authenticateRequest, canAccessOwner } from "../_shared/request-auth.ts";
 
 // サポート問い合わせ送信
 // - tickets テーブルに保存
@@ -12,36 +13,56 @@ Deno.serve(async (req) => {
     const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
 
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
+    const identity = await authenticateRequest(req, supabase);
+    if (identity.kind !== "user") {
       return new Response(JSON.stringify({ error: "unauthorized" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    const token = authHeader.replace("Bearer ", "");
-    const { data: { user } } = await supabase.auth.getUser(token);
+    const { data: { user } } = await supabase.auth.admin.getUserById(identity.userId);
     if (!user) {
       return new Response(JSON.stringify({ error: "unauthorized" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const { subject, message, route, contextData, aiChatHistory } = await req.json();
+    const { tenant_id, location_id, subject, message, route, contextData, aiChatHistory } = await req.json();
     if (!subject || !message || message.length > 5000) {
       return new Response(JSON.stringify({ error: "invalid_input" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // owner_id 解決：ユーザーが所属する最初のテナント（自身のidも含む）
-    const { data: prof } = await supabase.from("profiles").select("id, salon_name, full_name").eq("id", user.id).maybeSingle();
-    const ownerId = prof?.id ?? user.id;
+    if (!tenant_id || !await canAccessOwner(supabase, user.id, tenant_id)) {
+      return new Response(JSON.stringify({ error: "tenant_forbidden" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (location_id) {
+      const { data: location } = await supabase
+        .from("locations")
+        .select("id")
+        .eq("id", location_id)
+        .eq("tenant_id", tenant_id)
+        .maybeSingle();
+      if (!location) {
+        return new Response(JSON.stringify({ error: "location_forbidden" }), {
+          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    const [{ data: userProfile }, { data: tenantProfile }] = await Promise.all([
+      supabase.from("profiles").select("full_name").eq("id", user.id).maybeSingle(),
+      supabase.from("profiles").select("salon_name").eq("id", tenant_id).maybeSingle(),
+    ]);
+    const ownerId = tenant_id;
 
     const { data: ticket, error: insErr } = await supabase.from("support_tickets").insert({
       owner_id: ownerId,
       user_id: user.id,
       user_email: user.email ?? "",
-      user_name: prof?.full_name ?? null,
+      user_name: userProfile?.full_name ?? null,
       subject,
       message,
       context_route: route ?? null,
@@ -59,24 +80,22 @@ Deno.serve(async (req) => {
       const historyTxt = Array.isArray(aiChatHistory)
         ? aiChatHistory.map((m: any) => `[${m.role}] ${m.content}`).join("\n\n").slice(0, 4000)
         : "";
-      const html = `
-        <h2>新しいサポート問い合わせ</h2>
-        <p><b>件名:</b> ${escapeHtml(subject)}</p>
-        <p><b>テナント:</b> ${escapeHtml(prof?.salon_name ?? "-")} (${ownerId})</p>
-        <p><b>ユーザー:</b> ${escapeHtml(prof?.full_name ?? "-")} &lt;${escapeHtml(user.email ?? "")}&gt;</p>
-        <p><b>画面:</b> ${escapeHtml(route ?? "-")}</p>
-        <hr/>
-        <p><b>本文:</b></p>
-        <pre style="white-space:pre-wrap;font-family:inherit">${escapeHtml(message)}</pre>
-        ${historyTxt ? `<hr/><p><b>AIチャット履歴:</b></p><pre style="white-space:pre-wrap;font-family:inherit;background:#f5f5f5;padding:8px">${escapeHtml(historyTxt)}</pre>` : ""}
-      `;
       await invokeInternal("send-transactional-email", {
-        to: "support@saronboost.com",
-        subject: `[サポート] ${subject}`,
-        html,
-        purpose: "transactional",
-        template_name: "support_ticket",
-        reply_to: user.email,
+        templateName: "internal-notification",
+        recipientEmail: "support@saronboost.com",
+        idempotencyKey: `support-ticket-${ticket.id}`,
+        templateData: {
+          subject: `[サポート] ${subject}`,
+          title: "新しいサポート問い合わせ",
+          salonName: tenantProfile?.salon_name ?? "-",
+          message,
+          details: [
+            { label: "テナントID", value: ownerId },
+            { label: "ユーザー", value: `${userProfile?.full_name ?? "-"} <${user.email ?? ""}>` },
+            { label: "画面", value: route ?? "-" },
+            ...(historyTxt ? [{ label: "AIチャット履歴", value: historyTxt }] : []),
+          ],
+        },
       }, { idempotencyKey: `support-ticket-${ticket.id}` });
     } catch (e) {
       console.error("notify email failed", e);
@@ -91,7 +110,3 @@ Deno.serve(async (req) => {
     });
   }
 });
-
-function escapeHtml(s: string) {
-  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
-}

@@ -604,19 +604,21 @@ Deno.serve(async (req) => {
                 if (notifyTo) {
                   const urgencyLabel = cat.urgency === "high" ? "🚨 要対応" : "📩 お問い合わせ";
                   await invokeInternal("send-transactional-email", {
-                    to: notifyTo,
-                    subject: `${urgencyLabel} LINE: ${cat.label}${cust ? ` - ${cust.full_name}様` : ""}`,
-                    html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
-  <h2 style="color:${cat.urgency === "high" ? "#c0392b" : "#1f6f8b"}">${urgencyLabel} LINE受信通知</h2>
-  <p style="color:#555">${prof?.salon_name || "サロン"}</p>
-  <table style="width:100%;border-collapse:collapse;margin:16px 0">
-    <tr><td style="padding:8px;background:#f5f5f5;width:120px"><b>カテゴリ</b></td><td style="padding:8px">${cat.label}</td></tr>
-    <tr><td style="padding:8px;background:#f5f5f5"><b>お客様</b></td><td style="padding:8px">${cust?.full_name || "（未連携）"}</td></tr>
-    <tr><td style="padding:8px;background:#f5f5f5"><b>緊急度</b></td><td style="padding:8px">${cat.urgency}</td></tr>
-  </table>
-  <p style="font-size:12px;color:#888">受信トレイから返信できます。</p>
-</div>`,
-                    template_name: "line_inquiry_alert",
+                    templateName: "internal-notification",
+                    recipientEmail: notifyTo,
+                    templateData: {
+                      subject: `${urgencyLabel} LINE: ${cat.label}${cust ? ` - ${cust.full_name}様` : ""}`,
+                      title: `${urgencyLabel} LINE受信通知`,
+                      salonName: prof?.salon_name || "サロン",
+                      message: "受信トレイから内容を確認し、必要に応じて返信してください。",
+                      details: [
+                        { label: "カテゴリ", value: cat.label },
+                        { label: "お客様", value: cust?.full_name || "（未連携）" },
+                        { label: "緊急度", value: cat.urgency },
+                      ],
+                      actionLabel: "受信トレイを開く",
+                      actionUrl: `${(Deno.env.get("PUBLIC_APP_ORIGIN") ?? Deno.env.get("APP_URL") ?? "https://saronboost.com").replace(/\/+$/, "")}/inbox`,
+                    },
                   }, { idempotencyKey: `line-inquiry-${ev.timestamp ?? Date.now()}-${userId ?? "anon"}` });
                 }
               } catch (e) { console.error("[line-webhook] inquiry notify failed:", e); }

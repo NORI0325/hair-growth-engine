@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
+import { authenticateRequest } from "../_shared/request-auth.ts";
 
 // 機密キーをマスク
 const SENSITIVE_KEYS = ["password", "passwd", "pwd", "token", "cookie", "authorization", "auth", "secret", "api_key", "apikey"];
@@ -32,6 +33,7 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
+    const identity = await authenticateRequest(req, supabase);
 
     // dispatch対象ジョブ取得
     let jobsQuery = supabase
@@ -45,6 +47,44 @@ Deno.serve(async (req) => {
     }
     const { data: jobs, error: jobsErr } = await jobsQuery;
     if (jobsErr) throw jobsErr;
+
+    if (identity.kind === "anonymous") {
+      if (job_ids || !reservation_id) {
+        return new Response(JSON.stringify({ error: "unauthorized" }), {
+          status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const { data: publicBooking } = await supabase
+        .from("bookings")
+        .select("id, source_channel, external_source, created_at")
+        .eq("id", reservation_id)
+        .maybeSingle();
+      const createdAt = publicBooking?.created_at ? new Date(publicBooking.created_at).getTime() : 0;
+      const isFreshPublicBooking = publicBooking?.source_channel === "line"
+        && publicBooking?.external_source === "public_form"
+        && createdAt > Date.now() - 10 * 60_000;
+      if (!isFreshPublicBooking) {
+        return new Response(JSON.stringify({ error: "unauthorized" }), {
+          status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    } else if (identity.kind === "user") {
+      const ownerIds = [...new Set((jobs || []).map((job) => String(job.owner_id)).filter(Boolean))];
+      const { data: memberships, error: membershipError } = await supabase
+        .from("tenant_members")
+        .select("tenant_id")
+        .eq("user_id", identity.userId)
+        .not("accepted_at", "is", null)
+        .in("role", ["manager", "owner", "super_admin"])
+        .in("tenant_id", ownerIds.length > 0 ? ownerIds : ["00000000-0000-0000-0000-000000000000"]);
+      if (membershipError) throw membershipError;
+      const allowedOwners = new Set((memberships || []).map((row) => String(row.tenant_id)));
+      if (ownerIds.some((ownerId) => !allowedOwners.has(ownerId))) {
+        return new Response(JSON.stringify({ error: "forbidden" }), {
+          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
 
     const workerUrl = Deno.env.get("EXTERNAL_WORKER_API_URL");
     const workerKey = Deno.env.get("EXTERNAL_WORKER_API_KEY");

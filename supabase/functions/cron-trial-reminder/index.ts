@@ -1,8 +1,11 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { invokeInternal } from "../_shared/invoke-internal.ts";
+import { requireInternalRequest } from "../_shared/request-auth.ts";
 
-Deno.serve(async (_req) => {
+Deno.serve(async (req) => {
   const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  const identity = await requireInternalRequest(req, supabase);
+  if (identity instanceof Response) return identity;
 
   // 7日前と1日前のトライアル終了通知（クレカ未登録のみ）
   const now = new Date();
@@ -29,22 +32,19 @@ Deno.serve(async (_req) => {
     const { data: user } = await supabase.auth.admin.getUserById(s.owner_id);
     if (!user.user?.email) continue;
 
+    const appOrigin = (Deno.env.get("PUBLIC_APP_ORIGIN") ?? Deno.env.get("APP_URL") ?? "https://saronboost.com").replace(/\/+$/, "");
     const er = await invokeInternal("send-transactional-email", {
-      to: user.user.email,
-      subject: `【Salon Boost】無料期間があと${sendDay}日で終了します`,
-      html: `
-          <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:24px">
-            <h2>${s.profiles?.salon_name ?? "サロン"} 様</h2>
-            <p>いつもSalon Boostをご利用いただきありがとうございます。</p>
-            <p><strong>無料トライアルがあと${sendDay}日で終了します。</strong>（${ends.toLocaleDateString("ja-JP")}まで）</p>
-            <p>引き続きご利用いただくには、お支払い情報のご登録をお願いします。</p>
-            <p><a href="${Deno.env.get("APP_URL") ?? "https://hair-growth-engine.lovable.app"}/billing"
-                  style="display:inline-block;padding:12px 24px;background:#000;color:#fff;text-decoration:none;border-radius:4px">
-              お支払い情報を登録する
-            </a></p>
-            <p style="color:#666;font-size:12px">登録されない場合、トライアル終了時点でアプリは閲覧専用モードに移行します。データは保持されます。</p>
-          </div>
-        `,
+      templateName: "internal-notification",
+      recipientEmail: user.user.email,
+      idempotencyKey: `trial-reminder-${s.owner_id}-${sendDay}d`,
+      templateData: {
+        subject: `【SalonBoost】無料期間があと${sendDay}日で終了します`,
+        title: `無料トライアル終了まであと${sendDay}日です`,
+        salonName: s.profiles?.salon_name ?? "サロン",
+        message: `トライアル終了日は${ends.toLocaleDateString("ja-JP")}です。継続利用にはお支払い情報をご登録ください。未登録の場合もデータは保持されます。`,
+        actionLabel: "お支払い情報を登録する",
+        actionUrl: `${appOrigin}/billing`,
+      },
     }, { idempotencyKey: `trial-reminder-${s.owner_id}-${sendDay}d` });
     results.push({ owner_id: s.owner_id, daysLeft, sent: er.ok, status: er.status });
   }

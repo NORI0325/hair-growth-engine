@@ -4,6 +4,7 @@
 // 重要: ここでは登録・更新・削除は一切行わない。
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders } from "../_shared/cors.ts";
+import { canAccessOwner } from "../_shared/request-auth.ts";
 
 interface BookingRow {
   id: string;
@@ -78,9 +79,7 @@ Deno.serve(async (req) => {
       });
     }
     const b = booking as unknown as BookingRow;
-    if (b.owner_id !== user.id) {
-      // テナントメンバーのチェックを簡易的に: location_id があれば is_location_accessible で判定
-      // 念のため owner と異なる場合は拒否（より厳密には RPC 化）
+    if (!await canAccessOwner(supabase, user.id, b.owner_id)) {
       return new Response(JSON.stringify({ error: "forbidden" }), {
         status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -99,10 +98,11 @@ Deno.serve(async (req) => {
       b.staff_id
         ? supabase.from("staff_channel_mappings")
             .select("external_id, external_name, enabled, is_no_designation")
-            .eq("owner_id", b.owner_id).eq("channel", "salonboard").eq("staff_id", b.staff_id).maybeSingle()
+            .eq("owner_id", b.owner_id).eq("location_id", b.location_id).eq("channel", "salonboard").eq("staff_id", b.staff_id).maybeSingle()
         : Promise.resolve({ data: null }),
       supabase.from("menu_channel_mappings").select("id, enabled, external_id, external_name")
-        .eq("owner_id", b.owner_id).eq("channel", "salonboard").limit(1).maybeSingle(),
+        .eq("owner_id", b.owner_id).eq("location_id", b.location_id).eq("channel", "salonboard")
+        .eq("external_name", b.menu).limit(1).maybeSingle(),
     ]);
 
     // SyncStatusDialog の表示互換のため、external_staff_id/external_staff_name にも揃える

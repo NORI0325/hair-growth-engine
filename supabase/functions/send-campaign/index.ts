@@ -3,15 +3,21 @@ import { corsHeaders } from "../_shared/cors.ts";
 import { getLineCredentials } from "../_shared/line-push.ts";
 import { sendTransactionalEmailInternal } from "../_shared/invoke-internal.ts";
 import { sendSmsWithLog } from "../_shared/twilio-sms.ts";
+import { authenticateRequest, canAccessOwner } from "../_shared/request-auth.ts";
 
-// オリジン取得（公開URL or Lovable preview）
-const getAppOrigin = (req: Request): string => {
-  const origin = req.headers.get("origin") || req.headers.get("referer");
-  if (origin) {
-    try { return new URL(origin).origin; } catch {}
-  }
-  return "https://app.lovable.dev";
-};
+const MAX_SYNCHRONOUS_RECIPIENTS = 500;
+const getAppOrigin = (): string =>
+  (Deno.env.get("PUBLIC_APP_ORIGIN") || Deno.env.get("APP_URL") || "https://saronboost.com").replace(/\/$/, "");
+
+function tokyoDateOffset(offsetDays: number): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(new Date());
+  const year = Number(parts.find(part => part.type === "year")?.value);
+  const month = Number(parts.find(part => part.type === "month")?.value);
+  const day = Number(parts.find(part => part.type === "day")?.value);
+  return new Date(Date.UTC(year, month - 1, day + offsetDays)).toISOString().slice(0, 10);
+}
 
 const renderTemplate = (template: string, vars: Record<string, string>) => {
   return template.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] || "");
@@ -40,29 +46,20 @@ const sendLine = async (token: string, userId: string, text: string): Promise<{ 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  const authHeader = req.headers.get("Authorization");
-  if (!authHeader) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
-  }
-
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
   );
 
-  // ユーザー検証
-  const supabaseAuth = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_ANON_KEY")!,
-    { global: { headers: { Authorization: authHeader } } }
-  );
-  const { data: { user } } = await supabaseAuth.auth.getUser();
-  if (!user) {
+  const identity = await authenticateRequest(req, supabase);
+  if (identity.kind !== "user") {
     return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
   }
 
+  let requestedCampaignId = "";
   try {
     const { campaign_id } = await req.json();
+    requestedCampaignId = typeof campaign_id === "string" ? campaign_id : "";
     if (!campaign_id) {
       return new Response(JSON.stringify({ error: "campaign_id required" }), { status: 400, headers: corsHeaders });
     }
@@ -71,48 +68,83 @@ Deno.serve(async (req) => {
       .from("campaigns")
       .select("*")
       .eq("id", campaign_id)
-      .eq("owner_id", user.id)
       .maybeSingle();
 
     if (!campaign) {
       return new Response(JSON.stringify({ error: "Campaign not found" }), { status: 404, headers: corsHeaders });
     }
+    if (campaign.status !== "draft") {
+      return new Response(JSON.stringify({
+        error: "CAMPAIGN_ALREADY_STARTED",
+        message: "このキャンペーンは既に配信処理を開始しています。",
+      }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    const ownerId = String(campaign.owner_id || "");
+    const locationId = String(campaign.location_id || "");
+    if (!ownerId || !locationId || !(await canAccessOwner(supabase, identity.userId, ownerId, ["owner", "manager", "super_admin"]))) {
+      return new Response(JSON.stringify({ error: "Campaign access denied" }), { status: 403, headers: corsHeaders });
+    }
+    const { data: location } = await supabase
+      .from("locations")
+      .select("id")
+      .eq("id", locationId)
+      .eq("tenant_id", ownerId)
+      .maybeSingle();
+    if (!location) {
+      return new Response(JSON.stringify({ error: "Campaign location invalid" }), { status: 400, headers: corsHeaders });
+    }
 
     // セグメントに該当する顧客を取得
     let q = supabase.from("customers")
       .select("id, full_name, email, phone, last_visit_date, line_user_id, location_id, is_test, opt_out_automation, line_unfollowed_at")
-      .eq("owner_id", user.id)
+      .eq("owner_id", ownerId)
+      .eq("location_id", locationId)
       .eq("is_test", false)
       .or("opt_out_automation.is.null,opt_out_automation.eq.false");
     if ((campaign as any).location_id) q = q.eq("location_id", (campaign as any).location_id);
 
-    const today = new Date();
     if (campaign.target_segment === "dormant") {
-      const cutoff = new Date(today); cutoff.setDate(cutoff.getDate() - 180);
-      q = q.lt("last_visit_date", cutoff.toISOString().split("T")[0]);
+      q = q.or(`last_visit_date.is.null,last_visit_date.lt.${tokyoDateOffset(-180)}`);
     } else if (campaign.target_segment === "at_risk") {
-      const c1 = new Date(today); c1.setDate(c1.getDate() - 180);
-      const c2 = new Date(today); c2.setDate(c2.getDate() - 90);
-      q = q.gte("last_visit_date", c1.toISOString().split("T")[0]).lt("last_visit_date", c2.toISOString().split("T")[0]);
+      q = q.gte("last_visit_date", tokyoDateOffset(-180)).lt("last_visit_date", tokyoDateOffset(-90));
     } else if (campaign.target_segment === "active") {
-      const cutoff = new Date(today); cutoff.setDate(cutoff.getDate() - 90);
-      q = q.gte("last_visit_date", cutoff.toISOString().split("T")[0]);
+      q = q.gte("last_visit_date", tokyoDateOffset(-90));
     }
 
-    const { data: customers } = await q.limit(2000);
+    const { data: customers, error: customersError } = await q.limit(MAX_SYNCHRONOUS_RECIPIENTS + 1);
+    if (customersError) throw customersError;
+    if ((customers?.length || 0) > MAX_SYNCHRONOUS_RECIPIENTS) {
+      return new Response(JSON.stringify({
+        error: "CAMPAIGN_RECIPIENT_LIMIT_EXCEEDED",
+        message: "対象が500名を超えています。重複送信防止のため、永続配信キュー対応後に実行してください。",
+      }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
     if (!customers || customers.length === 0) {
-      await supabase.from("campaigns").update({ status: "sent", sent_at: new Date().toISOString(), total_recipients: 0 }).eq("id", campaign_id);
+      await supabase.from("campaigns").update({ status: "sent", sent_at: new Date().toISOString(), total_recipients: 0 }).eq("owner_id", ownerId).eq("id", campaign_id);
       return new Response(JSON.stringify({ success: true, recipients: 0 }), { headers: corsHeaders });
     }
 
-    // ステータス更新
-    await supabase.from("campaigns").update({ status: "sending", total_recipients: customers.length }).eq("id", campaign_id);
+    // 条件付き更新をロック代わりにし、二重実行を拒否する。
+    const { data: startedCampaign, error: startError } = await supabase
+      .from("campaigns")
+      .update({ status: "sending", total_recipients: customers.length })
+      .eq("owner_id", ownerId)
+      .eq("id", campaign_id)
+      .eq("status", "draft")
+      .select("id")
+      .maybeSingle();
+    if (startError) throw startError;
+    if (!startedCampaign) {
+      return new Response(JSON.stringify({ error: "CAMPAIGN_ALREADY_STARTED" }), {
+        status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // ownerProfile（salon_name用）
     const { data: ownerProfile } = await supabase
       .from("profiles")
       .select("salon_name")
-      .eq("id", user.id)
+      .eq("id", ownerId)
       .maybeSingle();
 
     // 各顧客にbooking_tokenを取得して配信
@@ -122,7 +154,7 @@ Deno.serve(async (req) => {
       .in("customer_id", customers.map(c => c.id));
 
     const tokenMap = new Map(tokens?.map(t => [t.customer_id, t.token]) || []);
-    const origin = getAppOrigin(req);
+    const origin = getAppOrigin();
 
     const sends: any[] = [];
     let smsSuccess = 0, smsFailed = 0, emailSuccess = 0;
@@ -168,7 +200,7 @@ Deno.serve(async (req) => {
         const smsBody = renderTemplate(campaign.sms_body, vars);
         const smsLocId = (c as any).location_id || (campaign as any).location_id || null;
         const result = await sendSmsWithLog(supabase, {
-          owner_id: user.id,
+          owner_id: ownerId,
           location_id: smsLocId,
           customer_id: c.id,
           phone: c.phone,
@@ -194,13 +226,13 @@ Deno.serve(async (req) => {
       const lineUserId = typeof c.line_user_id === "string" ? c.line_user_id.trim() : "";
       if (isValidLineUserId(lineUserId) && !c.line_unfollowed_at) {
         const custLocId = (c as any).location_id || (campaign as any).location_id || null;
-        const creds = await getLineCredentials(supabase, user.id, custLocId);
+        const creds = await getLineCredentials(supabase, ownerId, custLocId);
         if (creds) {
           const lineBody = renderTemplate(campaign.sms_body || campaign.email_body || "", vars);
           attemptedDelivery = true;
           const r = await sendLine(creds.accessToken, lineUserId, lineBody);
           await supabase.from("line_message_log").insert({
-            owner_id: user.id,
+            owner_id: ownerId,
             location_id: custLocId,
             customer_id: c.id,
             line_user_id: lineUserId,
@@ -226,7 +258,7 @@ Deno.serve(async (req) => {
     await supabase.from("campaigns").update({
       status: "sent",
       sent_at: new Date().toISOString(),
-    }).eq("id", campaign_id);
+    }).eq("owner_id", ownerId).eq("id", campaign_id);
 
     return new Response(JSON.stringify({
       success: true,
@@ -238,8 +270,10 @@ Deno.serve(async (req) => {
 
   } catch (e) {
     console.error("send-campaign error:", e);
-    await supabase.from("campaigns").update({ status: "failed" }).eq("id", req.headers.get("x-campaign-id") || "");
-    return new Response(JSON.stringify({ error: "Internal error", detail: e instanceof Error ? e.message : "unknown" }), {
+    if (requestedCampaignId) {
+      await supabase.from("campaigns").update({ status: "failed" }).eq("id", requestedCampaignId).eq("status", "sending");
+    }
+    return new Response(JSON.stringify({ error: "Internal error" }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
