@@ -79,9 +79,18 @@ async function moveToDlq(
 }
 
 Deno.serve(async (req) => {
+  // 緊急停止スイッチ: MESSAGING_KILL_SWITCH=true の間はキュー配信を行わない
+  if ((Deno.env.get('MESSAGING_KILL_SWITCH') ?? '').toLowerCase() === 'true') {
+    return new Response(
+      JSON.stringify({ skipped: true, reason: 'messaging_kill_switch' }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    )
+  }
+
   const apiKey = Deno.env.get('LOVABLE_API_KEY')
   const supabaseUrl = Deno.env.get('SUPABASE_URL')
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+
 
   if (!apiKey || !supabaseUrl || !supabaseServiceKey) {
     console.error('Missing required environment variables')

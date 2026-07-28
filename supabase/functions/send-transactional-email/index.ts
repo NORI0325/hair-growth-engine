@@ -40,6 +40,16 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders })
   }
 
+  // 緊急停止スイッチ: MESSAGING_KILL_SWITCH=true の間はメールを一切送らない
+  if ((Deno.env.get('MESSAGING_KILL_SWITCH') ?? '').toLowerCase() === 'true') {
+    console.warn('[send-transactional-email] blocked by MESSAGING_KILL_SWITCH')
+    return new Response(
+      JSON.stringify({ skipped: true, reason: 'messaging_kill_switch' }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
+
+
   const supabaseUrl = Deno.env.get('SUPABASE_URL')
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 

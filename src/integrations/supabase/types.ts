@@ -3952,6 +3952,7 @@ export type Database = {
         Returns: boolean
       }
       delete_test_data: { Args: { _owner_id: string }; Returns: Json }
+      email_queue_dispatch: { Args: never; Returns: undefined }
       enqueue_email: {
         Args: { payload: Json; queue_name: string }
         Returns: number
