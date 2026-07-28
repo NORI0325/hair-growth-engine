@@ -302,10 +302,10 @@ const MenuItems = () => {
   };
 
   const uploadImage = async (id: string, file: File) => {
-    if (!user) return;
+    if (!tenantId) return;
     if (file.size > 5 * 1024 * 1024) { toast.error("画像は5MB以下にしてください"); return; }
     const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
-    const path = `${user.id}/${id}-${Date.now()}.${ext}`;
+    const path = `${tenantId}/${id}-${Date.now()}.${ext}`;
     const { error: upErr } = await supabase.storage.from("menu-images").upload(path, file, {
       cacheControl: "3600", upsert: false, contentType: file.type,
     });
@@ -316,12 +316,16 @@ const MenuItems = () => {
   };
 
   const removeImage = async (id: string, imageUrl: string | null) => {
-    if (!user || !imageUrl) return;
+    if (!tenantId || !imageUrl) return;
     // URLからパス部分を抽出
     const marker = "/menu-images/";
     const idx = imageUrl.indexOf(marker);
     if (idx >= 0) {
       const path = imageUrl.slice(idx + marker.length);
+      if (!path.startsWith(`${tenantId}/`)) {
+        toast.error("この画像を削除する権限がありません");
+        return;
+      }
       await supabase.storage.from("menu-images").remove([path]);
     }
     update(id, { image_url: null });

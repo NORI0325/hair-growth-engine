@@ -1,87 +1,70 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import AppLayout from "@/components/AppLayout";
 import PageHeader from "@/components/PageHeader";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentLocationId } from "@/hooks/useLocations";
+import { useTenantId } from "@/hooks/useTenant";
 import { Card, CardContent } from "@/components/ui/card";
 import { Loader2, RotateCcw, Users, TrendingUp } from "lucide-react";
+import { toast } from "sonner";
 
 interface StaffRepeat { staff_id: string; name: string; total: number; repeated: number; rate: number }
+interface RetentionMetrics {
+  overall_second_visit?: { total?: number | string; repeated?: number | string };
+  overall_90_day?: { total?: number | string; repeated?: number | string };
+  by_staff?: Array<{
+    staff_id?: string;
+    name?: string;
+    total?: number | string;
+    repeated?: number | string;
+    rate?: number | string;
+  }>;
+}
+type RpcResult = PromiseLike<{ data: unknown; error: { message: string } | null }>;
+const callRetentionRpc = (args: Record<string, unknown>): RpcResult =>
+  (supabase.rpc as unknown as (fn: string, params: Record<string, unknown>) => RpcResult)("retention_metrics_v1", args);
 
 const Retention = () => {
   const locationId = useCurrentLocationId();
+  const tenantId = useTenantId();
   const [loading, setLoading] = useState(true);
   const [overallSecondVisit, setOverallSecondVisit] = useState({ total: 0, repeated: 0 });
   const [overall90Day, setOverall90Day] = useState({ total: 0, repeated: 0 });
   const [byStaff, setByStaff] = useState<StaffRepeat[]>([]);
 
   useEffect(() => {
-    if (!locationId) return;
+    if (!tenantId || !locationId) return;
     (async () => {
       setLoading(true);
-
-      // 過去1年の予約を staff/customer/date で取得
-      const since = new Date();
-      since.setFullYear(since.getFullYear() - 1);
-      const sinceStr = since.toISOString().slice(0, 10);
-
-      const { data: bookings } = await supabase
-        .from("bookings")
-        .select("customer_id, staff_id, booking_date")
-        .eq("location_id", locationId)
-        .gte("booking_date", sinceStr)
-        .in("status", ["confirmed", "completed"])
-        .order("booking_date", { ascending: true })
-        .limit(5000);
-
-      // 顧客別予約日リスト
-      const byCustomer: Record<string, string[]> = {};
-      const firstStaff: Record<string, string | null> = {};
-      (bookings || []).forEach((b: any) => {
-        if (!b.customer_id) return;
-        byCustomer[b.customer_id] = byCustomer[b.customer_id] || [];
-        byCustomer[b.customer_id].push(b.booking_date);
-        if (!(b.customer_id in firstStaff)) firstStaff[b.customer_id] = b.staff_id || null;
+      const { data, error } = await callRetentionRpc({
+        _owner_id: tenantId,
+        _location_id: locationId,
       });
-
-      // 新規→2回目転換率（1年以内に2回以上来た人/初回来た人）
-      const newCustomers = Object.entries(byCustomer);
-      const repeated2nd = newCustomers.filter(([, dates]) => dates.length >= 2).length;
-      setOverallSecondVisit({ total: newCustomers.length, repeated: repeated2nd });
-
-      // 90日以内再来率
-      const repeated90 = newCustomers.filter(([, dates]) => {
-        if (dates.length < 2) return false;
-        const first = new Date(dates[0]).getTime();
-        const second = new Date(dates[1]).getTime();
-        return (second - first) / 86400000 <= 90;
-      }).length;
-      setOverall90Day({ total: newCustomers.length, repeated: repeated90 });
-
-      // スタッフ別リピート率（初回担当が同じで2回目以降が来た割合）
-      const { data: staff } = await supabase.from("staff").select("id, name").eq("location_id", locationId).eq("active", true);
-      const staffStats: Record<string, { total: number; repeated: number }> = {};
-      (staff || []).forEach((s: any) => { staffStats[s.id] = { total: 0, repeated: 0 }; });
-      Object.entries(byCustomer).forEach(([cid, dates]) => {
-        const sid = firstStaff[cid];
-        if (!sid || !staffStats[sid]) return;
-        staffStats[sid].total++;
-        if (dates.length >= 2) staffStats[sid].repeated++;
+      if (error) {
+        toast.error("リピート率データを取得できませんでした");
+        setLoading(false);
+        return;
+      }
+      const metrics = (data || {}) as RetentionMetrics;
+      setOverallSecondVisit({
+        total: Number(metrics.overall_second_visit?.total || 0),
+        repeated: Number(metrics.overall_second_visit?.repeated || 0),
       });
-      setByStaff(
-        (staff || [])
-          .map((s: any) => ({
-            staff_id: s.id, name: s.name,
-            total: staffStats[s.id].total,
-            repeated: staffStats[s.id].repeated,
-            rate: staffStats[s.id].total > 0 ? Math.round(staffStats[s.id].repeated / staffStats[s.id].total * 100) : 0,
-          }))
-          .sort((a, b) => b.rate - a.rate)
-      );
+      setOverall90Day({
+        total: Number(metrics.overall_90_day?.total || 0),
+        repeated: Number(metrics.overall_90_day?.repeated || 0),
+      });
+      setByStaff((metrics.by_staff || []).map((row) => ({
+        staff_id: row.staff_id || "unknown",
+        name: row.name || "未設定",
+        total: Number(row.total || 0),
+        repeated: Number(row.repeated || 0),
+        rate: Number(row.rate || 0),
+      })));
 
       setLoading(false);
     })();
-  }, [locationId]);
+  }, [tenantId, locationId]);
 
   const pct = (n: number, d: number) => d > 0 ? Math.round(n / d * 100) : 0;
 

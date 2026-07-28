@@ -71,8 +71,8 @@ const Index = () => {
           {HERO_SLIDES.map((slide, idx) => (
             <div
               key={idx}
-              className="absolute inset-0 transition-opacity duration-[1800ms] ease-in-out"
-              style={{ opacity: idx === activeSlide ? 1 : 0 }}
+              className="absolute inset-0 transition-opacity ease-in-out"
+              style={{ opacity: idx === activeSlide ? 1 : 0, transitionDuration: "1800ms" }}
             >
               <img
                 src={slide.image}

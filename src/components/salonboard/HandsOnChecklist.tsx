@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Check, Circle, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useTenantId } from "@/hooks/useTenant";
+import { useCurrentLocationId } from "@/hooks/useLocations";
 import { cn } from "@/lib/utils";
 
 type StepKey = "downloaded" | "opened_extensions" | "dev_mode" | "loaded" | "logged_in" | "scan_success";
@@ -15,6 +17,8 @@ interface Props {
 
 const HandsOnChecklist = ({ onDownload, downloading }: Props) => {
   const { user } = useAuth();
+  const tenantId = useTenantId();
+  const locationId = useCurrentLocationId();
   const [manual, setManual] = useState<Record<StepKey, boolean>>({
     downloaded: false,
     opened_extensions: false,
@@ -39,13 +43,14 @@ const HandsOnChecklist = ({ onDownload, downloading }: Props) => {
 
   // Auto-detect: did this user ever successfully ingest from salonboard?
   useEffect(() => {
-    if (!user) return;
+    if (!tenantId || !locationId) return;
     let mounted = true;
     const check = async () => {
       const { data } = await supabase
         .from("salonboard_import_logs")
         .select("id")
-        .eq("owner_id", user.id)
+        .eq("owner_id", tenantId)
+        .eq("location_id", locationId)
         .in("status", ["success", "partial"])
         .limit(1);
       if (mounted && data && data.length > 0) setAutoScan(true);
@@ -53,7 +58,7 @@ const HandsOnChecklist = ({ onDownload, downloading }: Props) => {
     check();
     const t = setInterval(check, 8000);
     return () => { mounted = false; clearInterval(t); };
-  }, [user]);
+  }, [tenantId, locationId]);
 
   const toggle = (k: StepKey) => setManual((m) => ({ ...m, [k]: !m[k] }));
 

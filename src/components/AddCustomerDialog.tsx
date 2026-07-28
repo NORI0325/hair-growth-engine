@@ -50,7 +50,7 @@ const customerSelect =
 
 const friendlyInsertError = (error: { code?: string; message?: string }) => {
   if (error.code === "23505") {
-    return "同じ電話番号または外部IDの顧客が既に登録されています。既存顧客を検索してください。";
+    return "同じLINE連携情報または外部IDの顧客が既に登録されています。既存顧客を検索してください。";
   }
   if (error.message?.toLowerCase().includes("row-level security")) {
     return "顧客を追加する権限、または店舗の所属情報を確認してください。";
@@ -72,13 +72,14 @@ const AddCustomerDialog = ({ open, onOpenChange, onAdded }: Props) => {
     if (!ownerId) { toast.error("店舗の所属情報を取得できませんでした。画面を再読み込みしてください。"); return; }
     const parsed = schema.safeParse(form);
     if (!parsed.success) { toast.error(parsed.error.errors[0].message); return; }
+    const normalizedPhone = (parsed.data.phone || "").replace(/\D/g, "") || null;
     setLoading(true);
     const { data, error } = await supabase.from("customers").insert({
       owner_id: ownerId,
       location_id: locationId,
       full_name: parsed.data.full_name,
-      phone: parsed.data.phone || null,
-      email: parsed.data.email || null,
+      phone: normalizedPhone,
+      email: parsed.data.email?.toLowerCase() || null,
       birthday: parsed.data.birthday || null,
       last_visit_date: parsed.data.last_visit_date || null,
       visit_count: parsed.data.visit_count ?? 0,

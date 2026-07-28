@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useTenantId } from "@/hooks/useTenant";
+import { useCurrentLocationId } from "@/hooks/useLocations";
 import { format, addDays, startOfDay, isSameDay } from "date-fns";
 import { ja } from "date-fns/locale";
 import { TEMPLATE_CATALOG } from "@/lib/templateCatalog";
@@ -41,20 +43,23 @@ const JOB_COLOR: Record<string, string> = {
 
 const Schedule = () => {
   const { user } = useAuth();
+  const tenantId = useTenantId();
+  const locationId = useCurrentLocationId();
   const [days, setDays] = useState(14);
   const [filter, setFilter] = useState<string>("all");
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user) return;
+    if (!tenantId || !locationId) return;
     setLoading(true);
     const start = new Date().toISOString();
     const end = addDays(new Date(), days).toISOString();
     supabase
       .from("scheduled_jobs")
       .select("id, job_type, scheduled_for, status, customer_id, customers!inner(full_name)")
-      .eq("owner_id", user.id)
+      .eq("owner_id", tenantId)
+      .eq("location_id", locationId)
       .eq("status", "pending")
       .gte("scheduled_for", start)
       .lte("scheduled_for", end)
@@ -66,7 +71,7 @@ const Schedule = () => {
         })));
         setLoading(false);
       });
-  }, [user, days]);
+  }, [tenantId, locationId, days]);
 
   const filtered = useMemo(
     () => filter === "all" ? jobs : jobs.filter((j) => j.job_type === filter),
@@ -88,7 +93,9 @@ const Schedule = () => {
 
   const cancelJob = async (id: string) => {
     if (!confirm("この配信をキャンセルしますか？")) return;
-    await supabase.from("scheduled_jobs").update({ status: "cancelled" }).eq("id", id);
+    if (!tenantId || !locationId) return;
+    await supabase.from("scheduled_jobs").update({ status: "cancelled" })
+      .eq("id", id).eq("owner_id", tenantId).eq("location_id", locationId);
     setJobs((j) => j.filter((x) => x.id !== id));
   };
 

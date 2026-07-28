@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { useTenantRole } from "@/hooks/useTenant";
+import { useTenantId, useTenantRole } from "@/hooks/useTenant";
+import { useCurrentLocationId } from "@/hooks/useLocations";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Check, ChevronDown, ChevronUp, X } from "lucide-react";
@@ -18,29 +19,35 @@ interface Item {
 const SetupChecklist = () => {
   const { user } = useAuth();
   const role = useTenantRole();
+  const tenantId = useTenantId();
+  const locationId = useCurrentLocationId();
   const [items, setItems] = useState<Item[]>([]);
   const [open, setOpen] = useState(true);
   const [dismissed, setDismissed] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user) return;
-    const dis = localStorage.getItem(`setup_checklist_dismissed_${user.id}`);
+    if (!user || !tenantId || !locationId) return;
+    const dismissalKey = `setup_checklist_dismissed_${tenantId}_${locationId}`;
+    const dis = localStorage.getItem(dismissalKey);
     if (dis === "1") { setDismissed(true); return; }
     (async () => {
       const { data: p } = await supabase
         .from("profiles")
         .select("public_slug, inbound_key, line_channel_access_token, line_channel_secret")
-        .eq("id", user.id).maybeSingle();
+        .eq("id", tenantId).maybeSingle();
       const { count: menuCount } = await supabase
-        .from("menu_items").select("id", { count: "exact", head: true }).eq("owner_id", user.id);
+        .from("menu_items").select("id", { count: "exact", head: true })
+        .eq("owner_id", tenantId).eq("location_id", locationId).eq("active", true);
       const { count: staffCount } = await supabase
-        .from("staff").select("id", { count: "exact", head: true }).eq("owner_id", user.id);
+        .from("staff").select("id", { count: "exact", head: true })
+        .eq("owner_id", tenantId).eq("location_id", locationId).eq("active", true);
       const { count: inboundLogCount } = await supabase
-        .from("external_reservation_logs").select("id", { count: "exact", head: true }).eq("owner_id", user.id);
+        .from("external_reservation_logs").select("id", { count: "exact", head: true })
+        .eq("owner_id", tenantId).eq("location_id", locationId);
 
       setItems([
-        { key: "menus", label: "メニューを3つ以上登録", done: (menuCount ?? 0) >= 3, href: "/menu", cta: "メニューを開く" },
+        { key: "menus", label: "メニューを3つ以上登録", done: (menuCount ?? 0) >= 3, href: "/menu-items", cta: "メニューを開く" },
         { key: "staff", label: "スタッフを登録", done: (staffCount ?? 0) >= 1, href: "/staff", cta: "スタッフを開く" },
         { key: "share", label: "公開予約URLをSNS・名刺に掲載", done: !!p?.public_slug, href: "/share", cta: "URLを取得" },
         { key: "inbound", label: "ホットペッパー等の予約通知メール自動取込を設定", done: (inboundLogCount ?? 0) > 0, href: "/settings?tab=connect&section=inbound", cta: "転送先アドレスを見る" },
@@ -48,7 +55,7 @@ const SetupChecklist = () => {
       ]);
       setLoading(false);
     })();
-  }, [user]);
+  }, [user, tenantId, locationId]);
 
   if (dismissed || loading || items.length === 0) return null;
   if (role && role !== "owner") return null;
@@ -69,7 +76,13 @@ const SetupChecklist = () => {
         </div>
         <div className="flex items-center gap-1 ml-4">
           <button
-            onClick={(e) => { e.stopPropagation(); if (user) { localStorage.setItem(`setup_checklist_dismissed_${user.id}`, "1"); setDismissed(true); } }}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (tenantId && locationId) {
+                localStorage.setItem(`setup_checklist_dismissed_${tenantId}_${locationId}`, "1");
+                setDismissed(true);
+              }
+            }}
             className="p-1 text-muted-foreground hover:text-foreground"
             aria-label="非表示"
           >

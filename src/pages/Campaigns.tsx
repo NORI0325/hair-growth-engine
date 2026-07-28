@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { toast } from "sonner";
 import { Send, Loader2, Mail, MessageSquare } from "lucide-react";
 import { useCurrentLocationId } from "@/hooks/useLocations";
+import { useTenantId } from "@/hooks/useTenant";
 
 interface Campaign {
   id: string;
@@ -70,6 +71,7 @@ const statusInfo = (s: string) => {
 
 const Campaigns = () => {
   const { user } = useAuth();
+  const tenantId = useTenantId();
   const locationId = useCurrentLocationId();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [open, setOpen] = useState(false);
@@ -82,9 +84,12 @@ const Campaigns = () => {
   });
 
   const load = async () => {
+    if (!tenantId || !locationId) return;
     const { data } = await supabase
       .from("campaigns")
       .select("id, title, email_subject, status, total_recipients, sent_at, send_email, send_sms, target_segment")
+      .eq("owner_id", tenantId)
+      .eq("location_id", locationId)
       .order("created_at", { ascending: false });
     if (!data) return;
 
@@ -117,7 +122,7 @@ const Campaigns = () => {
     setCampaigns(enriched as Campaign[]);
   };
 
-  useEffect(() => { load(); }, [locationId]);
+  useEffect(() => { load(); }, [tenantId, locationId]);
 
   const applyTemplate = (idx: number) => {
     const t = TEMPLATES[idx];
@@ -125,7 +130,7 @@ const Campaigns = () => {
   };
 
   const handleSend = async () => {
-    if (!user) return;
+    if (!user || !tenantId) return;
     if (!locationId) { toast.error("店舗が選択されていません"); return; }
     if (!form.title || !form.email_subject || !form.email_body) { toast.error("タイトル・件名・本文を入力してください"); return; }
     if (form.send_sms && !form.sms_body) { toast.error("SMS本文を入力してください"); return; }
@@ -134,7 +139,7 @@ const Campaigns = () => {
     const { data: campaign, error } = await supabase
       .from("campaigns")
       .insert({
-        owner_id: user.id,
+        owner_id: tenantId,
         location_id: locationId,
         title: form.title,
         email_subject: form.email_subject,

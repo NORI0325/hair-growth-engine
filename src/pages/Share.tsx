@@ -1,14 +1,17 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useTenantId } from "@/hooks/useTenant";
 import AppLayout from "@/components/AppLayout";
 import PageHeader from "@/components/PageHeader";
+import LocalQrCode from "@/components/LocalQrCode";
 import { Button } from "@/components/ui/button";
 import { Loader2, Copy, Check, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 
 const Share = () => {
   const { user } = useAuth();
+  const tenantId = useTenantId();
   const [loading, setLoading] = useState(true);
   const [slug, setSlug] = useState("");
   const [salonName, setSalonName] = useState("");
@@ -16,11 +19,11 @@ const Share = () => {
 
   useEffect(() => {
     const load = async () => {
-      if (!user) return;
+      if (!tenantId) return;
       const { data } = await supabase
         .from("profiles")
         .select("public_slug, salon_name")
-        .eq("id", user.id)
+        .eq("id", tenantId)
         .maybeSingle();
       if (data) {
         setSlug(data.public_slug || "");
@@ -29,12 +32,9 @@ const Share = () => {
       setLoading(false);
     };
     load();
-  }, [user]);
+  }, [tenantId]);
 
-  const url = slug ? `${window.location.origin}/salon/${slug}` : "";
-  const qrUrl = url
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=400x400&margin=10&data=${encodeURIComponent(url)}`
-    : "";
+  const url = slug ? `https://saronboost.com/salon/${slug}` : "";
 
   const copy = async () => {
     await navigator.clipboard.writeText(url);
@@ -95,12 +95,9 @@ const Share = () => {
         <div className="border border-border p-12 flex flex-col items-center justify-center bg-secondary/30">
           <p className="eyebrow mb-6 text-gold">— スキャンで予約 / Scan to Reserve —</p>
           <div className="font-serif text-base mb-6">{salonName}</div>
-          {qrUrl && <img src={qrUrl} alt="予約用QRコード" className="w-64 h-64 bg-white p-3" />}
+          {url && <LocalQrCode value={url} title="予約用QRコード" className="w-64 h-64 bg-white p-3" />}
           <p className="text-xs text-muted-foreground mt-6 tracking-wider">店頭・名刺・チラシ用</p>
-          <a href={qrUrl} download={`${slug}-qr.png`}
-            className="text-xs eyebrow text-gold mt-4 hover:underline">
-            QR画像をダウンロード
-          </a>
+          <p className="text-xs text-muted-foreground mt-3">印刷する場合はブラウザの印刷機能をご利用ください</p>
         </div>
       </div>
     </AppLayout>

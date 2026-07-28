@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useCurrentLocationId } from "@/hooks/useLocations";
+import { useTenantId } from "@/hooks/useTenant";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -38,6 +39,7 @@ const empty: Form = {
 
 export default function ParkingSettingsEditor() {
   const { user } = useAuth();
+  const tenantId = useTenantId();
   const locationId = useCurrentLocationId();
   const [form, setForm] = useState<Form>(empty);
   const [loading, setLoading] = useState(true);
@@ -46,12 +48,12 @@ export default function ParkingSettingsEditor() {
 
   useEffect(() => {
     (async () => {
-      if (!user) return;
+      if (!user || !tenantId) return;
       setLoading(true);
       let q = supabase
         .from("salon_parking_settings")
         .select("*")
-        .eq("owner_id", user.id);
+        .eq("owner_id", tenantId);
       q = locationId ? q.eq("location_id", locationId) : q.is("location_id", null);
       const { data } = await q.maybeSingle();
       if (data) {
@@ -73,13 +75,13 @@ export default function ParkingSettingsEditor() {
       }
       setLoading(false);
     })();
-  }, [user, locationId]);
+  }, [user, tenantId, locationId]);
 
   const save = async () => {
-    if (!user) return;
+    if (!user || !tenantId) return;
     setSaving(true);
     const payload: any = {
-      owner_id: user.id,
+      owner_id: tenantId,
       location_id: locationId ?? null,
       parking_status: form.parking_status,
       parking_spaces: form.parking_spaces ? Number(form.parking_spaces) : null,

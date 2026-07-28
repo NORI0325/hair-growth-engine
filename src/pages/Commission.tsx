@@ -4,6 +4,7 @@ import PageHeader from "@/components/PageHeader";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useCurrentLocationId } from "@/hooks/useLocations";
+import { useTenantId } from "@/hooks/useTenant";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -40,6 +41,7 @@ interface MonthlyResult {
 
 const Commission = () => {
   const { user } = useAuth();
+  const tenantId = useTenantId();
   const locationId = useCurrentLocationId();
   const [staff, setStaff] = useState<Staff[]>([]);
   const [rules, setRules] = useState<Record<string, Rule>>({});
@@ -49,12 +51,12 @@ const Commission = () => {
   const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
 
   useEffect(() => {
-    if (!user || !locationId) return;
+    if (!tenantId || !locationId) return;
     (async () => {
       setLoading(true);
       const [{ data: s }, { data: r }] = await Promise.all([
         supabase.from("staff").select("id, name").eq("location_id", locationId).eq("active", true).order("sort_order"),
-        supabase.from("staff_commission_rules").select("*").eq("owner_id", user.id),
+        supabase.from("staff_commission_rules").select("*").eq("owner_id", tenantId),
       ]);
       setStaff(s || []);
       const map: Record<string, Rule> = {};
@@ -72,7 +74,7 @@ const Commission = () => {
       setRules(map);
       setLoading(false);
     })();
-  }, [user, locationId]);
+  }, [tenantId, locationId]);
 
   // 月次集計
   useEffect(() => {
@@ -135,7 +137,8 @@ const Commission = () => {
     const rule = rules[staffId];
     if (!rule) return;
     setSaving(staffId);
-    const payload = { ...rule, owner_id: user.id, location_id: locationId };
+    if (!tenantId) return;
+    const payload = { ...rule, owner_id: tenantId, location_id: locationId };
     const { error } = await supabase.from("staff_commission_rules").upsert(payload, { onConflict: "staff_id" });
     setSaving(null);
     if (error) { toast.error("保存失敗: " + error.message); return; }

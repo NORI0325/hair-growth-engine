@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { AlertTriangle, CheckCheck, FileSearch, GitCompare, AlertCircle, MapPinOff, Send, Download, CalendarDays, RefreshCw, ExternalLink, ChevronDown, ChevronRight, StopCircle } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useCurrentLocationId } from "@/hooks/useLocations";
+import { useTenantId } from "@/hooks/useTenant";
 import SyncStatusDialog from "@/components/SyncStatusDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -167,6 +168,7 @@ const getTokyoDateWithOffset = (offsetDays: number) => {
 
 export default function SyncReview() {
   const { user } = useAuth();
+  const tenantId = useTenantId();
   const currentLocationId = useCurrentLocationId();
   const [items, setItems] = useState<Row[]>([]);
   const [mirrorRows, setMirrorRows] = useState<Row[]>([]);
@@ -204,7 +206,7 @@ export default function SyncReview() {
   const [expandedDates, setExpandedDates] = useState<Record<string, boolean>>({});
 
   const load = async () => {
-    if (!user) return;
+    if (!user || !tenantId) return;
     setLoading(true);
 
     // bookings: sync_status が要確認 or location_id NULL（カレンダー欠落事故防止）
@@ -217,7 +219,7 @@ export default function SyncReview() {
         customers:customer_id(full_name),
         staff:staff_id(name)
       `)
-      .eq("owner_id", user.id)
+      .eq("owner_id", tenantId)
       .or(
         "sync_status.in.(external_missing,local_missing,conflict,failed,needs_review),location_id.is.null,needs_manual_review.eq.true",
       )
@@ -263,7 +265,7 @@ export default function SyncReview() {
         customers:customer_id(full_name),
         staff:staff_id(name)
       `)
-      .eq("owner_id", user.id)
+      .eq("owner_id", tenantId)
       .eq("source_channel", "salonboard")
       .gte("booking_date", mirrorStart)
       .lte("booking_date", mirrorEnd)
@@ -284,7 +286,7 @@ export default function SyncReview() {
         matched_with_diff_count, salonboard_only_count, local_only_count, conflict_count,
         needs_review_count, error_type, error_message, created_at
       `)
-      .eq("owner_id", user.id)
+      .eq("owner_id", tenantId)
       .order("created_at", { ascending: false })
       .limit(8);
     if (currentLocationId) {
@@ -301,7 +303,7 @@ export default function SyncReview() {
         matched_with_diff_count, salonboard_only_count, local_only_count, conflict_count,
         needs_review_count, error_type, error_message, created_at
       `)
-      .eq("owner_id", user.id)
+      .eq("owner_id", tenantId)
       .eq("run_type", "scheduled")
       .order("created_at", { ascending: false })
       .limit(12);
@@ -315,7 +317,7 @@ export default function SyncReview() {
     const { data: logs } = await supabase
       .from("external_reservation_logs" as any)
       .select("id, source, raw_subject, raw_from, status, error, parsed_data, created_booking_id, created_at")
-      .eq("owner_id", user.id)
+      .eq("owner_id", tenantId)
       .eq("status", "needs_review")
       .order("created_at", { ascending: false })
       .limit(100);
@@ -324,7 +326,7 @@ export default function SyncReview() {
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, [user, currentLocationId]);
+  useEffect(() => { load(); }, [user, tenantId, currentLocationId]);
 
   const markResolved = async (b: Row) => {
     if (!confirm("この予約を「確認済み」にします。よろしいですか？")) return;
@@ -391,7 +393,7 @@ export default function SyncReview() {
     slot: ReservationSyncSlot,
     options?: { range_start?: string; range_end?: string },
   ) => {
-    if (!user) return;
+    if (!user || !tenantId) return;
     if (!currentLocationId) {
       toast.error("店舗を選択してから実行してください。");
       return;
@@ -400,7 +402,7 @@ export default function SyncReview() {
     try {
       const { data, error } = await supabase.functions.invoke("salonboard-fetch-reservations-range", {
         body: {
-          owner_id: user.id,
+          owner_id: tenantId,
           location_id: currentLocationId,
           run_type: "manual",
           slot,

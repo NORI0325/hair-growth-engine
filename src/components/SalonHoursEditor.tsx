@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Loader2, Clock } from "lucide-react";
@@ -18,14 +17,12 @@ interface SalonHour {
 const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
 
 const SalonHoursEditor = () => {
-  const { user } = useAuth();
   const { currentLocation, currentLocationId: locationId, isLoading: locationsLoading } = useCurrentLocation();
   const [hours, setHours] = useState<SalonHour[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = async () => {
-    if (!user) { setLoading(false); return; }
-    if (!locationId) { setLoading(false); setHours([]); return; }
+    if (!currentLocation?.tenant_id || !locationId) { setLoading(false); setHours([]); return; }
     setLoading(true);
     const { data, error } = await supabase
       .from("salon_hours")
@@ -44,7 +41,7 @@ const SalonHoursEditor = () => {
       const missing = [0, 1, 2, 3, 4, 5, 6].filter(w => !existing.has(w));
       if (missing.length > 0) {
         const seeds = missing.map(w => ({
-          owner_id: user.id,
+          owner_id: currentLocation.tenant_id,
           location_id: locationId,
           weekday: w,
           open_time: "10:00:00",
@@ -62,7 +59,7 @@ const SalonHoursEditor = () => {
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, [user, locationId]);
+  useEffect(() => { load(); }, [currentLocation?.tenant_id, locationId]);
 
   const updateHour = async (h: SalonHour, patch: Partial<SalonHour>) => {
     setHours(prev => prev.map(x => x.id === h.id ? { ...x, ...patch } : x));

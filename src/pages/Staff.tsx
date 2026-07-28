@@ -11,6 +11,7 @@ import { Loader2, Plus, Trash2, Clock, Calendar as CalIcon, Plug } from "lucide-
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useCurrentLocationId } from "@/hooks/useLocations";
+import { useTenantId } from "@/hooks/useTenant";
 import ChannelMappingDialog from "@/components/ChannelMappingDialog";
 
 interface Staff {
@@ -46,6 +47,7 @@ const PALETTE = ["#C9A961", "#8B7355", "#A8B5A0", "#9C7C8C", "#6B8E9E", "#B89968
 
 const StaffPage = () => {
   const { user } = useAuth();
+  const tenantId = useTenantId();
   const locationId = useCurrentLocationId();
   const [staff, setStaff] = useState<Staff[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
@@ -73,10 +75,10 @@ const StaffPage = () => {
   useEffect(() => { load(); }, [user, locationId]);
 
   const addStaff = async () => {
-    if (!user || !locationId || !draft.name.trim()) { toast.error("名前を入力してください"); return; }
+    if (!user || !tenantId || !locationId || !draft.name.trim()) { toast.error("名前を入力してください"); return; }
     const max = staff.reduce((m, s) => Math.max(m, s.sort_order), 0);
     const { error } = await supabase.from("staff").insert({
-      owner_id: user.id,
+      owner_id: tenantId,
       location_id: locationId,
       name: draft.name.trim().slice(0, 50),
       display_color: draft.color,
@@ -110,10 +112,10 @@ const StaffPage = () => {
   };
 
   const addTimeOff = async () => {
-    if (!user || !editingStaff || !locationId) return;
+    if (!user || !tenantId || !editingStaff || !locationId) return;
     if (!timeOffDraft.start || !timeOffDraft.end) { toast.error("日時を入力してください"); return; }
     const { error } = await supabase.from("staff_time_off").insert({
-      owner_id: user.id,
+      owner_id: tenantId,
       location_id: locationId,
       staff_id: editingStaff.id,
       start_at: new Date(timeOffDraft.start).toISOString(),

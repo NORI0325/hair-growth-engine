@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
+import { useTenantId } from "@/hooks/useTenant";
+import { useCurrentLocationId } from "@/hooks/useLocations";
 
 const CHANNELS = [
   { key: "salonboard", label: "サロンボード" },
@@ -24,14 +26,21 @@ type Props = {
 
 export default function ChannelMappingDialog({ open, onOpenChange, kind, targetId, targetName }: Props) {
   const { user } = useAuth();
+  const tenantId = useTenantId();
+  const locationId = useCurrentLocationId();
   const table = (kind === "staff" ? "staff_channel_mappings" : "menu_channel_mappings") as any;
   const fk = kind === "staff" ? "staff_id" : "menu_id";
   const [rows, setRows] = useState<Record<string, { external_name: string; external_id: string }>>({});
 
   useEffect(() => {
-    if (!open || !targetId) return;
+    if (!open || !targetId || !tenantId || !locationId) return;
     (async () => {
-      const { data } = await (supabase as any).from(table).select("channel, external_name, external_id").eq(fk, targetId);
+      const { data } = await (supabase as any)
+        .from(table)
+        .select("channel, external_name, external_id")
+        .eq("owner_id", tenantId)
+        .eq("location_id", locationId)
+        .eq(fk, targetId);
       const map: Record<string, { external_name: string; external_id: string }> = {};
       for (const c of CHANNELS) map[c.key] = { external_name: "", external_id: "" };
       for (const d of data || []) {
@@ -39,14 +48,15 @@ export default function ChannelMappingDialog({ open, onOpenChange, kind, targetI
       }
       setRows(map);
     })();
-  }, [open, targetId]);
+  }, [open, targetId, tenantId, locationId, table, fk]);
 
   const save = async () => {
-    if (!user || !targetId) return;
+    if (!user || !tenantId || !locationId || !targetId) return;
     const upserts = CHANNELS
       .filter((c) => rows[c.key].external_name || rows[c.key].external_id)
       .map((c) => ({
-        owner_id: user.id,
+        owner_id: tenantId,
+        location_id: locationId,
         [fk]: targetId,
         channel: c.key,
         external_name: rows[c.key].external_name || null,
@@ -55,7 +65,13 @@ export default function ChannelMappingDialog({ open, onOpenChange, kind, targetI
 
     const empties = CHANNELS.filter((c) => !rows[c.key].external_name && !rows[c.key].external_id);
     for (const c of empties) {
-      await (supabase as any).from(table).delete().eq(fk, targetId).eq("channel", c.key);
+      await (supabase as any)
+        .from(table)
+        .delete()
+        .eq("owner_id", tenantId)
+        .eq("location_id", locationId)
+        .eq(fk, targetId)
+        .eq("channel", c.key);
     }
 
     if (upserts.length > 0) {

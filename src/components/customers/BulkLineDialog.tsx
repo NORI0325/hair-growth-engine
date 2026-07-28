@@ -7,6 +7,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2, Send, MessageCircle, Mail, Smartphone, Sparkles, Users, Filter, Save, BookmarkPlus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useTenantId } from "@/hooks/useTenant";
+import { useCurrentLocationId } from "@/hooks/useLocations";
 
 interface Customer {
   id: string;
@@ -96,6 +98,8 @@ const PRESETS: { key: string; label: string; subject: string; body: string; tip:
 ];
 
 const BulkLineDialog = ({ open, onClose, customers }: Props) => {
+  const tenantId = useTenantId();
+  const locationId = useCurrentLocationId();
   const [message, setMessage] = useState("");
   const [subject, setSubject] = useState("サロンからのお知らせ");
   const [sending, setSending] = useState(false);
@@ -123,18 +127,18 @@ const BulkLineDialog = ({ open, onClose, customers }: Props) => {
 
   // 初回マスタ読込
   useEffect(() => {
-    if (!open) return;
+    if (!open || !tenantId || !locationId) return;
     (async () => {
       const [{ data: staff }, { data: tags }, { data: segs }] = await Promise.all([
-        supabase.from("staff").select("id, name").eq("active", true).order("name"),
-        supabase.from("customer_tags" as any).select("id, name, color").order("sort_order"),
-        supabase.from("broadcast_segments" as any).select("id, name, conditions").order("updated_at", { ascending: false }),
+        supabase.from("staff").select("id, name").eq("owner_id", tenantId).eq("location_id", locationId).eq("active", true).order("name"),
+        supabase.from("customer_tags" as any).select("id, name, color").eq("owner_id", tenantId).order("sort_order"),
+        supabase.from("broadcast_segments" as any).select("id, name, conditions").eq("owner_id", tenantId).order("updated_at", { ascending: false }),
       ]);
       setStaffOptions((staff || []) as any);
       setTagOptions((tags || []) as any);
       setSavedSegments((segs || []) as any);
     })();
-  }, [open]);
+  }, [open, tenantId, locationId]);
 
   // セグメントをAPI形式に変換
   const buildSegmentPayload = useCallback(() => ({
@@ -161,11 +165,13 @@ const BulkLineDialog = ({ open, onClose, customers }: Props) => {
 
   // サーバープレビュー（debounce）
   useEffect(() => {
-    if (!open || customers.length === 0) return;
+    if (!open || !tenantId || !locationId || customers.length === 0) return;
     const timer = setTimeout(async () => {
       setPreviewLoading(true);
       const { data, error } = await supabase.functions.invoke("broadcast-preview", {
         body: {
+          owner_id: tenantId,
+          location_id: locationId,
           customer_ids: customers.map((c) => c.id),
           segment: buildSegmentPayload(),
           skip_recent_days: skipRecent ? skipDays : 0,
@@ -176,7 +182,7 @@ const BulkLineDialog = ({ open, onClose, customers }: Props) => {
       if (!error && data) setServerPreview(data as any);
     }, 400);
     return () => clearTimeout(timer);
-  }, [open, customers, seg, skipRecent, skipDays, buildSegmentPayload]);
+  }, [open, tenantId, locationId, customers, seg, skipRecent, skipDays, buildSegmentPayload]);
 
   const reach = useMemo(() => ({
     line: customers.filter((c) => /^U[0-9a-f]{32}$/i.test(c.line_user_id || "")).length,
@@ -225,14 +231,13 @@ const BulkLineDialog = ({ open, onClose, customers }: Props) => {
   const saveSegment = async () => {
     const name = window.prompt("セグメント名を入力してください（例: 30代女性カラー客）");
     if (!name) return;
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { toast.error("ログイン状態を確認してください"); return; }
+    if (!tenantId) { toast.error("店舗の所属情報を確認してください"); return; }
     const { error } = await supabase.from("broadcast_segments" as any).insert({
-      owner_id: user.id, name, conditions: seg,
+      owner_id: tenantId, name, conditions: seg,
     });
     if (error) { toast.error("保存に失敗しました"); return; }
     toast.success(`セグメント「${name}」を保存しました`);
-    const { data: segs } = await supabase.from("broadcast_segments" as any).select("id, name, conditions").order("updated_at", { ascending: false });
+    const { data: segs } = await supabase.from("broadcast_segments" as any).select("id, name, conditions").eq("owner_id", tenantId).order("updated_at", { ascending: false });
     setSavedSegments((segs || []) as any);
   };
 
@@ -244,14 +249,16 @@ const BulkLineDialog = ({ open, onClose, customers }: Props) => {
   };
 
   const deleteSegment = async (id: string) => {
+    if (!tenantId) return;
     if (!confirm("このセグメントを削除しますか？")) return;
-    const { error } = await supabase.from("broadcast_segments" as any).delete().eq("id", id);
+    const { error } = await supabase.from("broadcast_segments" as any).delete().eq("owner_id", tenantId).eq("id", id);
     if (error) { toast.error("削除に失敗しました"); return; }
     setSavedSegments((s) => s.filter((x) => x.id !== id));
     toast.success("削除しました");
   };
 
   const send = async () => {
+    if (!tenantId || !locationId) { toast.error("店舗を選択してください"); return; }
     if (message.trim().length < 2) { toast.error("メッセージを入力してください"); return; }
     if (!useLine && !useSms && !useEmail) { toast.error("送信チャネルを選択してください"); return; }
     if (serverPreview && serverPreview.total === 0) {
@@ -267,6 +274,9 @@ const BulkLineDialog = ({ open, onClose, customers }: Props) => {
     if (useEmail) channels.push("email");
     const { data, error } = await supabase.functions.invoke("bulk-broadcast", {
       body: {
+        owner_id: tenantId,
+        location_id: locationId,
+        broadcast_request_id: crypto.randomUUID(),
         message, subject, channels,
         customer_ids: customers.map((c) => c.id),
         skip_recent_days: skipRecent ? skipDays : 0,

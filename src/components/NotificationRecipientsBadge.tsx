@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useTenantId } from "@/hooks/useTenant";
 import { Bell, Mail, MessageCircle, AlertTriangle, Settings as SettingsIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -18,17 +19,18 @@ interface Props {
 
 const NotificationRecipientsBadge = ({ variant = "dashboard" }: Props) => {
   const { user } = useAuth();
+  const tenantId = useTenantId();
   const [recipients, setRecipients] = useState<Recipient[]>([]);
   const [legacyEmail, setLegacyEmail] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user) return;
+    if (!tenantId) return;
     (async () => {
       const { data } = await supabase
         .from("profiles")
         .select("notification_recipients, owner_notification_email")
-        .eq("id", user.id)
+        .eq("id", tenantId)
         .maybeSingle();
       const list: Recipient[] = Array.isArray(data?.notification_recipients)
         ? (data!.notification_recipients as Recipient[])
@@ -37,7 +39,7 @@ const NotificationRecipientsBadge = ({ variant = "dashboard" }: Props) => {
       setLegacyEmail((data?.owner_notification_email as string | null) ?? null);
       setLoading(false);
     })();
-  }, [user]);
+  }, [tenantId]);
 
   if (loading) return null;
 

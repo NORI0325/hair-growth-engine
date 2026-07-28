@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useCurrentLocationId } from "@/hooks/useLocations";
+import { useTenantId } from "@/hooks/useTenant";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -43,6 +44,7 @@ const empty = (customerId: string): Chart => ({
 
 export const CustomerChartPanel = ({ customerId, onSaved }: { customerId: string; onSaved?: () => void }) => {
   const { user } = useAuth();
+  const tenantId = useTenantId();
   const locationId = useCurrentLocationId();
   const [chart, setChart] = useState<Chart>(empty(customerId));
   const [loading, setLoading] = useState(true);
@@ -51,23 +53,29 @@ export const CustomerChartPanel = ({ customerId, onSaved }: { customerId: string
   useEffect(() => {
     (async () => {
       setLoading(true);
+      if (!tenantId) {
+        setChart(empty(customerId));
+        setLoading(false);
+        return;
+      }
       const { data } = await supabase
         .from("customer_charts")
         .select("*")
+        .eq("owner_id", tenantId)
         .eq("customer_id", customerId)
         .maybeSingle();
       if (data) setChart(data as Chart);
       else setChart(empty(customerId));
       setLoading(false);
     })();
-  }, [customerId]);
+  }, [customerId, tenantId]);
 
   const save = async () => {
-    if (!user) return;
+    if (!user || !tenantId || !locationId) return;
     setSaving(true);
     const payload: any = {
       ...chart,
-      owner_id: user.id,
+      owner_id: tenantId,
       location_id: locationId,
     };
     const { error } = await supabase

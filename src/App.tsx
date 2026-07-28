@@ -1,66 +1,84 @@
+import { lazy, Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Outlet, Route, Routes } from "react-router-dom";
+import { Loader2 } from "lucide-react";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/hooks/useAuth";
-import ProtectedRoute from "@/components/ProtectedRoute";
-import Index from "./pages/Index";
-import Auth from "./pages/Auth";
-import ForgotPassword from "./pages/ForgotPassword";
-import ResetPassword from "./pages/ResetPassword";
-import Dashboard from "./pages/Dashboard";
-import Customers from "./pages/Customers";
-import ImportCustomers from "./pages/ImportCustomers";
-import Campaigns from "./pages/Campaigns";
-import Bookings from "./pages/Bookings";
-import Booking from "./pages/Booking";
-import MyBookings from "./pages/MyBookings";
-import PublicBooking from "./pages/PublicBooking";
-import LineLink from "./pages/LineLink";
-import Share from "./pages/Share";
-import Settings from "./pages/Settings";
-import EmailLogs from "./pages/EmailLogs";
-import LineBroadcast from "./pages/LineBroadcast";
-import Templates from "./pages/Templates";
-import Schedule from "./pages/Schedule";
-import Performance from "./pages/Performance";
-import MenuItems from "./pages/MenuItems";
-import Staff from "./pages/Staff";
-import Incentives from "./pages/Incentives";
-import Points from "./pages/Points";
-import Unsubscribe from "./pages/Unsubscribe";
-import Inbox from "./pages/Inbox";
-import SalonBoardExport from "./pages/SalonBoardExport";
-import Onboarding from "./pages/Onboarding";
-import Billing from "./pages/Billing";
-import Team from "./pages/Team";
-import Admin from "./pages/Admin";
-import InviteAccept from "./pages/InviteAccept";
-import Terms from "./pages/Terms";
-import Privacy from "./pages/Privacy";
-import Tokushoho from "./pages/Tokushoho";
-import Locations from "./pages/Locations";
-import Approvals from "./pages/Approvals";
-import DeliveryDashboard from "./pages/DeliveryDashboard";
-import ABTests from "./pages/ABTests";
-import SegmentTemplates from "./pages/SegmentTemplates";
-import InboundLogs from "./pages/InboundLogs";
-import CalendarPage from "./pages/CalendarPage";
-import HelpCenter from "./pages/HelpCenter";
-import CustomerChart from "./pages/CustomerChart";
-import Commission from "./pages/Commission";
-import Retention from "./pages/Retention";
-import Reservations from "./pages/Reservations";
-import ReservationAction from "./pages/ReservationAction";
-import ChannelIntegrations from "./pages/ChannelIntegrations";
-import SyncReview from "./pages/SyncReview";
-import SalonboardOnboarding from "./pages/SalonboardOnboarding";
-import SalonboardAutoMapping from "./pages/SalonboardAutoMapping";
-import NotFound from "./pages/NotFound";
 import { LocationProvider } from "@/hooks/useLocations";
+import ProtectedRoute from "@/components/ProtectedRoute";
+import RequireActiveSubscription from "@/components/RequireActiveSubscription";
+
+const Index = lazy(() => import("./pages/Index"));
+const Auth = lazy(() => import("./pages/Auth"));
+const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
+const ResetPassword = lazy(() => import("./pages/ResetPassword"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const Customers = lazy(() => import("./pages/Customers"));
+const ImportCustomers = lazy(() => import("./pages/ImportCustomers"));
+const Campaigns = lazy(() => import("./pages/Campaigns"));
+const Bookings = lazy(() => import("./pages/Bookings"));
+const Booking = lazy(() => import("./pages/Booking"));
+const MyBookings = lazy(() => import("./pages/MyBookings"));
+const PublicBooking = lazy(() => import("./pages/PublicBooking"));
+const LineLink = lazy(() => import("./pages/LineLink"));
+const Share = lazy(() => import("./pages/Share"));
+const Settings = lazy(() => import("./pages/Settings"));
+const EmailLogs = lazy(() => import("./pages/EmailLogs"));
+const LineBroadcast = lazy(() => import("./pages/LineBroadcast"));
+const Templates = lazy(() => import("./pages/Templates"));
+const Schedule = lazy(() => import("./pages/Schedule"));
+const Performance = lazy(() => import("./pages/Performance"));
+const MenuItems = lazy(() => import("./pages/MenuItems"));
+const Staff = lazy(() => import("./pages/Staff"));
+const Incentives = lazy(() => import("./pages/Incentives"));
+const Points = lazy(() => import("./pages/Points"));
+const Unsubscribe = lazy(() => import("./pages/Unsubscribe"));
+const Inbox = lazy(() => import("./pages/Inbox"));
+const SalonBoardExport = lazy(() => import("./pages/SalonBoardExport"));
+const Onboarding = lazy(() => import("./pages/Onboarding"));
+const Billing = lazy(() => import("./pages/Billing"));
+const Team = lazy(() => import("./pages/Team"));
+const Admin = lazy(() => import("./pages/Admin"));
+const InviteAccept = lazy(() => import("./pages/InviteAccept"));
+const Terms = lazy(() => import("./pages/Terms"));
+const Privacy = lazy(() => import("./pages/Privacy"));
+const Tokushoho = lazy(() => import("./pages/Tokushoho"));
+const Locations = lazy(() => import("./pages/Locations"));
+const Approvals = lazy(() => import("./pages/Approvals"));
+const DeliveryDashboard = lazy(() => import("./pages/DeliveryDashboard"));
+const ABTests = lazy(() => import("./pages/ABTests"));
+const SegmentTemplates = lazy(() => import("./pages/SegmentTemplates"));
+const InboundLogs = lazy(() => import("./pages/InboundLogs"));
+const CalendarPage = lazy(() => import("./pages/CalendarPage"));
+const HelpCenter = lazy(() => import("./pages/HelpCenter"));
+const CustomerChart = lazy(() => import("./pages/CustomerChart"));
+const Commission = lazy(() => import("./pages/Commission"));
+const Retention = lazy(() => import("./pages/Retention"));
+const Reservations = lazy(() => import("./pages/Reservations"));
+const ReservationAction = lazy(() => import("./pages/ReservationAction"));
+const ChannelIntegrations = lazy(() => import("./pages/ChannelIntegrations"));
+const SyncReview = lazy(() => import("./pages/SyncReview"));
+const SalonboardOnboarding = lazy(() => import("./pages/SalonboardOnboarding"));
+const SalonboardAutoMapping = lazy(() => import("./pages/SalonboardAutoMapping"));
+const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient();
+
+const RouteLoading = () => (
+  <div className="min-h-screen flex items-center justify-center bg-background">
+    <Loader2 className="w-6 h-6 animate-spin text-gold" aria-label="読み込み中" />
+  </div>
+);
+
+const ProtectedSubscribedLayout = () => (
+  <ProtectedRoute>
+    <RequireActiveSubscription><Outlet /></RequireActiveSubscription>
+  </ProtectedRoute>
+);
+
+const ProtectedLayout = () => <ProtectedRoute><Outlet /></ProtectedRoute>;
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -70,65 +88,73 @@ const App = () => (
       <BrowserRouter>
         <AuthProvider>
           <LocationProvider>
-          <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/auth" element={<Auth />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
-            <Route path="/book/:token" element={<Booking />} />
-            <Route path="/my-bookings/:token" element={<MyBookings />} />
-            <Route path="/salon/:slug" element={<PublicBooking />} />
-            <Route path="/line-link" element={<LineLink />} />
-            <Route path="/line-link/*" element={<LineLink />} />
-            <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-            <Route path="/inbox" element={<ProtectedRoute><Inbox /></ProtectedRoute>} />
-            <Route path="/customers" element={<ProtectedRoute><Customers /></ProtectedRoute>} />
-            <Route path="/customers/:customerId/chart" element={<ProtectedRoute><CustomerChart /></ProtectedRoute>} />
-            <Route path="/commission" element={<ProtectedRoute><Commission /></ProtectedRoute>} />
-            <Route path="/retention" element={<ProtectedRoute><Retention /></ProtectedRoute>} />
-            <Route path="/import" element={<ProtectedRoute><ImportCustomers /></ProtectedRoute>} />
-            <Route path="/campaigns" element={<ProtectedRoute><Campaigns /></ProtectedRoute>} />
-            <Route path="/bookings" element={<ProtectedRoute><Bookings /></ProtectedRoute>} />
-            <Route path="/calendar" element={<ProtectedRoute><CalendarPage /></ProtectedRoute>} />
-            <Route path="/inbound-logs" element={<ProtectedRoute><InboundLogs /></ProtectedRoute>} />
-            <Route path="/approvals" element={<ProtectedRoute><Approvals /></ProtectedRoute>} />
-            <Route path="/reservations" element={<ProtectedRoute><Reservations /></ProtectedRoute>} />
-            <Route path="/delivery" element={<ProtectedRoute><DeliveryDashboard /></ProtectedRoute>} />
-            <Route path="/ab-tests" element={<ProtectedRoute><ABTests /></ProtectedRoute>} />
-            <Route path="/segment-templates" element={<ProtectedRoute><SegmentTemplates /></ProtectedRoute>} />
-            <Route path="/share" element={<ProtectedRoute><Share /></ProtectedRoute>} />
-            <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-            <Route path="/email-logs" element={<ProtectedRoute><EmailLogs /></ProtectedRoute>} />
-            <Route path="/line-broadcast" element={<ProtectedRoute><LineBroadcast /></ProtectedRoute>} />
-            <Route path="/templates" element={<ProtectedRoute><Templates /></ProtectedRoute>} />
-            <Route path="/schedule" element={<ProtectedRoute><Schedule /></ProtectedRoute>} />
-            <Route path="/performance" element={<ProtectedRoute><Performance /></ProtectedRoute>} />
-            <Route path="/menu-items" element={<ProtectedRoute><MenuItems /></ProtectedRoute>} />
-            <Route path="/staff" element={<ProtectedRoute><Staff /></ProtectedRoute>} />
-            <Route path="/incentives" element={<ProtectedRoute><Incentives /></ProtectedRoute>} />
-            <Route path="/points" element={<ProtectedRoute><Points /></ProtectedRoute>} />
-            <Route path="/salonboard-export" element={<ProtectedRoute><SalonBoardExport /></ProtectedRoute>} />
-            <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
-            <Route path="/billing" element={<ProtectedRoute><Billing /></ProtectedRoute>} />
-            <Route path="/team" element={<ProtectedRoute><Team /></ProtectedRoute>} />
-            <Route path="/locations" element={<ProtectedRoute><Locations /></ProtectedRoute>} />
-            <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
-            <Route path="/help" element={<ProtectedRoute><HelpCenter /></ProtectedRoute>} />
-            <Route path="/help/:slug" element={<ProtectedRoute><HelpCenter /></ProtectedRoute>} />
-            <Route path="/invite/:token" element={<InviteAccept />} />
-            <Route path="/terms" element={<Terms />} />
-            <Route path="/privacy" element={<Privacy />} />
-            <Route path="/tokushoho" element={<Tokushoho />} />
-            <Route path="/unsubscribe" element={<Unsubscribe />} />
-            <Route path="/r/:actionPath/:token" element={<ReservationAction />} />
-            <Route path="/channel-integrations" element={<ProtectedRoute><ChannelIntegrations /></ProtectedRoute>} />
-            <Route path="/sync-review" element={<ProtectedRoute><SyncReview /></ProtectedRoute>} />
-            <Route path="/onboarding/salonboard" element={<ProtectedRoute><SalonboardOnboarding /></ProtectedRoute>} />
-            <Route path="/onboarding/salonboard/:locationId" element={<ProtectedRoute><SalonboardOnboarding /></ProtectedRoute>} />
-            <Route path="/onboarding/salonboard/:locationId/auto-mapping" element={<ProtectedRoute><SalonboardAutoMapping /></ProtectedRoute>} />
-            <Route path="/onboarding/salonboard-auto-mapping" element={<ProtectedRoute><SalonboardAutoMapping /></ProtectedRoute>} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+            <Suspense fallback={<RouteLoading />}>
+              <Routes>
+                <Route path="/" element={<Index />} />
+                <Route path="/auth" element={<Auth />} />
+                <Route path="/forgot-password" element={<ForgotPassword />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
+                <Route path="/book/:token" element={<Booking />} />
+                <Route path="/my-bookings/:token" element={<MyBookings />} />
+                <Route path="/salon/:slug" element={<PublicBooking />} />
+                <Route path="/line-link" element={<LineLink />} />
+                <Route path="/line-link/*" element={<LineLink />} />
+                <Route path="/invite/:token" element={<InviteAccept />} />
+                <Route path="/terms" element={<Terms />} />
+                <Route path="/privacy" element={<Privacy />} />
+                <Route path="/tokushoho" element={<Tokushoho />} />
+                <Route path="/unsubscribe" element={<Unsubscribe />} />
+                <Route path="/r/:actionPath/:token" element={<ReservationAction />} />
+
+                <Route element={<ProtectedSubscribedLayout />}>
+                  <Route path="/dashboard" element={<Dashboard />} />
+                  <Route path="/inbox" element={<Inbox />} />
+                  <Route path="/customers" element={<Customers />} />
+                  <Route path="/customers/:customerId/chart" element={<CustomerChart />} />
+                  <Route path="/commission" element={<Commission />} />
+                  <Route path="/retention" element={<Retention />} />
+                  <Route path="/import" element={<ImportCustomers />} />
+                  <Route path="/campaigns" element={<Campaigns />} />
+                  <Route path="/bookings" element={<Bookings />} />
+                  <Route path="/calendar" element={<CalendarPage />} />
+                  <Route path="/inbound-logs" element={<InboundLogs />} />
+                  <Route path="/approvals" element={<Approvals />} />
+                  <Route path="/reservations" element={<Reservations />} />
+                  <Route path="/delivery" element={<DeliveryDashboard />} />
+                  <Route path="/ab-tests" element={<ABTests />} />
+                  <Route path="/segment-templates" element={<SegmentTemplates />} />
+                  <Route path="/share" element={<Share />} />
+                  <Route path="/settings" element={<Settings />} />
+                  <Route path="/email-logs" element={<EmailLogs />} />
+                  <Route path="/line-broadcast" element={<LineBroadcast />} />
+                  <Route path="/templates" element={<Templates />} />
+                  <Route path="/schedule" element={<Schedule />} />
+                  <Route path="/performance" element={<Performance />} />
+                  <Route path="/menu-items" element={<MenuItems />} />
+                  <Route path="/staff" element={<Staff />} />
+                  <Route path="/incentives" element={<Incentives />} />
+                  <Route path="/points" element={<Points />} />
+                  <Route path="/salonboard-export" element={<SalonBoardExport />} />
+                  <Route path="/onboarding" element={<Onboarding />} />
+                  <Route path="/team" element={<Team />} />
+                  <Route path="/locations" element={<Locations />} />
+                  <Route path="/channel-integrations" element={<ChannelIntegrations />} />
+                  <Route path="/sync-review" element={<SyncReview />} />
+                  <Route path="/onboarding/salonboard" element={<SalonboardOnboarding />} />
+                  <Route path="/onboarding/salonboard/:locationId" element={<SalonboardOnboarding />} />
+                  <Route path="/onboarding/salonboard/:locationId/auto-mapping" element={<SalonboardAutoMapping />} />
+                  <Route path="/onboarding/salonboard-auto-mapping" element={<SalonboardAutoMapping />} />
+                </Route>
+
+                <Route element={<ProtectedLayout />}>
+                  <Route path="/billing" element={<Billing />} />
+                  <Route path="/admin" element={<Admin />} />
+                  <Route path="/help" element={<HelpCenter />} />
+                  <Route path="/help/:slug" element={<HelpCenter />} />
+                </Route>
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </Suspense>
           </LocationProvider>
         </AuthProvider>
       </BrowserRouter>

@@ -11,6 +11,7 @@ import { RefreshCw, AlertTriangle, CheckCircle2, Clock, PlugZap, Loader2, KeyRou
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useAuth } from "@/hooks/useAuth";
 import { useCurrentLocationId } from "@/hooks/useLocations";
+import { useTenantId } from "@/hooks/useTenant";
 
 const CHANNELS = [
   { key: "salonboard", label: "ホットペッパー / サロンボード" },
@@ -47,6 +48,7 @@ type WorkerLog = {
 
 export default function ChannelIntegrations() {
   const { user } = useAuth();
+  const tenantId = useTenantId();
   const currentLocationId = useCurrentLocationId();
   const [rows, setRows] = useState<Record<string, Integration>>({});
   const [loading, setLoading] = useState(true);
@@ -60,13 +62,13 @@ export default function ChannelIntegrations() {
   const [saveDiagnostic, setSaveDiagnostic] = useState<any | null>(null);
 
   const saveCreds = async () => {
-    if (!user) return;
+    if (!user || !tenantId || !currentLocationId) return;
     if (!credLoginId || !credPassword) { toast.error("ID/PWを入力してください"); return; }
     setSavingCreds(true);
     setSaveDiagnostic(null);
     try {
       const { data, error } = await supabase.functions.invoke("salonboard-credentials-save", {
-        body: { owner_id: user.id, location_id: null, login_id: credLoginId, password: credPassword },
+        body: { owner_id: tenantId, location_id: currentLocationId, login_id: credLoginId, password: credPassword },
       });
       if ((data as any)?.diagnostic) setSaveDiagnostic((data as any).diagnostic);
       if (error) {
@@ -86,15 +88,17 @@ export default function ChannelIntegrations() {
   };
 
   const load = async () => {
-    if (!user) return;
+    if (!user || !tenantId || !currentLocationId) return;
     setLoading(true);
-    const { data } = await supabase.from("channel_integrations").select("*").eq("owner_id", user.id);
+    const { data } = await supabase
+      .from("channel_integrations")
+      .select("*")
+      .eq("owner_id", tenantId)
+      .eq("location_id", currentLocationId);
     const map: Record<string, Integration> = {};
     for (const c of CHANNELS) {
       const channelRows = (data ?? []).filter((d) => d.channel === c.key);
-      const found = channelRows.find((d) => d.location_id === currentLocationId)
-        ?? channelRows.find((d) => d.location_id !== null)
-        ?? channelRows.find((d) => d.location_id === null);
+      const found = channelRows.find((d) => d.location_id === currentLocationId);
       map[c.key] = found ?? { channel: c.key, enabled: false, sync_enabled: false, failure_count: 0 };
     }
     setRows(map);
@@ -102,19 +106,22 @@ export default function ChannelIntegrations() {
     // 直近の Worker ログ
     const { data: logRows } = await supabase.from("worker_request_logs")
       .select("id,kind,response_status,latency_ms,success,error_message,created_at")
-      .eq("owner_id", user.id).order("created_at", { ascending: false }).limit(10);
+      .eq("owner_id", tenantId)
+      .eq("location_id", currentLocationId)
+      .order("created_at", { ascending: false })
+      .limit(10);
     setLogs((logRows as WorkerLog[]) || []);
   };
 
-  useEffect(() => { load(); }, [user, currentLocationId]);
+  useEffect(() => { load(); }, [user, tenantId, currentLocationId]);
 
   const runConnectionTest = async () => {
-    if (!user) return;
+    if (!user || !tenantId || !currentLocationId) return;
     setTesting(true);
     setTestResult(null);
     try {
       const { data, error } = await supabase.functions.invoke("salonboard-connection-test", {
-        body: { owner_id: user.id, location_id: null },
+        body: { owner_id: tenantId, location_id: currentLocationId },
       });
       if (error) {
         toast.error("疎通テスト失敗: " + error.message);
@@ -131,7 +138,7 @@ export default function ChannelIntegrations() {
   };
 
   const saveIntegration = async (channel: string, patch: Partial<Integration>) => {
-    if (!user) return;
+    if (!user || !tenantId || !currentLocationId) return;
     const cur = rows[channel];
     const next = { ...cur, ...patch, enabled: patch.sync_enabled === true ? true : (patch.enabled ?? cur?.enabled ?? false) };
     setRows({ ...rows, [channel]: next });
@@ -146,7 +153,7 @@ export default function ChannelIntegrations() {
     let findQuery = supabase
       .from("channel_integrations")
       .select("id,connection_status")
-      .eq("owner_id", user.id)
+      .eq("owner_id", tenantId)
       .eq("channel", channel);
     findQuery = currentLocationId ? findQuery.eq("location_id", currentLocationId) : findQuery.is("location_id", null);
     const findRes = await findQuery.maybeSingle();
@@ -159,7 +166,7 @@ export default function ChannelIntegrations() {
 
     if (!error && !findRes.data?.id) {
       const insertRes = await supabase.from("channel_integrations").insert({
-        owner_id: user.id,
+        owner_id: tenantId,
         location_id: currentLocationId,
         channel,
         enabled: next.enabled,
@@ -182,11 +189,15 @@ export default function ChannelIntegrations() {
   };
 
   const retry = async (channel: string) => {
+    if (!tenantId || !currentLocationId) {
+      toast.error("店舗を選択してください");
+      return;
+    }
     // 注意: ここは「予約の再送信」ではない。
     // 予約の再送信・取込・差分解消は SyncReview / 同期状態確認 から個別操作で行う（二重予約事故防止）。
     if (channel === "salonboard") {
       toast.loading("サロンボードからスタッフ・メニュー情報を再取得中...");
-      const body = { owner_id: user.id, location_id: currentLocationId };
+      const body = { owner_id: tenantId, location_id: currentLocationId };
       const [s, m] = await Promise.all([
         supabase.functions.invoke("salonboard-fetch-staff", { body }),
         supabase.functions.invoke("salonboard-fetch-menus", { body }),
@@ -199,7 +210,12 @@ export default function ChannelIntegrations() {
     }
     // その他チャネル: 既存挙動（pending/failed ジョブの一括再送）
     const { data: jobs } = await supabase.from("sync_jobs")
-      .select("id").eq("target_channel", channel).in("status", ["pending", "failed", "needs_review"]).limit(50);
+      .select("id")
+      .eq("owner_id", tenantId)
+      .eq("location_id", currentLocationId)
+      .eq("target_channel", channel)
+      .in("status", ["pending", "failed", "needs_review"])
+      .limit(50);
     if (!jobs || jobs.length === 0) {
       toast.info("再同期対象のジョブはありません");
       return;

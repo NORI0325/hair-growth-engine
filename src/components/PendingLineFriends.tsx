@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Loader2, MessageCircle, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 import { useCurrentLocationId } from "@/hooks/useLocations";
+import { useTenantId } from "@/hooks/useTenant";
 
 interface PendingFriend {
   id: string;
@@ -23,6 +24,7 @@ interface Props {
 
 const PendingLineFriends = ({ onConverted }: Props) => {
   const { user } = useAuth();
+  const tenantId = useTenantId();
   const locationId = useCurrentLocationId();
   const [items, setItems] = useState<PendingFriend[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,18 +34,19 @@ const PendingLineFriends = ({ onConverted }: Props) => {
   const [collapsed, setCollapsed] = useState(false);
 
   const load = async () => {
-    if (!user || !locationId) { setItems([]); setLoading(false); return; }
+    if (!user || !tenantId || !locationId) { setItems([]); setLoading(false); return; }
     setLoading(true);
     const { data } = await supabase
       .from("line_pending_friends")
       .select("*")
+      .eq("owner_id", tenantId)
       .eq("location_id", locationId)
       .order("created_at", { ascending: false });
     setItems(data || []);
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, [user, locationId]);
+  useEffect(() => { load(); }, [user, tenantId, locationId]);
 
   const openConvert = (p: PendingFriend) => {
     setTarget(p);
@@ -55,22 +58,22 @@ const PendingLineFriends = ({ onConverted }: Props) => {
   };
 
   const convert = async () => {
-    if (!user || !target) return;
+    if (!user || !tenantId || !target) return;
     if (!locationId) { toast.error("店舗が選択されていません"); return; }
     if (!form.full_name.trim()) { toast.error("お名前を入力してください"); return; }
     setSaving(true);
     // 顧客作成
     const { error } = await supabase.from("customers").insert({
-      owner_id: user.id,
+      owner_id: tenantId,
       location_id: locationId,
       full_name: form.full_name.trim(),
-      phone: form.phone.trim() || null,
-      email: form.email.trim() || null,
+      phone: form.phone.replace(/\D/g, "") || null,
+      email: form.email.trim().toLowerCase() || null,
       line_user_id: target.line_user_id,
     });
     if (error) { setSaving(false); toast.error("登録に失敗: " + error.message); return; }
     // pending削除
-    await supabase.from("line_pending_friends").delete().eq("id", target.id);
+    await supabase.from("line_pending_friends").delete().eq("owner_id", tenantId).eq("id", target.id);
     setSaving(false);
     setTarget(null);
     toast.success("顧客として登録しました");
@@ -79,8 +82,9 @@ const PendingLineFriends = ({ onConverted }: Props) => {
   };
 
   const dismiss = async (id: string) => {
+    if (!tenantId) return;
     if (!confirm("このLINE友だちをリストから削除しますか？")) return;
-    await supabase.from("line_pending_friends").delete().eq("id", id);
+    await supabase.from("line_pending_friends").delete().eq("owner_id", tenantId).eq("id", id);
     load();
   };
 

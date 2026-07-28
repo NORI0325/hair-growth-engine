@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useTenantId, useTenantRole } from "@/hooks/useTenant";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,6 +24,8 @@ interface OnboardingProgress {
 const Onboarding = () => {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
+  const tenantId = useTenantId();
+  const tenantRole = useTenantRole();
   const [step, setStep] = useState<Step>(1);
   const [saving, setSaving] = useState(false);
   const [salon, setSalon] = useState({ salon_name: "", open_time: "10:00", close_time: "19:00" });
@@ -44,9 +47,13 @@ const Onboarding = () => {
   }, [user, authLoading, navigate]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !tenantId) return;
+    if (tenantRole && !["owner", "super_admin"].includes(tenantRole)) {
+      navigate("/dashboard", { replace: true });
+      return;
+    }
     (async () => {
-      const { data } = await supabase.from("profiles").select("salon_name, open_time, close_time, onboarding_progress, public_slug, inbound_key").eq("id", user.id).maybeSingle();
+      const { data } = await supabase.from("profiles").select("salon_name, open_time, close_time, onboarding_progress, public_slug, inbound_key").eq("id", tenantId).maybeSingle();
       if (data) {
         setSalon({
           salon_name: data.salon_name ?? "",
@@ -60,7 +67,7 @@ const Onboarding = () => {
         if (p.done) navigate("/dashboard");
       }
     })();
-  }, [user, navigate]);
+  }, [user, tenantId, tenantRole, navigate]);
 
   const copyText = async (text: string, label = "コピーしました") => {
     try { await navigator.clipboard.writeText(text); toast.success(label); }
@@ -68,7 +75,7 @@ const Onboarding = () => {
   };
 
   const saveLineCreds = async () => {
-    if (!user) return;
+    if (!user || !tenantId) return;
     if (!lineCreds.access_token.trim() || !lineCreds.channel_secret.trim()) {
       toast.error("チャネルアクセストークンとチャネルシークレットを入力してください"); return;
     }
@@ -76,7 +83,7 @@ const Onboarding = () => {
     const { error } = await supabase.from("profiles").update({
       line_channel_access_token: lineCreds.access_token.trim(),
       line_channel_secret: lineCreds.channel_secret.trim(),
-    }).eq("id", user.id);
+    }).eq("id", tenantId);
     setSaving(false);
     if (error) { toast.error(error.message); return; }
     toast.success("LINEを接続しました");
@@ -86,20 +93,20 @@ const Onboarding = () => {
 
 
   const updateProgress = async (next: OnboardingProgress) => {
-    if (!user) return;
+    if (!user || !tenantId) return;
     const merged = { ...progress, ...next };
     setProgress(merged);
-    await supabase.from("profiles").update({ onboarding_progress: merged }).eq("id", user.id);
+    await supabase.from("profiles").update({ onboarding_progress: merged }).eq("id", tenantId);
   };
 
   const saveSalon = async () => {
-    if (!user) return;
+    if (!user || !tenantId) return;
     if (!salon.salon_name.trim()) { toast.error("サロン名を入力してください"); return; }
     setSaving(true);
     const { error } = await supabase.from("profiles").update({
       salon_name: salon.salon_name,
       open_time: salon.open_time, close_time: salon.close_time,
-    }).eq("id", user.id);
+    }).eq("id", tenantId);
     setSaving(false);
     if (error) { toast.error(error.message); return; }
     await updateProgress({ salon_info: true });
@@ -107,16 +114,17 @@ const Onboarding = () => {
   };
 
   const saveMenus = async () => {
-    if (!user) return;
+    if (!user || !tenantId) return;
     const valid = menus.filter((m) => m.name.trim() && m.duration > 0);
     if (valid.length < 3) { toast.error("最低3つのメニューを登録してください"); return; }
     setSaving(true);
     // ユーザー作成時の既定店舗を取得
-    const { data: loc } = await supabase.from("locations").select("id").eq("tenant_id", user.id).order("is_primary", { ascending: false }).limit(1).maybeSingle();
+    const { data: loc } = await supabase.from("locations").select("id").eq("tenant_id", tenantId).order("is_primary", { ascending: false }).limit(1).maybeSingle();
     const locId = loc?.id;
+    if (!locId) { setSaving(false); toast.error("店舗情報を取得できませんでした"); return; }
     const { error } = await supabase.from("menu_items").insert(
       valid.map((m, i) => ({
-        owner_id: user.id, location_id: locId, name: m.name, duration_minutes: m.duration, price: m.price, sort_order: i, active: true,
+        owner_id: tenantId, location_id: locId, name: m.name, duration_minutes: m.duration, price: m.price, sort_order: i, active: true,
       })),
     );
     setSaving(false);
@@ -131,13 +139,14 @@ const Onboarding = () => {
   };
 
   const saveStaff = async () => {
-    if (!user) return;
+    if (!user || !tenantId) return;
     if (!staffName.trim()) { toast.error("スタッフ名を入力してください"); return; }
     setSaving(true);
-    const { data: loc } = await supabase.from("locations").select("id").eq("tenant_id", user.id).order("is_primary", { ascending: false }).limit(1).maybeSingle();
+    const { data: loc } = await supabase.from("locations").select("id").eq("tenant_id", tenantId).order("is_primary", { ascending: false }).limit(1).maybeSingle();
     const locId = loc?.id;
+    if (!locId) { setSaving(false); toast.error("店舗情報を取得できませんでした"); return; }
     const { error } = await supabase.from("staff").insert({
-      owner_id: user.id, location_id: locId, name: staffName, active: true, bookable: true, sort_order: 0,
+      owner_id: tenantId, location_id: locId, name: staffName, active: true, bookable: true, sort_order: 0,
     });
     setSaving(false);
     if (error) { toast.error(error.message); return; }
@@ -399,8 +408,8 @@ const Onboarding = () => {
                 </div>
                 {publicSlug ? (
                   <div className="flex gap-2">
-                    <Input readOnly value={`${window.location.origin}/salon/${publicSlug}`} className="text-xs font-mono" />
-                    <Button variant="outline" size="sm" onClick={() => copyText(`${window.location.origin}/salon/${publicSlug}`, "予約URLをコピーしました")}>
+                    <Input readOnly value={`https://saronboost.com/salon/${publicSlug}`} className="text-xs font-mono" />
+                    <Button variant="outline" size="sm" onClick={() => copyText(`https://saronboost.com/salon/${publicSlug}`, "予約URLをコピーしました")}>
                       <Copy className="w-4 h-4" />
                     </Button>
                     <Button variant="outline" size="sm" asChild>

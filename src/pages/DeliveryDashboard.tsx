@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useTenantId } from "@/hooks/useTenant";
+import { useCurrentLocationId } from "@/hooks/useLocations";
 import AppLayout from "@/components/AppLayout";
 import PageHeader from "@/components/PageHeader";
 import { Loader2, TrendingUp, AlertCircle, Clock, Send, ShieldOff, CheckCircle2 } from "lucide-react";
@@ -34,6 +36,8 @@ const TYPE_LABEL: Record<string, string> = {
 
 export default function DeliveryDashboard() {
   const { user } = useAuth();
+  const tenantId = useTenantId();
+  const locationId = useCurrentLocationId();
   const [loading, setLoading] = useState(true);
   const [upcoming, setUpcoming] = useState<UpcomingRow[]>([]);
   const [pendingApprovals, setPendingApprovals] = useState(0);
@@ -43,18 +47,18 @@ export default function DeliveryDashboard() {
   const [quietCount, setQuietCount] = useState(0);
 
   useEffect(() => {
-    if (!user) return;
+    if (!tenantId || !locationId) return;
     (async () => {
       setLoading(true);
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
       const [upcRes, pendRes, sentRes, failRes, optRes, quietRes] = await Promise.all([
         supabase.from("delivery_upcoming_view" as any)
-          .select("*").eq("owner_id", user.id)
+          .select("*").eq("owner_id", tenantId).eq("location_id", locationId)
           .order("scheduled_for", { ascending: true }).limit(20),
         supabase.from("scheduled_jobs")
           .select("id", { count: "exact", head: true })
-          .eq("owner_id", user.id).eq("status", "pending")
+          .eq("owner_id", tenantId).eq("location_id", locationId).eq("status", "pending")
           .eq("approval_status", "pending_approval"),
         supabase.from("email_send_log")
           .select("message_id", { count: "exact", head: true })
@@ -64,10 +68,10 @@ export default function DeliveryDashboard() {
           .in("status", ["dlq", "failed", "bounced"]).gte("created_at", sevenDaysAgo),
         supabase.from("customers")
           .select("id", { count: "exact", head: true })
-          .eq("owner_id", user.id).eq("opt_out_automation", true),
+          .eq("owner_id", tenantId).eq("location_id", locationId).eq("opt_out_automation", true),
         supabase.from("customers")
           .select("id", { count: "exact", head: true })
-          .eq("owner_id", user.id).gt("quiet_until", new Date().toISOString()),
+          .eq("owner_id", tenantId).eq("location_id", locationId).gt("quiet_until", new Date().toISOString()),
       ]);
 
       setUpcoming((upcRes.data as any) || []);
@@ -78,7 +82,7 @@ export default function DeliveryDashboard() {
       setQuietCount(quietRes.count || 0);
       setLoading(false);
     })();
-  }, [user]);
+  }, [tenantId, locationId]);
 
   const stats: Stat[] = [
     { label: "承認待ち", value: pendingApprovals, sub: "Approvals", icon: Clock, tone: pendingApprovals > 0 ? "warn" : "default" },

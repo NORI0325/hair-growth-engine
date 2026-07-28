@@ -9,6 +9,8 @@ import { Label } from "@/components/ui/label";
 import { Upload, FileText, Loader2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { useCurrentLocationId } from "@/hooks/useLocations";
+import { useTenantId } from "@/hooks/useTenant";
+import Papa from "papaparse";
 
 type Gender = "female" | "male" | "other" | "unknown";
 
@@ -35,8 +37,43 @@ function normalizePhone(s: string | null | undefined): string {
   return (s || "").replace(/[^\d]/g, "");
 }
 
+function normalizeCsvDate(value: string | undefined): string | null {
+  const match = (value || "").trim().match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+  if (!match) return null;
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  return `${match[1]}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+interface ExistingCustomer {
+  id: string;
+  full_name: string;
+  phone: string | null;
+  email: string | null;
+  birthday: string | null;
+  gender: Gender | null;
+  last_visit_date: string | null;
+  visit_count: number;
+  total_spent: number;
+  location_id: string | null;
+}
+
+type CustomerLookupColumn = "phone" | "email" | "full_name";
+type CustomerUpdatePayload = {
+  phone: string | null;
+  email: string | null;
+  gender: Gender;
+  last_visit_date: string | null;
+  visit_count: number;
+  total_spent: number;
+  imported_from: string;
+  last_imported_at: string;
+};
+
 const ImportCustomers = () => {
   const { user } = useAuth();
+  const tenantId = useTenantId();
   const locationId = useCurrentLocationId();
   const [file, setFile] = useState<File | null>(null);
   const [parsed, setParsed] = useState<ParsedRow[]>([]);
@@ -44,10 +81,14 @@ const ImportCustomers = () => {
   const [imported, setImported] = useState(0);
   const [errors, setErrors] = useState<string[]>([]);
 
-  const parseCSV = (text: string): ParsedRow[] => {
-    const lines = text.split(/\r?\n/).filter(l => l.trim());
-    if (lines.length < 2) return [];
-    const headers = lines[0].split(",").map(h => h.trim().toLowerCase());
+  const parseCSV = (text: string): { rows: ParsedRow[]; parseErrors: string[] } => {
+    const result = Papa.parse<string[]>(text, {
+      skipEmptyLines: "greedy",
+      transform: (value) => value.trim(),
+    });
+    const table = result.data;
+    if (table.length < 2) return { rows: [], parseErrors: [] };
+    const headers = table[0].map(h => h.replace(/^\uFEFF/, "").trim().toLowerCase());
 
     const findIdx = (...keys: string[]) => {
       for (const k of keys) {
@@ -66,28 +107,27 @@ const ImportCustomers = () => {
     const genderIdx = findIdx("性別", "gender", "sex");
 
     const rows: ParsedRow[] = [];
-    for (let i = 1; i < lines.length; i++) {
-      const cols = lines[i].split(",").map(c => c.trim().replace(/^"|"$/g, ""));
+    for (let i = 1; i < table.length; i++) {
+      const cols = table[i];
       const name = nameIdx >= 0 ? cols[nameIdx] : "";
       if (!name) continue;
-
-      let lastVisit: string | null = null;
-      if (lastVisitIdx >= 0 && cols[lastVisitIdx]) {
-        const d = new Date(cols[lastVisitIdx].replace(/\//g, "-"));
-        if (!isNaN(d.getTime())) lastVisit = d.toISOString().split("T")[0];
-      }
 
       rows.push({
         full_name: name,
         email: emailIdx >= 0 && cols[emailIdx] ? cols[emailIdx] : null,
         phone: phoneIdx >= 0 && cols[phoneIdx] ? cols[phoneIdx] : null,
-        last_visit_date: lastVisit,
+        last_visit_date: lastVisitIdx >= 0 ? normalizeCsvDate(cols[lastVisitIdx]) : null,
         visit_count: countIdx >= 0 ? parseInt(cols[countIdx]) || 0 : 0,
         total_spent: spentIdx >= 0 ? parseInt(cols[spentIdx].replace(/[^0-9]/g, "")) || 0 : 0,
         gender: normalizeGender(genderIdx >= 0 ? cols[genderIdx] : ""),
       });
     }
-    return rows;
+    return {
+      rows,
+      parseErrors: result.errors.slice(0, 20).map(error =>
+        `${typeof error.row === "number" ? `${error.row + 1}行目: ` : ""}${error.message}`
+      ),
+    };
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -98,9 +138,11 @@ const ImportCustomers = () => {
     setErrors([]);
     try {
       const text = await f.text();
-      const rows = parseCSV(text);
+      const { rows, parseErrors } = parseCSV(text);
       setParsed(rows);
+      setErrors(parseErrors);
       if (rows.length === 0) toast.error("有効な顧客データが見つかりませんでした");
+      else if (parseErrors.length > 0) toast.warning(`${rows.length}件を読み込みましたが、CSV形式の警告があります`);
       else toast.success(`${rows.length}件の顧客を読み込みました`);
     } catch {
       toast.error("ファイルの読み込みに失敗しました");
@@ -108,7 +150,7 @@ const ImportCustomers = () => {
   };
 
   const handleImport = async () => {
-    if (!user || parsed.length === 0) return;
+    if (!user || !tenantId || parsed.length === 0) return;
     if (!locationId) { toast.error("店舗が選択されていません"); return; }
     setImporting(true);
     const errs: string[] = [];
@@ -116,31 +158,49 @@ const ImportCustomers = () => {
     let updated = 0;
     const nowIso = new Date().toISOString();
 
-    const blank = (v: any) => v === null || v === undefined || v === "" || v === "unknown";
+    const blank = (value: unknown) => value === null || value === undefined || value === "" || value === "unknown";
 
     // 既存顧客を一括取得（電話 / メール / 氏名 で検索）
     const phones = [...new Set(parsed.map(r => normalizePhone(r.phone)).filter(Boolean))];
     const emails = [...new Set(parsed.map(r => (r.email || "").trim().toLowerCase()).filter(Boolean))];
     const names = [...new Set(parsed.map(r => r.full_name))];
 
-    const SELECT_COLS = "id, full_name, phone, email, birthday, gender, last_visit_date, visit_count, total_spent";
-    const fetchBy = async (col: string, values: string[]) => {
-      const map = new Map<string, any>();
+    const SELECT_COLS = "id, full_name, phone, email, birthday, gender, last_visit_date, visit_count, total_spent, location_id";
+    const fetchBy = async (col: CustomerLookupColumn, values: string[]) => {
+      const map = new Map<string, ExistingCustomer[]>();
       const CHUNK = 300;
       for (let i = 0; i < values.length; i += CHUNK) {
         const slice = values.slice(i, i + CHUNK);
-        const { data } = await (supabase.from("customers") as any).select(SELECT_COLS).eq("owner_id", user.id).in(col, slice);
-        for (const row of (data || [])) {
-          const key = (row as any)[col];
-          if (key && !map.has(key)) map.set(key, row);
+        const { data, error } = await supabase.from("customers")
+          .select(SELECT_COLS)
+          .eq("owner_id", tenantId)
+          .in(col, slice);
+        if (error) throw new Error(`既存顧客の照合に失敗しました: ${error.message}`);
+        for (const row of (data || []) as ExistingCustomer[]) {
+          const key = String((row as unknown as Record<string, unknown>)[col] || "");
+          if (!key) continue;
+          map.set(key, [...(map.get(key) || []), row]);
         }
       }
       return map;
     };
 
-    const byPhone = phones.length ? await fetchBy("phone", phones) : new Map();
-    const byEmail = emails.length ? await fetchBy("email", emails) : new Map();
-    const byName = names.length ? await fetchBy("full_name", names) : new Map();
+    let byPhone: Map<string, ExistingCustomer[]>;
+    let byEmail: Map<string, ExistingCustomer[]>;
+    let byName: Map<string, ExistingCustomer[]>;
+    try {
+      [byPhone, byEmail, byName] = await Promise.all([
+        phones.length ? fetchBy("phone", phones) : Promise.resolve(new Map<string, ExistingCustomer[]>()),
+        emails.length ? fetchBy("email", emails) : Promise.resolve(new Map<string, ExistingCustomer[]>()),
+        names.length ? fetchBy("full_name", names) : Promise.resolve(new Map<string, ExistingCustomer[]>()),
+      ]);
+    } catch (error) {
+      setImporting(false);
+      const message = error instanceof Error ? error.message : "既存顧客の照合に失敗しました";
+      setErrors([message]);
+      toast.error(message);
+      return;
+    }
 
     // 1件ずつ判定（バッチではなく確実に穴埋め）
     for (let i = 0; i < parsed.length; i++) {
@@ -148,14 +208,27 @@ const ImportCustomers = () => {
       const phone = normalizePhone(r.phone);
       const email = (r.email || "").trim().toLowerCase();
 
-      const existing =
-        (phone && byPhone.get(phone)) ||
-        (email && byEmail.get(email)) ||
-        byName.get(r.full_name) || null;
+      const strongMatches = new Map<string, ExistingCustomer>();
+      for (const match of phone ? (byPhone.get(phone) || []) : []) strongMatches.set(match.id, match);
+      for (const match of email ? (byEmail.get(email) || []) : []) strongMatches.set(match.id, match);
+      if (strongMatches.size > 1) {
+        errs.push(`${i + 2}行目(${r.full_name}): 電話番号とメールが別々の既存顧客に一致したため取り込みを停止しました`);
+        continue;
+      }
+
+      let existing = strongMatches.values().next().value as ExistingCustomer | undefined;
+      if (!existing && !phone && !email) {
+        const sameLocationNames = (byName.get(r.full_name) || []).filter(row => row.location_id === locationId);
+        if (sameLocationNames.length > 1) {
+          errs.push(`${i + 2}行目(${r.full_name}): 同名顧客が複数いるため自動更新できません`);
+          continue;
+        }
+        existing = sameLocationNames[0];
+      }
 
       if (existing) {
         // 穴埋め型 UPDATE
-        const payload: any = {
+        const payload: CustomerUpdatePayload = {
           phone: blank(phone) ? existing.phone : phone,
           email: blank(email) ? existing.email : email,
           gender: blank(r.gender) ? (existing.gender || "unknown") : r.gender,
@@ -169,11 +242,15 @@ const ImportCustomers = () => {
           imported_from: "csv",
           last_imported_at: nowIso,
         };
-        const { error } = await supabase.from("customers").update(payload).eq("id", existing.id);
+        const { error } = await supabase
+          .from("customers")
+          .update(payload)
+          .eq("owner_id", tenantId)
+          .eq("id", existing.id);
         if (error) errs.push(`${i + 2}行目(${r.full_name}): ${error.message}`);
         else { updated++; setImported(inserted + updated); }
       } else {
-        const { error } = await supabase.from("customers").insert({
+        const { data: created, error } = await supabase.from("customers").insert({
           full_name: r.full_name,
           phone: phone || null,
           email: email || null,
@@ -181,14 +258,21 @@ const ImportCustomers = () => {
           visit_count: r.visit_count,
           total_spent: r.total_spent,
           gender: r.gender,
-          owner_id: user.id,
+          owner_id: tenantId,
           location_id: locationId,
           imported_from: "csv",
           last_imported_at: nowIso,
           first_imported_at: nowIso,
-        });
+        }).select(SELECT_COLS).single();
         if (error) errs.push(`${i + 2}行目(${r.full_name}): ${error.message}`);
-        else { inserted++; setImported(inserted + updated); }
+        else {
+          const customer = created as ExistingCustomer;
+          if (phone) byPhone.set(phone, [...(byPhone.get(phone) || []), customer]);
+          if (email) byEmail.set(email, [...(byEmail.get(email) || []), customer]);
+          byName.set(r.full_name, [...(byName.get(r.full_name) || []), customer]);
+          inserted++;
+          setImported(inserted + updated);
+        }
       }
     }
 

@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Loader2, Send, MessageCircle, Phone, Sparkles, Wand2, AlertTriangle, Ban } from "lucide-react";
 import { toast } from "sonner";
 import { useCurrentLocationId } from "@/hooks/useLocations";
+import { useTenantId } from "@/hooks/useTenant";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -41,6 +42,7 @@ export const CustomerMessageDialog = ({
   optOutAutomation, lineUnfollowed,
 }: Props) => {
   const { user } = useAuth();
+  const tenantId = useTenantId();
   const locationId = useCurrentLocationId();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [selected, setSelected] = useState<Template | null>(null);
@@ -58,7 +60,7 @@ export const CustomerMessageDialog = ({
   const [aiPickedTone, setAiPickedTone] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!open || !user) return;
+    if (!open || !tenantId) return;
     setLoading(true);
     setSelected(null);
     setBody("");
@@ -67,13 +69,13 @@ export const CustomerMessageDialog = ({
     setAiPickedTone(null);
     let q = supabase.from("customer_message_templates")
       .select("*").eq("active", true).order("sort_order");
+    q = q.eq("owner_id", tenantId);
     if (locationId) q = q.eq("location_id", locationId);
-    else q = q.eq("owner_id", user.id);
     q.then(({ data }) => {
       setTemplates(data || []);
       setLoading(false);
     });
-  }, [open, user, locationId]);
+  }, [open, tenantId, locationId]);
 
   const generateAiDrafts = async () => {
     setAiLoading(true);

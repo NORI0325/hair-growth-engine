@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
+import { publicAppUrl } from "@/lib/public-origin";
 
 const schema = z.object({
   email: z.string().email("有効なメールアドレスを入力してください"),
@@ -26,7 +27,7 @@ const ForgotPassword = () => {
     }
     setLoading(true);
     const { error } = await supabase.auth.resetPasswordForEmail(parsed.data.email, {
-      redirectTo: `${window.location.origin}/reset-password`,
+      redirectTo: publicAppUrl("/reset-password"),
     });
     setLoading(false);
     if (error) {

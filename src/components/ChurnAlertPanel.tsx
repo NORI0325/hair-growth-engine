@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentLocationId } from "@/hooks/useLocations";
+import { useTenantId } from "@/hooks/useTenant";
 import { AlertTriangle, TrendingDown, Crown } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { calculateVipTier } from "@/lib/vip";
+import { toast } from "sonner";
 
 interface AtRiskCustomer {
   id: string;
@@ -18,43 +19,39 @@ interface AtRiskCustomer {
 
 export const ChurnAlertPanel = () => {
   const locationId = useCurrentLocationId();
+  const tenantId = useTenantId();
   const navigate = useNavigate();
   const [list, setList] = useState<AtRiskCustomer[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!locationId) return;
+    if (!tenantId || !locationId) return;
     (async () => {
       setLoading(true);
-      const { data } = await supabase
-        .from("customers")
-        .select("id, full_name, last_visit_date, visit_count, total_spent")
-        .eq("location_id", locationId)
-        .eq("opt_out_automation", false)
-        .gte("visit_count", 2) // 2回以上来てた人が対象
-        .not("last_visit_date", "is", null)
-        .order("total_spent", { ascending: false })
-        .limit(500);
-      const now = Date.now();
-      const at: AtRiskCustomer[] = (data || [])
-        .map((c: any) => {
-          const days = Math.floor((now - new Date(c.last_visit_date).getTime()) / 86400000);
-          const tier = calculateVipTier(c.visit_count, c.total_spent);
-          const isVip = tier === "platinum" || tier === "gold";
-          return { ...c, days_since: days, isVip };
-        })
-        .filter((c) => c.days_since >= 90 && c.days_since <= 365)
-        .sort((a, b) => {
-          // VIP優先、次に売上、次に経過日数
-          if (a.isVip !== b.isVip) return a.isVip ? -1 : 1;
-          if (b.total_spent !== a.total_spent) return b.total_spent - a.total_spent;
-          return a.days_since - b.days_since;
-        })
-        .slice(0, 10);
+      const { data, error } = await (supabase.rpc as any)("churn_risk_customers_v1", {
+        _owner_id: tenantId,
+        _location_id: locationId,
+        _limit: 10,
+      });
+      if (error) {
+        toast.error("離反予兆データを取得できませんでした");
+        setList([]);
+        setLoading(false);
+        return;
+      }
+      const at: AtRiskCustomer[] = (data || []).map((c: any) => ({
+        id: c.id,
+        full_name: c.full_name,
+        last_visit_date: c.last_visit_date,
+        visit_count: Number(c.visit_count || 0),
+        total_spent: Number(c.total_spent || 0),
+        days_since: Number(c.days_since || 0),
+        isVip: Boolean(c.is_vip),
+      }));
       setList(at);
       setLoading(false);
     })();
-  }, [locationId]);
+  }, [tenantId, locationId]);
 
   if (loading || list.length === 0) return null;
 

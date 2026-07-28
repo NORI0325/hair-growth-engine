@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
+import { publicAppUrl } from "@/lib/public-origin";
 
 const loginSchema = z.object({
   email: z.string().email("有効なメールアドレスを入力してください"),
@@ -61,7 +62,7 @@ const Auth = () => {
       email: parsed.data.email,
       password: parsed.data.password,
       options: {
-        emailRedirectTo: `${window.location.origin}/onboarding`,
+        emailRedirectTo: publicAppUrl("/onboarding"),
         data: { full_name: parsed.data.full_name, salon_name: parsed.data.salon_name },
       },
     });
@@ -77,7 +78,7 @@ const Auth = () => {
     setLoading(true);
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${window.location.origin}/onboarding` },
+      options: { redirectTo: publicAppUrl("/onboarding") },
     });
     if (error) { setLoading(false); toast.error(error.message); }
   };

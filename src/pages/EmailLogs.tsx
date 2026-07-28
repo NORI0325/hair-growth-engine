@@ -5,6 +5,7 @@ import PageHeader from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, RefreshCw, Mail, CheckCircle2, XCircle, ShieldOff, Clock } from "lucide-react";
+import { toast } from "sonner";
 
 interface LogRow {
   id: string;
@@ -41,27 +42,38 @@ const RANGES = [
   { value: "90", label: "90日間" },
 ];
 
+const EMAIL_LOG_PAGE_SIZE = 250;
+
 const EmailLogs = () => {
   const [rows, setRows] = useState<LogRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
   const [days, setDays] = useState("7");
   const [tplFilter, setTplFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
 
-  const load = async () => {
-    setLoading(true);
+  const load = async (reset = true) => {
+    if (reset) setLoading(true); else setLoadingMore(true);
     const since = new Date(Date.now() - parseInt(days) * 86400000).toISOString();
-    const { data } = await supabase
+    const offset = reset ? 0 : rows.length;
+    const { data, error } = await supabase
       .from("email_send_log" as any)
       .select("*")
       .gte("created_at", since)
       .order("created_at", { ascending: false })
-      .limit(1000);
-    setRows((data as any) || []);
-    setLoading(false);
+      .range(offset, offset + EMAIL_LOG_PAGE_SIZE - 1);
+    if (error) {
+      toast.error("メール配信ログを取得できませんでした");
+    } else {
+      const nextRows = ((data as unknown) as LogRow[]) || [];
+      setRows(current => reset ? nextRows : [...current, ...nextRows]);
+      setHasMore(nextRows.length === EMAIL_LOG_PAGE_SIZE);
+    }
+    if (reset) setLoading(false); else setLoadingMore(false);
   };
 
-  useEffect(() => { load(); }, [days]);
+  useEffect(() => { void load(true); }, [days]);
 
   // メッセージID毎に最新ステータスを取得（重複排除）
   const dedup = useMemo(() => {
@@ -107,7 +119,7 @@ const EmailLogs = () => {
           title="メール配信ログ"
           description="送信したお礼・誕生日・予約確認・キャンペーンメールの配信状況"
         />
-        <Button onClick={load} variant="ghost" className="rounded-none text-xs tracking-luxury mt-2">
+        <Button onClick={() => void load(true)} variant="ghost" className="rounded-none text-xs tracking-luxury mt-2">
           <RefreshCw className="w-3.5 h-3.5 mr-2" /> 更新
         </Button>
       </div>
@@ -174,7 +186,7 @@ const EmailLogs = () => {
             <div className="col-span-2">日時</div>
             <div className="col-span-3">状態</div>
           </div>
-          {filtered.slice(0, 200).map(r => {
+          {filtered.map(r => {
             const info = STATUS_INFO[r.status] || { label: r.status, color: "text-muted-foreground", icon: Mail };
             const Icon = info.icon;
             return (
@@ -200,9 +212,17 @@ const EmailLogs = () => {
               </div>
             );
           })}
-          {filtered.length > 200 && (
-            <div className="py-6 text-center text-xs text-muted-foreground">
-              直近200件を表示しています（全{filtered.length}件）
+          {hasMore && (
+            <div className="py-6 text-center">
+              <Button
+                variant="outline"
+                className="rounded-none"
+                disabled={loadingMore}
+                onClick={() => void load(false)}
+              >
+                {loadingMore && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                さらに読み込む
+              </Button>
             </div>
           )}
         </div>

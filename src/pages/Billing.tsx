@@ -46,8 +46,9 @@ const Billing = () => {
   };
 
   const openPortal = async () => {
+    if (!tenantId) return;
     setLoading(true);
-    const { data, error } = await supabase.functions.invoke("create-portal-session");
+    const { data, error } = await supabase.functions.invoke("create-portal-session", { body: { tenant_id: tenantId } });
     setLoading(false);
     if (error || !data?.url) { toast.error("ポータルへのリダイレクトに失敗しました"); return; }
     window.location.href = data.url;

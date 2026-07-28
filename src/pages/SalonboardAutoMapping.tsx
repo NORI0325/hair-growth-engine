@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { useCurrentLocationId } from "@/hooks/useLocations";
+import { useTenantId } from "@/hooks/useTenant";
 import { Loader2, Download, Upload } from "lucide-react";
 
 type StaffOpt = {
@@ -25,6 +26,7 @@ type MenuSourceType = "setmenu" | "single_menu" | "coupon" | "category";
 
 export default function SalonboardAutoMapping() {
   const { user } = useAuth();
+  const tenantId = useTenantId();
   const { locationId } = useParams();
   const currentLocationId = useCurrentLocationId();
   const loc = locationId && locationId !== "default" ? locationId : currentLocationId;
@@ -72,43 +74,43 @@ export default function SalonboardAutoMapping() {
   };
 
   const load = async () => {
-    if (!user) return;
+    if (!tenantId) return;
     if (!loc) {
       setStaffOpts([]); setMenuOpts([]); setExistingStaff([]); setExistingMenus([]);
       setMappedStaffExt(new Set()); setMappedMenuExt(new Set());
       return;
     }
     let sQ = supabase.from("channel_staff_options" as any).select("*")
-      .eq("owner_id", user.id).eq("channel", "salonboard").order("display_name");
+      .eq("owner_id", tenantId).eq("channel", "salonboard").order("display_name");
     sQ = loc ? sQ.eq("location_id", loc) : sQ.is("location_id", null);
     const { data: s } = await sQ;
     setStaffOpts((s || []) as any);
 
     let mQ = supabase.from("channel_menu_options" as any).select("*")
-      .eq("owner_id", user.id).eq("channel", "salonboard").order("menu_name");
+      .eq("owner_id", tenantId).eq("channel", "salonboard").order("menu_name");
     mQ = loc ? mQ.eq("location_id", loc) : mQ.is("location_id", null);
     const { data: m } = await mQ;
     setMenuOpts((m || []) as any);
 
-    const { data: es } = await supabase.from("staff").select("id,name").eq("owner_id", user.id).eq("location_id", loc).eq("active", true).order("name");
+    const { data: es } = await supabase.from("staff").select("id,name").eq("owner_id", tenantId).eq("location_id", loc).eq("active", true).order("name");
     setExistingStaff((es || []) as any);
-    const { data: em } = await supabase.from("menu_items").select("id,name").eq("owner_id", user.id).eq("location_id", loc).eq("active", true).order("name");
+    const { data: em } = await supabase.from("menu_items").select("id,name").eq("owner_id", tenantId).eq("location_id", loc).eq("active", true).order("name");
     setExistingMenus((em || []) as any);
 
     const { data: scm } = await supabase.from("staff_channel_mappings").select("external_id")
-      .eq("owner_id", user.id).eq("location_id", loc).eq("channel", "salonboard").eq("enabled", true);
+      .eq("owner_id", tenantId).eq("location_id", loc).eq("channel", "salonboard").eq("enabled", true);
     setMappedStaffExt(new Set((scm || []).map((r: any) => String(r.external_id))));
     const { data: mcm } = await supabase.from("menu_channel_mappings").select("external_setmenu_id, external_id, menu_category_cd, net_coupon_id")
-      .eq("owner_id", user.id).eq("location_id", loc).eq("channel", "salonboard").eq("enabled", true);
+      .eq("owner_id", tenantId).eq("location_id", loc).eq("channel", "salonboard").eq("enabled", true);
     setMappedMenuExt(new Set((mcm || []).flatMap((r: any) => [r.external_setmenu_id, r.external_id, r.menu_category_cd, r.net_coupon_id]).filter(Boolean).map(String)));
   };
 
-  useEffect(() => { load(); }, [user, locationId, currentLocationId]);
+  useEffect(() => { load(); }, [tenantId, locationId, currentLocationId]);
 
   const fetchStaff = async () => {
     if (!loc) { toast.error("店舗情報が取得できないため、スタッフを取得できません。店舗を選択してください。"); return; }
     setFetching("staff");
-    const res = await supabase.functions.invoke("salonboard-fetch-staff", { body: { owner_id: user!.id, location_id: loc } });
+    const res = await supabase.functions.invoke("salonboard-fetch-staff", { body: { owner_id: tenantId, location_id: loc } });
     setFetching("");
     if (res.error || res.data?.success === false) {
       const msg = res.data?.message || res.data?.error || res.error?.message || JSON.stringify(res.data || res.error || {});
@@ -123,7 +125,7 @@ export default function SalonboardAutoMapping() {
     if (!loc) { toast.error("店舗情報が取得できないため、メニューを取得できません。店舗を選択してください。"); return; }
     setFetching("menus");
     setLastMenuFetchError(null);
-    const res = await supabase.functions.invoke("salonboard-fetch-menus", { body: { owner_id: user!.id, location_id: loc } });
+    const res = await supabase.functions.invoke("salonboard-fetch-menus", { body: { owner_id: tenantId, location_id: loc } });
     setFetching("");
     if (res.error || res.data?.success === false) {
       const msg = formatFunctionError(res.data, res.error);
@@ -152,7 +154,7 @@ export default function SalonboardAutoMapping() {
     if (items.length === 0) { toast.info("取り込み対象がありません"); return; }
     setImporting(true);
     const res = await supabase.functions.invoke("salonboard-bulk-import-staff", {
-      body: { owner_id: user!.id, location_id: loc, items },
+      body: { owner_id: tenantId, location_id: loc, items },
     });
     setImporting(false);
     if (res.error) { toast.error(res.error.message); return; }
@@ -188,7 +190,7 @@ export default function SalonboardAutoMapping() {
     if (items.length === 0) { toast.info("取り込み対象がありません"); return; }
     setImporting(true);
     const res = await supabase.functions.invoke("salonboard-bulk-import-menus", {
-      body: { owner_id: user!.id, location_id: loc, items },
+      body: { owner_id: tenantId, location_id: loc, items },
     });
     setImporting(false);
     if (res.error) { toast.error(res.error.message); return; }

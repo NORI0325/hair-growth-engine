@@ -8,8 +8,9 @@ import {
   Settings as SettingsIcon, Mail, MessageCircle, FileText, CalendarClock,
   TrendingUp, Scissors, UserCog, Gift, Inbox, Download, CreditCard, Users2,
   Store, ChevronDown, Sparkles, Building2, BarChart3, ShieldCheck, Radio, FlaskConical, Users as UsersIcon,
-  HelpCircle, Plug, AlertTriangle,
+  HelpCircle, Plug, AlertTriangle, Menu, X,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LocationSwitcher } from "@/components/LocationSwitcher";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -17,20 +18,23 @@ import HelpWidget from "@/components/HelpWidget";
 import OnboardingTour from "@/components/OnboardingTour";
 import { useTenantRole, useTenantId } from "@/hooks/useTenant";
 import { useQuery } from "@tanstack/react-query";
+import { useCurrentLocationId } from "@/hooks/useLocations";
+import type { TenantRole } from "@/hooks/useTenant";
 
 type NavItem = {
   to: string;
   label: string;
   en: string;
-  icon: any;
+  icon: LucideIcon;
   badgeKey?: "inbox";
+  allowedRoles?: TenantRole[];
 };
 
 type NavGroup = {
   id: string;
   label: string;
   en: string;
-  icon: any;
+  icon: LucideIcon;
   items: NavItem[];
 };
 
@@ -70,9 +74,9 @@ const navGroups: NavGroup[] = [
     en: "Store",
     icon: Building2,
     items: [
-      { to: "/menu-items", label: "メニュー", en: "Menus", icon: Scissors },
-      { to: "/staff", label: "スタッフ", en: "Staff", icon: UserCog },
-      { to: "/locations", label: "店舗管理", en: "Locations", icon: Store },
+      { to: "/menu-items", label: "メニュー", en: "Menus", icon: Scissors, allowedRoles: ["owner", "manager", "super_admin"] },
+      { to: "/staff", label: "スタッフ", en: "Staff", icon: UserCog, allowedRoles: ["owner", "manager", "super_admin"] },
+      { to: "/locations", label: "店舗管理", en: "Locations", icon: Store, allowedRoles: ["owner", "super_admin"] },
       { to: "/share", label: "公開URL", en: "Share", icon: Share2 },
     ],
   },
@@ -95,13 +99,13 @@ const navGroups: NavGroup[] = [
     icon: SettingsIcon,
     items: [
       { to: "/settings", label: "基本設定", en: "General", icon: SettingsIcon },
-      { to: "/team", label: "チーム", en: "Team", icon: Users2 },
-      { to: "/billing", label: "契約・支払い", en: "Billing", icon: CreditCard },
-      { to: "/import", label: "インポート", en: "Import", icon: Upload },
+      { to: "/team", label: "チーム", en: "Team", icon: Users2, allowedRoles: ["owner", "manager", "super_admin"] },
+      { to: "/billing", label: "契約・支払い", en: "Billing", icon: CreditCard, allowedRoles: ["owner", "super_admin"] },
+      { to: "/import", label: "インポート", en: "Import", icon: Upload, allowedRoles: ["owner", "manager", "super_admin"] },
       { to: "/inbound-logs", label: "予約取込ログ", en: "Inbound Logs", icon: Radio },
       { to: "/salonboard-export", label: "サロンボード抽出", en: "SB Export", icon: Download },
-      { to: "/channel-integrations", label: "外部媒体連携", en: "Integrations", icon: Plug },
-      { to: "/sync-review", label: "要確認キュー", en: "Sync Review", icon: AlertTriangle },
+      { to: "/channel-integrations", label: "外部媒体連携", en: "Integrations", icon: Plug, allowedRoles: ["owner", "manager", "super_admin"] },
+      { to: "/sync-review", label: "要確認キュー", en: "Sync Review", icon: AlertTriangle, allowedRoles: ["owner", "manager", "super_admin"] },
     ],
   },
 ];
@@ -113,6 +117,8 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
   const [unreadInbox, setUnreadInbox] = useState(0);
   const role = useTenantRole();
   const tenantId = useTenantId();
+  const locationId = useCurrentLocationId();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   // 現在所属サロン名 + 自分のプロフィール
   const { data: account } = useQuery({
@@ -129,7 +135,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       return {
         userName: myProfile?.full_name || user.email?.split("@")[0] || "ユーザー",
         userEmail: user.email ?? "",
-        salonName: (tenantProfileRes as any).data?.salon_name || myProfile?.salon_name || "（サロン未設定）",
+        salonName: tenantProfileRes.data?.salon_name || myProfile?.salon_name || "（サロン未設定）",
       };
     },
   });
@@ -151,7 +157,9 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
     try {
       const raw = localStorage.getItem("nav.openGroups");
       if (raw) return JSON.parse(raw);
-    } catch {}
+    } catch {
+      // Continue with the default navigation state when storage is unavailable.
+    }
     return {};
   });
 
@@ -164,16 +172,24 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
   }, [activeGroupId]);
 
   useEffect(() => {
-    try { localStorage.setItem("nav.openGroups", JSON.stringify(openGroups)); } catch {}
+    try {
+      localStorage.setItem("nav.openGroups", JSON.stringify(openGroups));
+    } catch {
+      // Navigation remains usable when storage is unavailable.
+    }
   }, [openGroups]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !tenantId || !locationId) {
+      setUnreadInbox(0);
+      return;
+    }
     const fetchUnread = async () => {
       const { count } = await supabase
         .from("line_inbound_messages")
         .select("id", { count: "exact", head: true })
-        .eq("owner_id", user.id)
+        .eq("owner_id", tenantId)
+        .eq("location_id", locationId)
         .eq("handled", false);
       setUnreadInbox(count || 0);
     };
@@ -183,7 +199,9 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       .on("postgres_changes", { event: "*", schema: "public", table: "line_inbound_messages" }, fetchUnread)
       .subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [user]);
+  }, [user, tenantId, locationId]);
+
+  useEffect(() => setMobileNavOpen(false), [pathname]);
 
   const handleSignOut = async () => {
     await signOut();
@@ -191,6 +209,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
   };
 
   const renderItem = (item: NavItem, opts: { nested?: boolean } = {}) => {
+    if (item.allowedRoles && (!role || !item.allowedRoles.includes(role))) return null;
     const Icon = item.icon;
     return (
       <NavLink
@@ -222,11 +241,32 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
 
   return (
     <div className="min-h-screen bg-background flex">
-      <aside className="w-64 bg-sidebar text-sidebar-foreground flex flex-col border-r border-sidebar-border">
-        <div className="px-8 py-8 border-b border-sidebar-border/60">
+      {mobileNavOpen && (
+        <button
+          type="button"
+          aria-label="メニューを閉じる"
+          className="fixed inset-0 z-40 bg-black/45 md:hidden"
+          onClick={() => setMobileNavOpen(false)}
+        />
+      )}
+      <aside className={cn(
+        "fixed inset-y-0 left-0 z-50 w-64 bg-sidebar text-sidebar-foreground flex flex-col border-r border-sidebar-border transition-transform duration-200 md:static md:translate-x-0",
+        mobileNavOpen ? "translate-x-0" : "-translate-x-full",
+      )}>
+        <div className="relative px-8 py-8 border-b border-sidebar-border/60">
           <div className="font-serif-en text-3xl text-gold tracking-luxury mb-1">SB</div>
           <div className="font-serif text-sm tracking-wider">Salon Boost</div>
           <div className="eyebrow text-[10px] text-sidebar-foreground/50 mt-1">Est. 2026</div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="absolute right-3 top-3 text-sidebar-foreground md:hidden"
+            aria-label="メニューを閉じる"
+            onClick={() => setMobileNavOpen(false)}
+          >
+            <X className="w-5 h-5" />
+          </Button>
         </div>
 
         <div className="border-b border-sidebar-border/60">
@@ -323,7 +363,17 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
         </div>
       </aside>
 
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 min-w-0 overflow-auto">
+        <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border bg-background/95 px-4 backdrop-blur md:hidden">
+          <Button type="button" variant="ghost" size="icon" aria-label="メニューを開く" onClick={() => setMobileNavOpen(true)}>
+            <Menu className="w-5 h-5" />
+          </Button>
+          <div className="text-center">
+            <p className="font-serif text-sm tracking-wider">Salon Boost</p>
+            <p className="text-[9px] text-muted-foreground">{account?.salonName ?? ""}</p>
+          </div>
+          <div className="w-10" aria-hidden="true" />
+        </header>
         <div className="container mx-auto px-4 py-6 md:px-12 md:py-12 max-w-7xl animate-fade-in">{children}</div>
       </main>
 

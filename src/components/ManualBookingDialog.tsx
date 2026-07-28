@@ -53,6 +53,7 @@ export default function ManualBookingDialog({ onCreated, trigger }: Props) {
   const [salonboardLive, setSalonboardLive] = useState(false);
   const [menuLoadError, setMenuLoadError] = useState<string | null>(null);
   const [customerSearch, setCustomerSearch] = useState("");
+  const [customerLoading, setCustomerLoading] = useState(false);
   const [customerId, setCustomerId] = useState<string>("");
   const [staffId, setStaffId] = useState<string>("");
   const [date, setDate] = useState<string>(() => {
@@ -86,13 +87,16 @@ export default function ManualBookingDialog({ onCreated, trigger }: Props) {
           .eq("connection_status", "live")
           .limit(1)
         : Promise.resolve({ data: [], error: null });
-      const [c, s, m, live] = await Promise.all([
-        supabase.from("customers").select("id, full_name, phone").order("created_at", { ascending: false }).limit(500),
-        supabase.from("staff").select("id, name").eq("active", true).order("sort_order"),
+      const [s, m, live] = await Promise.all([
+        supabase.from("staff").select("id, name")
+          .eq("owner_id", tenantId)
+          .eq("location_id", locationId)
+          .eq("active", true)
+          .eq("bookable", true)
+          .order("sort_order"),
         menuQuery,
         liveQuery,
       ]);
-      setCustomers((c.data as CustomerOpt[]) || []);
       setStaff((s.data as StaffOpt[]) || []);
       const isSalonboardLive = (live.data || []).length > 0;
       setSalonboardLive(isSalonboardLive);
@@ -122,13 +126,48 @@ export default function ManualBookingDialog({ onCreated, trigger }: Props) {
     })();
   }, [open, user, tenantId, locationId]);
 
-  const filteredCustomers = useMemo(() => {
-    const q = customerSearch.trim().toLowerCase();
-    if (!q) return customers.slice(0, 50);
-    return customers.filter((c) =>
-      c.full_name.toLowerCase().includes(q) || (c.phone || "").includes(q)
-    ).slice(0, 50);
-  }, [customers, customerSearch]);
+  useEffect(() => {
+    if (!open || !tenantId || !locationId) return;
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      setCustomerLoading(true);
+      try {
+        const query = customerSearch.trim();
+        const safeText = query.replace(/[%_(),]/g, "").slice(0, 80);
+        const phoneDigits = query.replace(/\D/g, "").slice(0, 20);
+        const base = () => supabase
+          .from("customers")
+          .select("id, full_name, phone")
+          .eq("owner_id", tenantId)
+          .eq("location_id", locationId)
+          .order("created_at", { ascending: false })
+          .limit(50);
+
+        const results = query
+          ? await Promise.all([
+            safeText ? base().ilike("full_name", `%${safeText}%`) : Promise.resolve({ data: [], error: null }),
+            phoneDigits ? base().ilike("phone", `%${phoneDigits}%`) : Promise.resolve({ data: [], error: null }),
+          ])
+          : [await base()];
+        const firstError = results.find((result) => result.error)?.error;
+        if (firstError) throw firstError;
+        const byId = new Map<string, CustomerOpt>();
+        for (const result of results) {
+          for (const row of (result.data || []) as CustomerOpt[]) byId.set(row.id, row);
+        }
+        if (!cancelled) setCustomers(Array.from(byId.values()).slice(0, 50));
+      } catch (error) {
+        console.error("[ManualBookingDialog] customer search failed:", error);
+        if (!cancelled) setCustomers([]);
+      } finally {
+        if (!cancelled) setCustomerLoading(false);
+      }
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [open, tenantId, locationId, customerSearch]);
 
   const totalDuration = useMemo(() => {
     return menus.filter((m) => selectedMenus.includes(m.id)).reduce((a, m) => a + (m.rsv_term ?? m.duration_minutes ?? 0), 0);
@@ -187,7 +226,7 @@ export default function ManualBookingDialog({ onCreated, trigger }: Props) {
       if (!r?.success) throw new Error(r?.message || "作成に失敗しました");
 
       if (r.dispatch_mode === "skip") {
-        toast.success("テスト予約を作成しました（Workerへは送信していません / pending のまま保持）", { icon: <CheckCircle2 className="h-4 w-4" /> });
+        toast.success("内部確認用予約を作成しました（サロンボード送信・sync job作成なし）", { icon: <CheckCircle2 className="h-4 w-4" /> });
       } else if (r.sync_status === "success") {
         toast.success(`予約を作成しサロンボードへ同期しました（${r.external_reservation_id || "ID取得済"}）`, { icon: <CheckCircle2 className="h-4 w-4" /> });
       } else if (r.timed_out || r.sync_status === "pending") {
@@ -233,13 +272,17 @@ export default function ManualBookingDialog({ onCreated, trigger }: Props) {
                 <SelectValue placeholder="顧客を選択" />
               </SelectTrigger>
               <SelectContent>
-                {filteredCustomers.map((c) => (
+                {customers.map((c) => (
                   <SelectItem key={c.id} value={c.id}>
                     {c.full_name} {c.phone ? `（${c.phone}）` : ""}
                   </SelectItem>
                 ))}
+                {!customerLoading && customers.length === 0 && (
+                  <div className="px-2 py-3 text-xs text-muted-foreground">該当する顧客が見つかりません。</div>
+                )}
               </SelectContent>
             </Select>
+            {customerLoading && <p className="mt-1 text-xs text-muted-foreground">検索中...</p>}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -325,7 +368,7 @@ export default function ManualBookingDialog({ onCreated, trigger }: Props) {
               <span>
                 <span className="font-medium">テスト予約として作成（dispatchしない）</span>
                 <span className="block text-muted-foreground mt-0.5">
-                  booking と sync_job のみ作成し、サロンボードへは送信しません。is_test=true として保存され、Phase2実Worker往復テスト用に保持されます。
+                  内部確認用予約として保存し、sync_jobは作成せず、サロンボードへも送信しません。
                 </span>
               </span>
             </label>

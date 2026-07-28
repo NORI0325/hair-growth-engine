@@ -17,11 +17,13 @@ import { Search, Plus, Pencil, FileText, QrCode, ArrowUpDown, MessageCircle } fr
 import { toast } from "sonner";
 import { calculateVipTier, tierInfo, isBirthdayMonth } from "@/lib/vip";
 import { useCurrentLocationId } from "@/hooks/useLocations";
+import { useTenantId } from "@/hooks/useTenant";
 import KpiStrip from "@/components/customers/KpiStrip";
 import BulkActionBar from "@/components/customers/BulkActionBar";
 import BulkLineDialog from "@/components/customers/BulkLineDialog";
 import { CustomerMessageDialog } from "@/components/CustomerMessageDialog";
 import { cn } from "@/lib/utils";
+import { todayInJst } from "@/lib/jst-date";
 
 interface Customer {
   id: string;
@@ -44,12 +46,19 @@ type SegKey = "active" | "at_risk" | "dormant" | "new";
 type FilterKey = "all" | SegKey | "birthday" | "no_line" | "vip";
 type SortKey = "recent" | "spent" | "visits" | "name";
 
-const CUSTOMER_SELECT =
-  "id, full_name, email, phone, birthday, last_visit_date, visit_count, total_spent, line_user_id, line_unfollowed_at, opt_out_automation, notes, gender, created_at";
+const CUSTOMER_PAGE_SIZE = 200;
 
-const MAX_CUSTOMER_ROWS = 5000;
+type DirectorySummary = Record<"all" | "active" | "at_risk" | "dormant" | "new" | "birthday" | "no_line" | "vip", number>;
 
-const escapeSearch = (value: string) => value.replace(/[%_]/g, "\\$&");
+type CustomerDirectoryRow = Customer & { total_count?: number | string | null };
+
+type UntypedRpcResult = PromiseLike<{
+  data: unknown;
+  error: { message: string; code?: string } | null;
+}>;
+
+const callDirectoryRpc = (name: string, args: Record<string, unknown>): UntypedRpcResult =>
+  (supabase.rpc as unknown as (fn: string, params: Record<string, unknown>) => UntypedRpcResult)(name, args);
 
 const segmentOf = (lastVisit: string | null): SegKey => {
   if (!lastVisit) return "new";
@@ -194,9 +203,13 @@ const CustomerRow = ({ index, style, customers, selected, toggle, onEdit, onQr, 
 
 const Customers = () => {
   const locationId = useCurrentLocationId();
+  const tenantId = useTenantId();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [totalCount, setTotalCount] = useState<number | null>(null);
+  const [summary, setSummary] = useState<DirectorySummary>({ all: 0, active: 0, at_risk: 0, dormant: 0, new: 0, birthday: 0, no_line: 0, vip: 0 });
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterKey>("all");
   const [sort, setSort] = useState<SortKey>("recent");
@@ -213,7 +226,9 @@ const Customers = () => {
     let active = true;
     (async () => {
       const [profileResult, locationResult] = await Promise.all([
-        supabase.from("profiles").select("line_add_friend_url").maybeSingle(),
+        tenantId
+          ? supabase.from("profiles").select("line_add_friend_url").eq("id", tenantId).maybeSingle()
+          : Promise.resolve({ data: null }),
         locationId
           ? supabase
               .from("locations")
@@ -223,114 +238,101 @@ const Customers = () => {
           : Promise.resolve({ data: null }),
       ]);
       if (!active) return;
-      const profile = (profileResult.data || {}) as any;
-      const location = (locationResult.data || {}) as any;
+      const profile = (profileResult.data || {}) as { line_add_friend_url?: string | null };
+      const location = (locationResult.data || {}) as { line_add_friend_url?: string | null };
       setLineAddUrl(location.line_add_friend_url || profile.line_add_friend_url || null);
     })();
     return () => { active = false; };
-  }, [locationId]);
+  }, [tenantId, locationId]);
 
-  const load = useCallback(async () => {
-    if (!locationId) {
+  const loadSummary = useCallback(async () => {
+    if (!tenantId || !locationId) return;
+    const { data, error } = await callDirectoryRpc("customer_directory_summary_v1", {
+      _owner_id: tenantId,
+      _location_id: locationId,
+    });
+    if (error) {
+      console.warn("[customers:summary] fetch failed", { message: error.message, locationId });
+      return;
+    }
+    const value = (data || {}) as Partial<DirectorySummary>;
+    setSummary({
+      all: Number(value.all || 0),
+      active: Number(value.active || 0),
+      at_risk: Number(value.at_risk || 0),
+      dormant: Number(value.dormant || 0),
+      new: Number(value.new || 0),
+      birthday: Number(value.birthday || 0),
+      no_line: Number(value.no_line || 0),
+      vip: Number(value.vip || 0),
+    });
+  }, [tenantId, locationId]);
+
+  const load = useCallback(async (offset = 0, append = false) => {
+    if (!tenantId || !locationId) {
       setCustomers([]);
       setTotalCount(0);
       setLoading(false);
+      setHasMore(false);
       return;
     }
-    setLoading(true);
-    const term = search.trim();
-    let query = supabase
-      .from("customers")
-      .select(CUSTOMER_SELECT, { count: "exact" })
-      .eq("location_id", locationId);
-
-    if (term) {
-      const escaped = escapeSearch(term);
-      query = query.or(`full_name.ilike.%${escaped}%,email.ilike.%${escaped}%,phone.ilike.%${escaped}%`);
-    }
-
-    const { data, error, count } = await query
-      .order("created_at", { ascending: false })
-      .limit(MAX_CUSTOMER_ROWS);
+    if (append) setLoadingMore(true); else setLoading(true);
+    const { data, error } = await callDirectoryRpc("search_customer_directory_v1", {
+      _owner_id: tenantId,
+      _location_id: locationId,
+      _search: search.trim(),
+      _filter: filter,
+      _sort: sort,
+      _limit: CUSTOMER_PAGE_SIZE,
+      _offset: offset,
+    });
 
     if (error) {
       console.warn("[customers:list] fetch failed", {
         message: error.message,
         locationId,
-        hasSearch: Boolean(term),
+        hasSearch: Boolean(search.trim()),
       });
       toast.error("顧客一覧の読み込みに失敗しました");
-      setCustomers([]);
-      setTotalCount(0);
+      if (!append) {
+        setCustomers([]);
+        setTotalCount(0);
+      }
     } else {
-      setCustomers((data || []) as Customer[]);
-      setTotalCount(count ?? data?.length ?? 0);
+      const rows = ((data || []) as CustomerDirectoryRow[]).map(({ total_count: _totalCount, ...row }) => row);
+      const responseRows = (data || []) as CustomerDirectoryRow[];
+      const nextTotal = responseRows.length > 0
+        ? Number(responseRows[0].total_count || 0)
+        : offset;
+      setCustomers((current) => append ? [...current, ...rows] : rows);
+      setTotalCount(nextTotal);
+      setHasMore(offset + rows.length < nextTotal);
     }
-    setLoading(false);
-  }, [locationId, search]);
+    if (append) setLoadingMore(false); else setLoading(false);
+  }, [tenantId, locationId, search, filter, sort]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
-      void load();
+      void load(0, false);
+      void loadSummary();
       setSelected(new Set());
     }, search.trim() ? 250 : 0);
     return () => window.clearTimeout(timeout);
-  }, [load, search]);
+  }, [load, loadSummary, search, filter, sort]);
 
   // Counts for KPI strip
-  const counts = useMemo(() => {
-    const c = { all: totalCount ?? customers.length, active: 0, at_risk: 0, dormant: 0, new: 0, birthday: 0, no_line: 0, vip: 0 };
-    for (const cu of customers) {
-      const seg = segmentOf(cu.last_visit_date);
-      c[seg]++;
-      if (isBirthdayMonth(cu.birthday)) c.birthday++;
-      if (!cu.line_user_id) c.no_line++;
-      const tier = calculateVipTier(cu.visit_count, cu.total_spent);
-      if (tier === "gold" || tier === "platinum") c.vip++;
-    }
-    return c;
-  }, [customers, totalCount]);
+  const counts = summary;
 
   const filtered = useMemo(() => {
-    const s = search.trim().toLowerCase();
-    let list = customers.filter((c) => {
-      if (filter === "active" || filter === "at_risk" || filter === "dormant" || filter === "new") {
-        if (segmentOf(c.last_visit_date) !== filter) return false;
-      } else if (filter === "birthday") {
-        if (!isBirthdayMonth(c.birthday)) return false;
-      } else if (filter === "no_line") {
-        if (c.line_user_id) return false;
-      } else if (filter === "vip") {
-        const tier = calculateVipTier(c.visit_count, c.total_spent);
-        if (tier !== "gold" && tier !== "platinum") return false;
-      }
-      if (s) {
-        return c.full_name.toLowerCase().includes(s)
-          || (c.email?.toLowerCase().includes(s) ?? false)
-          || (c.phone?.includes(s) ?? false);
-      }
-      return true;
-    });
-
-    list = [...list].sort((a, b) => {
+    const list = [...customers].sort((a, b) => {
       if (recentlyAddedId) {
         if (a.id === recentlyAddedId && b.id !== recentlyAddedId) return -1;
         if (b.id === recentlyAddedId && a.id !== recentlyAddedId) return 1;
       }
-      switch (sort) {
-        case "spent":   return b.total_spent - a.total_spent;
-        case "visits":  return b.visit_count - a.visit_count;
-        case "name":    return a.full_name.localeCompare(b.full_name, "ja");
-        case "recent":
-        default: {
-          const ax = a.last_visit_date ? new Date(a.last_visit_date).getTime() : 0;
-          const bx = b.last_visit_date ? new Date(b.last_visit_date).getTime() : 0;
-          return bx - ax;
-        }
-      }
+      return 0;
     });
     return list;
-  }, [customers, search, filter, sort, recentlyAddedId]);
+  }, [customers, recentlyAddedId]);
 
   const toggle = useCallback((id: string) => {
     setSelected((prev) => {
@@ -358,8 +360,9 @@ const Customers = () => {
       setCustomers((prev) => [added, ...prev.filter((c) => c.id !== added.id)]);
       setTotalCount((prev) => (typeof prev === "number" ? prev + (customers.some((c) => c.id === added.id) ? 0 : 1) : prev));
     }
-    void load();
-  }, [customers, load]);
+    void load(0, false);
+    void loadSummary();
+  }, [customers, load, loadSummary]);
 
   const exportCsv = () => {
     if (selectedAll.length === 0) return;
@@ -374,7 +377,7 @@ const Customers = () => {
     const blob = new Blob([csv], { type: "text/csv" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `customers_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `customers_${todayInJst()}.csv`;
     a.click();
     URL.revokeObjectURL(a.href);
     toast.success(`${selectedAll.length}名分をエクスポートしました`);
@@ -398,7 +401,7 @@ const Customers = () => {
         <PageHeader
           eyebrow="No.02 — Guests"
           title="顧客一覧"
-          description={`${(totalCount ?? customers.length).toLocaleString()} 名の大切なお客様。今日やるべきことが、ここから始まります。`}
+          description={`${summary.all.toLocaleString()} 名の大切なお客様。今日やるべきことが、ここから始まります。`}
         />
         <Button onClick={() => setAddOpen(true)}
           className="rounded-none px-5 py-5 text-xs tracking-luxury bg-primary hover:bg-primary-glow shrink-0 mt-2">
@@ -499,11 +502,24 @@ const Customers = () => {
             overscanCount={5}
           />
           <div className="py-3 text-center text-[11px] text-muted-foreground border-t border-border">
-            {filtered.length.toLocaleString()} 名を表示
+            {filtered.length.toLocaleString()} / {(totalCount ?? filtered.length).toLocaleString()} 名を表示
             {selected.size > 0 && (
               <> ・ <span className="text-gold">{selected.size} 名選択中</span></>
             )}
           </div>
+          {hasMore && (
+            <div className="flex justify-center border-t border-border py-4">
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-none"
+                disabled={loadingMore}
+                onClick={() => void load(customers.length, true)}
+              >
+                {loadingMore ? "読み込み中..." : `さらに${CUSTOMER_PAGE_SIZE}名を読み込む`}
+              </Button>
+            </div>
+          )}
         </>
       )}
 

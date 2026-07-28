@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useTenantId } from "@/hooks/useTenant";
 import AppLayout from "@/components/AppLayout";
 import PageHeader from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -38,17 +39,18 @@ const PLACEHOLDERS = "{customer_name} {salon_name} {months_since} {days_since}";
 
 export default function SegmentTemplates() {
   const { user } = useAuth();
+  const tenantId = useTenantId();
   const [rows, setRows] = useState<Record<Segment, SegRow>>({} as any);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
 
   const load = async () => {
-    if (!user) return;
+    if (!tenantId) return;
     setLoading(true);
     const { data, error } = await supabase
       .from("reactivation_segment_templates" as any)
       .select("*")
-      .eq("owner_id", user.id);
+      .eq("owner_id", tenantId);
     if (error) toast.error(error.message);
     const byKey: any = {};
     SEGMENTS.forEach(s => {
@@ -61,14 +63,14 @@ export default function SegmentTemplates() {
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, [user]);
+  useEffect(() => { load(); }, [tenantId]);
 
   const save = async (seg: Segment) => {
-    if (!user) return;
+    if (!tenantId) return;
     setSaving(seg);
     const r = rows[seg];
     const payload = {
-      owner_id: user.id,
+      owner_id: tenantId,
       segment: seg,
       enabled: r.enabled,
       subject: r.subject || null,

@@ -8,6 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
+import { useTenantId } from "@/hooks/useTenant";
+import { useCurrentLocationId } from "@/hooks/useLocations";
 import { CheckCircle2, Circle, AlertTriangle } from "lucide-react";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -22,7 +24,10 @@ const STATUS_LABEL: Record<string, string> = {
 
 export default function SalonboardOnboarding() {
   const { user } = useAuth();
+  const tenantId = useTenantId();
+  const currentLocationId = useCurrentLocationId();
   const { locationId } = useParams();
+  const resolvedLocationId = locationId && locationId !== "default" ? locationId : currentLocationId;
   const nav = useNavigate();
   const [ci, setCi] = useState<any>(null);
   const [session, setSession] = useState<any>(null);
@@ -34,42 +39,43 @@ export default function SalonboardOnboarding() {
   const [loading, setLoading] = useState(true);
 
   const load = async () => {
-    if (!user) return;
+    if (!tenantId || !resolvedLocationId) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
-    const locFilter = locationId && locationId !== "default" ? locationId : null;
     let ciq = supabase.from("channel_integrations").select("*")
-      .eq("owner_id", user.id).eq("channel", "salonboard");
-    ciq = locFilter ? ciq.eq("location_id", locFilter) : ciq.is("location_id", null);
+      .eq("owner_id", tenantId).eq("location_id", resolvedLocationId).eq("channel", "salonboard");
     const { data: ciRow } = await ciq.maybeSingle();
     setCi(ciRow);
     if (ciRow?.default_rsv_route_id) setRouteId(ciRow.default_rsv_route_id);
 
     let sq = supabase.from("salonboard_sessions").select("login_status, last_login_at, last_error")
-      .eq("owner_id", user.id);
-    sq = locFilter ? sq.eq("location_id", locFilter) : sq.is("location_id", null);
+      .eq("owner_id", tenantId).eq("location_id", resolvedLocationId);
     const { data: sRow } = await sq.maybeSingle();
     setSession(sRow);
 
     const { count: sc } = await supabase.from("staff_channel_mappings")
       .select("*", { count: "exact", head: true })
-      .eq("owner_id", user.id).eq("channel", "salonboard").eq("enabled", true);
+      .eq("owner_id", tenantId).eq("location_id", resolvedLocationId).eq("channel", "salonboard").eq("enabled", true);
     setStaffMap(sc ?? 0);
     const { count: mc } = await supabase.from("menu_channel_mappings")
       .select("*", { count: "exact", head: true })
-      .eq("owner_id", user.id).eq("channel", "salonboard").eq("enabled", true);
+      .eq("owner_id", tenantId).eq("location_id", resolvedLocationId).eq("channel", "salonboard").eq("enabled", true);
     setMenuMap(mc ?? 0);
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, [user, locationId]);
+  useEffect(() => { load(); }, [tenantId, resolvedLocationId]);
 
   const saveCreds = async () => {
+    if (!tenantId || !resolvedLocationId) { toast.error("店舗を選択してください"); return; }
     if (!loginId || !password) { toast.error("ID/PWを入力してください"); return; }
     if (!confirm("このID/PWはSalonBoostではなく、サロンボード管理画面のログイン情報です。保存しますか？")) return;
     const res = await supabase.functions.invoke("salonboard-credentials-save", {
       body: {
-        owner_id: user!.id,
-        location_id: locationId === "default" ? null : locationId,
+        owner_id: tenantId,
+        location_id: resolvedLocationId,
         login_id: loginId,
         password,
       },
@@ -79,26 +85,25 @@ export default function SalonboardOnboarding() {
   };
 
   const saveRoute = async () => {
-    const locFilter = locationId && locationId !== "default" ? locationId : null;
+    if (!tenantId || !resolvedLocationId) return;
     let q = supabase.from("channel_integrations").update({ default_rsv_route_id: routeId })
-      .eq("owner_id", user!.id).eq("channel", "salonboard");
-    q = locFilter ? q.eq("location_id", locFilter) : q.is("location_id", null);
+      .eq("owner_id", tenantId).eq("location_id", resolvedLocationId).eq("channel", "salonboard");
     const { error } = await q;
     if (error) toast.error(error.message); else toast.success("予約経路IDを保存しました");
   };
 
   const recompute = async () => {
-    await supabase.rpc("recompute_channel_status", { _owner_id: user!.id, _location_id: locationId === "default" ? null : locationId });
+    if (!tenantId || !resolvedLocationId) return;
+    await supabase.rpc("recompute_channel_status", { _owner_id: tenantId, _location_id: resolvedLocationId });
     load();
   };
 
   const enableLive = async () => {
     if (!confirm("本番同期をONにしますか？以後、新規予約が自動的にサロンボードへ送信されます。")) return;
-    const locFilter = locationId && locationId !== "default" ? locationId : null;
+    if (!tenantId || !resolvedLocationId) return;
     let q = supabase.from("channel_integrations")
       .update({ sync_enabled: true, connection_status: "live", live_enabled_at: new Date().toISOString() })
-      .eq("owner_id", user!.id).eq("channel", "salonboard");
-    q = locFilter ? q.eq("location_id", locFilter) : q.is("location_id", null);
+      .eq("owner_id", tenantId).eq("location_id", resolvedLocationId).eq("channel", "salonboard");
     const { error } = await q;
     if (error) toast.error(error.message);
     else { toast.success("本番同期をONにしました"); load(); }

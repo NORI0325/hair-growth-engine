@@ -8,6 +8,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { TEMPLATE_CATALOG } from "@/lib/templateCatalog";
 import { TrendingUp, Mail, MessageCircle, JapaneseYen, MousePointerClick, Gift } from "lucide-react";
 import { useCurrentLocationId } from "@/hooks/useLocations";
+import { useTenantId } from "@/hooks/useTenant";
 
 const INCENTIVE_KIND_LABELS: Record<string, string> = {
   gift: "🎁 ギフト",
@@ -31,6 +32,7 @@ interface IncentiveStat {
 
 const Performance = () => {
   const { user } = useAuth();
+  const tenantId = useTenantId();
   const locationId = useCurrentLocationId();
   const [days, setDays] = useState(30);
   const [emailStats, setEmailStats] = useState<Record<string, { sent: number; failed: number }>>({});
@@ -40,7 +42,7 @@ const Performance = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user || !locationId) return;
+    if (!tenantId || !locationId) return;
     setLoading(true);
     const since = new Date(Date.now() - days * 86400000).toISOString();
 
@@ -55,7 +57,8 @@ const Performance = () => {
       supabase
         .from("line_message_log")
         .select("job_type, template_key, status")
-        .eq("owner_id", user.id)
+        .eq("owner_id", tenantId)
+        .eq("location_id", locationId)
         .gte("created_at", since),
       // 予約 by source_template
       supabase
@@ -73,7 +76,8 @@ const Performance = () => {
       supabase
         .from("template_overrides")
         .select("template_key, channel, incentive_id")
-        .eq("owner_id", user.id)
+        .eq("owner_id", tenantId)
+        .eq("location_id", locationId)
         .not("incentive_id", "is", null),
     ]).then(([emailRes, lineRes, bookingsRes, incRes, ovRes]) => {
       // dedup email
@@ -139,7 +143,7 @@ const Performance = () => {
 
       setLoading(false);
     });
-  }, [user, days, locationId]);
+  }, [tenantId, days, locationId]);
 
   const totals = useMemo(() => {
     let emailSent = 0, lineSent = 0, bookingCount = 0, revenue = 0;

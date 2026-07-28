@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useCurrentLocationId } from "@/hooks/useLocations";
+import { useTenantId } from "@/hooks/useTenant";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
+import { todayInJst } from "@/lib/jst-date";
 import { compressImage } from "@/lib/imageCompress";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,7 +36,7 @@ const emptyRow = (): RecipeRow => ({ brand: "", name: "", ratio: "", oxy: "", ti
 
 const empty = (customerId: string): Treatment => ({
   customer_id: customerId, staff_id: null,
-  treatment_date: new Date().toISOString().slice(0, 10),
+  treatment_date: todayInJst(),
   menu_summary: null, color_recipe: [], perm_recipe: [],
   before_photo_url: null, after_photo_url: null,
   duration_minutes: null, customer_reaction: null,
@@ -45,6 +47,7 @@ interface Staff { id: string; name: string }
 
 export const TreatmentHistoryPanel = ({ customerId }: { customerId: string }) => {
   const { user } = useAuth();
+  const tenantId = useTenantId();
   const locationId = useCurrentLocationId();
   const { active: activeStaff } = useActiveStaff();
   const [list, setList] = useState<Treatment[]>([]);
@@ -53,7 +56,6 @@ export const TreatmentHistoryPanel = ({ customerId }: { customerId: string }) =>
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState<"before" | "after" | null>(null);
   const [staff, setStaff] = useState<Staff[]>([]);
-  const [tenantId, setTenantId] = useState<string | null>(null);
 
   const startNew = () => {
     const seed = empty(customerId);
@@ -90,13 +92,16 @@ export const TreatmentHistoryPanel = ({ customerId }: { customerId: string }) =>
   useEffect(() => {
     load();
     (async () => {
-      if (!user) return;
-      const { data: tm } = await supabase.from("tenant_members").select("tenant_id").eq("user_id", user.id).maybeSingle();
-      setTenantId(tm?.tenant_id || user.id);
-      const { data: s } = await supabase.from("staff").select("id,name").eq("active", true);
+      if (!user || !tenantId || !locationId) return;
+      const { data: s } = await supabase
+        .from("staff")
+        .select("id,name")
+        .eq("owner_id", tenantId)
+        .eq("location_id", locationId)
+        .eq("active", true);
       setStaff(s || []);
     })();
-  }, [customerId, user]);
+  }, [customerId, user, tenantId, locationId]);
 
   const uploadPhoto = async (file: File, type: "before" | "after"): Promise<string | null> => {
     if (!editing || !tenantId) return null;
@@ -120,12 +125,12 @@ export const TreatmentHistoryPanel = ({ customerId }: { customerId: string }) =>
   };
 
   const save = async () => {
-    if (!editing || !user) return;
+    if (!editing || !user || !tenantId || !locationId) return;
     setSaving(true);
     const payload: any = {
       ...editing,
       staff_id: editing.staff_id || activeStaff?.id || null,
-      owner_id: user.id,
+      owner_id: tenantId,
       location_id: locationId,
     };
     let error;

@@ -9,6 +9,8 @@ import { Sparkles, X, Send, BookOpen, MessageCircleQuestion, Mail, Loader2, Chev
 import ReactMarkdown from "react-markdown";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useTenantId } from "@/hooks/useTenant";
+import { useCurrentLocationId } from "@/hooks/useLocations";
 
 type Msg = { role: "user" | "assistant"; content: string; related?: { slug: string; title: string }[] };
 type View = "menu" | "chat" | "ticket";
@@ -16,6 +18,8 @@ type View = "menu" | "chat" | "ticket";
 // 浮遊型ヘルプウィジェット
 const HelpWidget = () => {
   const { user } = useAuth();
+  const tenantId = useTenantId();
+  const locationId = useCurrentLocationId();
   const { pathname } = useLocation();
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<View>("menu");
@@ -86,10 +90,16 @@ const HelpWidget = () => {
       toast.error("件名と本文を入力してください");
       return;
     }
+    if (!tenantId) {
+      toast.error("店舗情報を確認できませんでした。画面を再読み込みしてください");
+      return;
+    }
     setTSending(true);
     try {
       const { data, error } = await supabase.functions.invoke("submit-support-ticket", {
         body: {
+          tenant_id: tenantId,
+          location_id: locationId,
           subject: tSubject,
           message: tMessage,
           route: pathname,
@@ -102,8 +112,8 @@ const HelpWidget = () => {
       setTSubject("");
       setTMessage("");
       setView("menu");
-    } catch (e: any) {
-      toast.error(e.message || "送信に失敗しました");
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "送信に失敗しました");
     } finally {
       setTSending(false);
     }

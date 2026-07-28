@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useCurrentLocationId } from "@/hooks/useLocations";
+import { useTenantId } from "@/hooks/useTenant";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Coins, Sparkles, Settings as SettingsIcon } from "lucide-react";
 
@@ -40,6 +41,7 @@ const PRESETS: Item[] = [
 
 const Points = () => {
   const { user } = useAuth();
+  const tenantId = useTenantId();
   const locationId = useCurrentLocationId();
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,30 +54,30 @@ const Points = () => {
   });
 
   const load = async () => {
-    if (!user) return;
+    if (!tenantId) return;
     setLoading(true);
     const [itemsRes, profileRes] = await Promise.all([
-      supabase.from("point_redemption_items").select("*").eq("owner_id", user.id).order("sort_order"),
-      supabase.from("profiles").select("points_enabled, points_earn_rate_percent, points_signup_bonus").eq("id", user.id).maybeSingle(),
+      supabase.from("point_redemption_items").select("*").eq("owner_id", tenantId).order("sort_order"),
+      supabase.from("profiles").select("points_enabled, points_earn_rate_percent, points_signup_bonus").eq("id", tenantId).maybeSingle(),
     ]);
     setItems((itemsRes.data as any) || []);
     if (profileRes.data) setSettings(profileRes.data as any);
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, [user]);
+  useEffect(() => { load(); }, [tenantId]);
 
   const saveSettings = async () => {
-    if (!user) return;
-    const { error } = await supabase.from("profiles").update(settings).eq("id", user.id);
+    if (!tenantId) return;
+    const { error } = await supabase.from("profiles").update(settings).eq("id", tenantId);
     if (error) { toast.error("保存失敗: " + error.message); return; }
     toast.success("設定を保存しました");
   };
 
   const saveItem = async () => {
-    if (!editing || !user) return;
+    if (!editing || !user || !tenantId) return;
     if (!editing.name.trim()) { toast.error("名前を入力してください"); return; }
-    const payload: any = { ...editing, owner_id: user.id, location_id: locationId };
+    const payload: any = { ...editing, owner_id: tenantId, location_id: locationId };
     const { error } = editing.id
       ? await supabase.from("point_redemption_items").update(payload).eq("id", editing.id)
       : await supabase.from("point_redemption_items").insert(payload);
@@ -97,9 +99,9 @@ const Points = () => {
   };
 
   const addPresets = async () => {
-    if (!user) return;
+    if (!user || !tenantId) return;
     if (!confirm("おすすめ交換アイテム5件を追加しますか？")) return;
-    const payload = PRESETS.map(p => ({ ...p, owner_id: user.id, location_id: locationId }));
+    const payload = PRESETS.map(p => ({ ...p, owner_id: tenantId, location_id: locationId }));
     const { error } = await supabase.from("point_redemption_items").insert(payload);
     if (error) { toast.error(error.message); return; }
     toast.success("追加しました"); load();

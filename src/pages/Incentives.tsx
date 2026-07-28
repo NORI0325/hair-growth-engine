@@ -14,6 +14,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Gift, Sparkles, Crown, Star, Leaf, Percent } from "lucide-react";
 import { useCurrentLocationId } from "@/hooks/useLocations";
+import { useTenantId } from "@/hooks/useTenant";
 
 type Incentive = {
   id?: string;
@@ -53,6 +54,7 @@ const EMPTY: Incentive = {
 
 const Incentives = () => {
   const { user } = useAuth();
+  const tenantId = useTenantId();
   const locationId = useCurrentLocationId();
   const [items, setItems] = useState<Incentive[]>([]);
   const [loading, setLoading] = useState(true);
@@ -75,10 +77,10 @@ const Incentives = () => {
   useEffect(() => { load(); }, [user, locationId]);
 
   const handleSave = async () => {
-    if (!editing || !user) return;
+    if (!editing || !user || !tenantId) return;
     if (!locationId) { toast.error("店舗が選択されていません"); return; }
     if (!editing.title.trim()) { toast.error("特典名を入力してください"); return; }
-    const payload = { ...editing, owner_id: user.id, location_id: locationId };
+    const payload = { ...editing, owner_id: tenantId, location_id: locationId };
     const { error } = editing.id
       ? await supabase.from("incentives").update(payload).eq("id", editing.id)
       : await supabase.from("incentives").insert(payload);

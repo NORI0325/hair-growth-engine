@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useCurrentLocationId } from "@/hooks/useLocations";
+import { useTenantId } from "@/hooks/useTenant";
 
 interface CustomerHit {
   id: string;
@@ -22,6 +23,17 @@ interface CustomerHit {
   last_visit_date: string | null;
   visit_count: number | null;
 }
+
+type DirectoryRpcResult = PromiseLike<{
+  data: unknown;
+  error: { message: string } | null;
+}>;
+
+const searchDirectory = (args: Record<string, unknown>): DirectoryRpcResult =>
+  (supabase.rpc as unknown as (name: string, params: Record<string, unknown>) => DirectoryRpcResult)(
+    "search_customer_directory_v1",
+    args,
+  );
 
 interface Props {
   open: boolean;
@@ -36,6 +48,7 @@ export const LinkInboundCustomerDialog = ({
   open, onClose, inboundId, lineUserId, displayName, onLinked,
 }: Props) => {
   const { user } = useAuth();
+  const tenantId = useTenantId();
   const locationId = useCurrentLocationId();
   const [tab, setTab] = useState<"search" | "create">("search");
   const [query, setQuery] = useState("");
@@ -62,39 +75,57 @@ export const LinkInboundCustomerDialog = ({
     setNewKana("");
     setNewPhone("");
     // 同じline_user_idが既に別顧客に紐付いていないか自動チェック
-    if (user) {
+    if (user && tenantId) {
       supabase
         .from("customers")
         .select("id, full_name, name_kana, phone, line_user_id, last_visit_date, visit_count")
-        .eq("owner_id", user.id)
+        .eq("owner_id", tenantId)
         .eq("line_user_id", lineUserId)
         .maybeSingle()
         .then(({ data }) => {
           if (data) setExistingOwner(data as CustomerHit);
         });
     }
-  }, [open, user, lineUserId, displayName]);
+  }, [open, user, tenantId, lineUserId, displayName]);
 
   const search = async () => {
-    if (!user) return;
+    if (!user || !tenantId) return;
     const q = query.trim();
     if (q.length < 1) { setResults([]); return; }
     setSearching(true);
-    const like = `%${q}%`;
-    const { data, error } = await supabase
-      .from("customers")
-      .select("id, full_name, name_kana, phone, line_user_id, last_visit_date, visit_count")
-      .eq("owner_id", user.id)
-      .or(`full_name.ilike.${like},name_kana.ilike.${like},phone.ilike.${like}`)
-      .order("last_visit_date", { ascending: false, nullsFirst: false })
-      .limit(20);
+    if (!locationId) {
+      setSearching(false);
+      toast.error("店舗を選択してください");
+      return;
+    }
+    const { data, error } = await searchDirectory({
+      _owner_id: tenantId,
+      _location_id: locationId,
+      _search: q,
+      _filter: "all",
+      _sort: "recent",
+      _limit: 20,
+      _offset: 0,
+    });
     setSearching(false);
     if (error) { toast.error("検索に失敗しました: " + error.message); return; }
-    setResults((data || []) as CustomerHit[]);
+    setResults(((data || []) as CustomerHit[]).map((row) => ({
+      id: row.id,
+      full_name: row.full_name,
+      name_kana: row.name_kana,
+      phone: row.phone,
+      line_user_id: row.line_user_id,
+      last_visit_date: row.last_visit_date,
+      visit_count: row.visit_count,
+    })));
   };
 
   const performLink = async (customer: CustomerHit, overwrite: boolean) => {
-    if (!user) return;
+    if (!user || !tenantId) return;
+    if (existingOwner && existingOwner.id !== customer.id) {
+      toast.error("このLINEアカウントは別の顧客に連携済みです。先に店舗管理者へ確認してください。");
+      return;
+    }
     setLinkingId(customer.id);
     try {
       // line_user_id を顧客に保存（既に値がある場合は overwrite=true 必須）
@@ -102,6 +133,7 @@ export const LinkInboundCustomerDialog = ({
         const { error: cErr } = await supabase
           .from("customers")
           .update({ line_user_id: lineUserId })
+          .eq("owner_id", tenantId)
           .eq("id", customer.id);
         if (cErr) { toast.error("顧客のLINE ID更新に失敗: " + cErr.message); return; }
       }
@@ -109,7 +141,7 @@ export const LinkInboundCustomerDialog = ({
       const { error: iErr } = await supabase
         .from("line_inbound_messages")
         .update({ customer_id: customer.id })
-        .eq("owner_id", user.id)
+        .eq("owner_id", tenantId)
         .eq("line_user_id", lineUserId)
         .is("customer_id", null);
       if (iErr) { toast.error("問い合わせの紐付けに失敗: " + iErr.message); return; }
@@ -133,7 +165,7 @@ export const LinkInboundCustomerDialog = ({
   };
 
   const createNew = async () => {
-    if (!user) return;
+    if (!user || !tenantId || !locationId) return;
     const name = newName.trim();
     if (name.length < 1) { toast.error("お名前を入力してください"); return; }
     setCreating(true);
@@ -141,11 +173,11 @@ export const LinkInboundCustomerDialog = ({
       const { data, error } = await supabase
         .from("customers")
         .insert({
-          owner_id: user.id,
+          owner_id: tenantId,
           location_id: locationId || null,
           full_name: name,
           name_kana: newKana.trim() || null,
-          phone: newPhone.trim() || null,
+          phone: newPhone.replace(/\D/g, "") || null,
           line_user_id: lineUserId,
         })
         .select("id, full_name")
@@ -155,7 +187,7 @@ export const LinkInboundCustomerDialog = ({
       const { error: iErr } = await supabase
         .from("line_inbound_messages")
         .update({ customer_id: data.id })
-        .eq("owner_id", user.id)
+        .eq("owner_id", tenantId)
         .eq("line_user_id", lineUserId)
         .is("customer_id", null);
       if (iErr) { toast.error("問い合わせの紐付けに失敗: " + iErr.message); return; }
@@ -203,13 +235,13 @@ export const LinkInboundCustomerDialog = ({
 
           {/* タブ */}
           <div className="flex gap-2 border-b border-border">
-            {[
+            {([
               { k: "search", l: "既存顧客と紐付け", icon: Search },
               { k: "create", l: "新規顧客として登録", icon: UserPlus },
-            ].map((t) => (
+            ] as const).map((t) => (
               <button
                 key={t.k}
-                onClick={() => setTab(t.k as any)}
+                onClick={() => setTab(t.k)}
                 className={`px-4 py-2.5 text-sm font-serif tracking-wider transition-all border-b-2 -mb-px flex items-center gap-1.5 ${
                   tab === t.k ? "border-gold text-gold" : "border-transparent text-muted-foreground hover:text-foreground"
                 }`}

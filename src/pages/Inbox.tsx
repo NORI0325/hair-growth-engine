@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import AppLayout from "@/components/AppLayout";
 import PageHeader from "@/components/PageHeader";
 import { useAuth } from "@/hooks/useAuth";
+import { useTenantId } from "@/hooks/useTenant";
+import { useCurrentLocationId } from "@/hooks/useLocations";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -47,6 +49,8 @@ const URGENCY_STYLES: Record<string, { label: string; className: string }> = {
 
 export default function Inbox() {
   const { user } = useAuth();
+  const tenantId = useTenantId();
+  const locationId = useCurrentLocationId();
   const [messages, setMessages] = useState<InboundMsg[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"unhandled" | "all" | "critical">("unhandled");
@@ -55,12 +59,13 @@ export default function Inbox() {
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkTarget, setLinkTarget] = useState<InboundMsg | null>(null);
   const load = async () => {
-    if (!user) { setMessages([]); setLoading(false); return; }
+    if (!tenantId || !locationId) { setMessages([]); setLoading(false); return; }
     setLoading(true);
     let q = supabase
       .from("line_inbound_messages")
       .select("*")
-      .eq("owner_id", user.id)
+      .eq("owner_id", tenantId)
+      .eq("location_id", locationId)
       .order("created_at", { ascending: false })
       .limit(200);
     if (filter === "unhandled") q = q.eq("handled", false);
@@ -72,26 +77,28 @@ export default function Inbox() {
 
   useEffect(() => {
     load();
-    if (!user) return;
+    if (!tenantId) return;
     const ch = supabase
       .channel("inbox-page")
-      .on("postgres_changes", { event: "*", schema: "public", table: "line_inbound_messages", filter: `owner_id=eq.${user.id}` }, load)
+      .on("postgres_changes", { event: "*", schema: "public", table: "line_inbound_messages", filter: `owner_id=eq.${tenantId}` }, load)
       .subscribe();
     return () => { supabase.removeChannel(ch); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, filter]);
+  }, [tenantId, locationId, filter]);
 
   const markHandled = async (id: string, handled: boolean) => {
     const { error } = await supabase
       .from("line_inbound_messages")
       .update({ handled, handled_at: handled ? new Date().toISOString() : null })
-      .eq("id", id);
+      .eq("id", id).eq("owner_id", tenantId!).eq("location_id", locationId!);
     if (error) { toast.error("更新に失敗しました"); return; }
     toast.success(handled ? "対応済みにしました" : "未対応に戻しました");
   };
 
   const removeMessage = async (id: string) => {
-    const { error } = await supabase.from("line_inbound_messages").delete().eq("id", id);
+    if (!tenantId || !locationId) return;
+    const { error } = await supabase.from("line_inbound_messages").delete()
+      .eq("id", id).eq("owner_id", tenantId).eq("location_id", locationId);
     if (error) { toast.error("削除に失敗しました: " + error.message); return; }
     toast.success("メッセージを削除しました");
     setMessages((prev) => prev.filter((m) => m.id !== id));

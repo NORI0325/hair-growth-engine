@@ -9,7 +9,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Loader2, Send, MessageCircle, History, Sparkles, BookmarkPlus, BookOpen, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useCurrentLocationId } from "@/hooks/useLocations";
+import { useTenantId } from "@/hooks/useTenant";
 import { Input } from "@/components/ui/input";
+import { addDaysToDateKey, todayInJst } from "@/lib/jst-date";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
@@ -37,6 +39,7 @@ const segments = [
 
 const LineBroadcast = () => {
   const { user } = useAuth();
+  const tenantId = useTenantId();
   const locationId = useCurrentLocationId();
   const [message, setMessage] = useState("");
   const [segment, setSegment] = useState("all");
@@ -51,11 +54,12 @@ const LineBroadcast = () => {
   const [showSave, setShowSave] = useState(false);
 
   const loadLogs = async () => {
-    if (!user) return;
+    if (!user || !tenantId || !locationId) return;
     setLoadingLogs(true);
     const { data } = await supabase
       .from("line_message_log" as any)
       .select("id, job_type, message, status, error, created_at, customer_id")
+      .eq("owner_id", tenantId)
       .eq("location_id", locationId)
       .order("created_at", { ascending: false })
       .limit(50);
@@ -64,36 +68,44 @@ const LineBroadcast = () => {
   };
 
   const loadTemplates = async () => {
-    if (!user) return;
+    if (!user || !tenantId || !locationId) return;
     const { data } = await supabase
       .from("line_templates")
       .select("*")
+      .eq("owner_id", tenantId)
       .eq("location_id", locationId)
       .order("use_count", { ascending: false });
     setTemplates(data || []);
   };
 
   const loadCounts = async () => {
-    if (!user) return;
-    const { data: all } = await supabase.from("customers")
-      .select("id, last_visit_date", { count: "exact" })
-      .eq("location_id", locationId).eq("is_test", false)
-      .not("line_user_id", "is", null);
-    const list = all || [];
-    const today = new Date();
-    const dayAgo = (n: number) => {
-      const d = new Date(today); d.setDate(d.getDate() - n); return d.toISOString().split("T")[0];
-    };
-    const c90 = dayAgo(90), c180 = dayAgo(180);
+    if (!user || !tenantId || !locationId) return;
+    const baseQuery = () => supabase.from("customers")
+      .select("id", { count: "exact", head: true })
+      .eq("owner_id", tenantId)
+      .eq("location_id", locationId)
+      .eq("is_test", false)
+      .not("line_user_id", "is", null)
+      .is("line_unfollowed_at", null)
+      .or("opt_out_automation.is.null,opt_out_automation.eq.false");
+    const today = todayInJst();
+    const c90 = addDaysToDateKey(today, -90);
+    const c180 = addDaysToDateKey(today, -180);
+    const [all, active, atRisk, dormant] = await Promise.all([
+      baseQuery(),
+      baseQuery().gte("last_visit_date", c90),
+      baseQuery().gte("last_visit_date", c180).lt("last_visit_date", c90),
+      baseQuery().or(`last_visit_date.is.null,last_visit_date.lt.${c180}`),
+    ]);
     setCounts({
-      all: list.length,
-      active: list.filter(c => c.last_visit_date && c.last_visit_date >= c90).length,
-      at_risk: list.filter(c => c.last_visit_date && c.last_visit_date >= c180 && c.last_visit_date < c90).length,
-      dormant: list.filter(c => !c.last_visit_date || c.last_visit_date < c180).length,
+      all: all.count || 0,
+      active: active.count || 0,
+      at_risk: atRisk.count || 0,
+      dormant: dormant.count || 0,
     });
   };
 
-  useEffect(() => { loadLogs(); loadCounts(); loadTemplates(); }, [user, locationId]);
+  useEffect(() => { loadLogs(); loadCounts(); loadTemplates(); }, [user, tenantId, locationId]);
 
   const aiAssist = async (action: string) => {
     if (!message.trim()) { toast.error("本文を入力してください"); return; }
@@ -108,10 +120,10 @@ const LineBroadcast = () => {
   };
 
   const saveAsTemplate = async () => {
-    if (!user || !saveTitle.trim() || !message.trim()) return;
+    if (!user || !tenantId || !saveTitle.trim() || !message.trim()) return;
     if (!locationId) { toast.error("店舗が選択されていません"); return; }
     const { error } = await supabase.from("line_templates").insert({
-      owner_id: user.id, location_id: locationId, title: saveTitle, message,
+      owner_id: tenantId, location_id: locationId, title: saveTitle, message,
     });
     if (error) { toast.error(error.message); return; }
     toast.success("テンプレートに保存しました");
@@ -119,23 +131,26 @@ const LineBroadcast = () => {
   };
 
   const useTemplate = async (t: any) => {
+    if (!tenantId) return;
     setMessage(t.message);
     setShowLib(false);
-    await supabase.from("line_templates").update({ use_count: t.use_count + 1 }).eq("id", t.id);
+    await supabase.from("line_templates").update({ use_count: t.use_count + 1 }).eq("owner_id", tenantId).eq("id", t.id);
     loadTemplates();
   };
 
   const deleteTemplate = async (id: string) => {
+    if (!tenantId) return;
     if (!confirm("削除しますか？")) return;
-    await supabase.from("line_templates").delete().eq("id", id);
+    await supabase.from("line_templates").delete().eq("owner_id", tenantId).eq("id", id);
     loadTemplates();
   };
 
   const broadcast = async () => {
+    if (!tenantId || !locationId) { toast.error("店舗を選択してください"); return; }
     if (!message.trim()) { toast.error("メッセージを入力してください"); return; }
     setSending(true);
     const { data, error } = await supabase.functions.invoke("line-broadcast", {
-      body: { message, segment },
+      body: { owner_id: tenantId, location_id: locationId, message, segment },
     });
     setSending(false);
     if (error || !(data as any)?.success) {

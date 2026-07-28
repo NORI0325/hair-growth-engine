@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useTenantId } from "@/hooks/useTenant";
 import AppLayout from "@/components/AppLayout";
 import PageHeader from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -41,6 +42,7 @@ const TEMPLATE_OPTIONS = [
 
 export default function ABTests() {
   const { user } = useAuth();
+  const tenantId = useTenantId();
   const [tests, setTests] = useState<Test[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
@@ -54,12 +56,12 @@ export default function ABTests() {
   });
 
   const load = async () => {
-    if (!user) return;
+    if (!tenantId) return;
     setLoading(true);
     const { data } = await supabase
       .from("ab_tests" as any)
       .select("*")
-      .eq("owner_id", user.id)
+      .eq("owner_id", tenantId)
       .order("created_at", { ascending: false });
     const list = (data as any) || [];
     setTests(list);
@@ -89,7 +91,7 @@ export default function ABTests() {
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, [user]);
+  useEffect(() => { load(); }, [tenantId]);
 
   const create = async () => {
     if (!form.name.trim() || !form.a_body.trim() || !form.b_body.trim()) {
@@ -97,7 +99,7 @@ export default function ABTests() {
       return;
     }
     const { error } = await supabase.from("ab_tests" as any).insert({
-      owner_id: user!.id,
+      owner_id: tenantId,
       name: form.name,
       template_key: form.template_key,
       variant_a: { subject: form.a_subject, body: form.a_body },

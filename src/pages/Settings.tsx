@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useTenantId } from "@/hooks/useTenant";
+import { useCurrentLocationId } from "@/hooks/useLocations";
 import AppLayout from "@/components/AppLayout";
 import PageHeader from "@/components/PageHeader";
 import { Input } from "@/components/ui/input";
@@ -33,6 +35,8 @@ const DEFAULT_STAGES: ReactivationStage[] = [
 
 const Settings = () => {
   const { user } = useAuth();
+  const tenantId = useTenantId();
+  const locationId = useCurrentLocationId();
   const [searchParams] = useSearchParams();
   const initialTab = searchParams.get("tab") || "store";
   const highlightSection = searchParams.get("section");
@@ -80,12 +84,12 @@ const Settings = () => {
   });
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !tenantId) return;
     (async () => {
       const { data } = await supabase
         .from("profiles")
         .select("*")
-        .eq("id", user.id)
+        .eq("id", tenantId)
         .maybeSingle();
       if (data) {
         const d = data as any;
@@ -93,7 +97,7 @@ const Settings = () => {
         const { data: logs } = await supabase
           .from("external_reservation_logs")
           .select("source, status, created_at, error, parsed_data")
-          .eq("owner_id", user.id)
+          .eq("owner_id", tenantId)
           .order("created_at", { ascending: false })
           .limit(10);
         if (logs) setRecentImports(logs);
@@ -138,12 +142,13 @@ const Settings = () => {
       }
       setLoading(false);
     })();
-  }, [user]);
+  }, [user, tenantId]);
 
   const toggleTestMode = async (v: boolean) => {
-    if (!user) return;
+    if (!user || !tenantId) return;
     setForm({ ...form, test_mode: v });
-    const { error } = await supabase.from("profiles").update({ test_mode: v } as any).eq("id", user.id);
+    if (!tenantId) return;
+    const { error } = await supabase.from("profiles").update({ test_mode: v } as any).eq("id", tenantId);
     if (error) {
       setForm({ ...form, test_mode: !v });
       toast.error("テストモードの切替に失敗しました");
@@ -198,14 +203,14 @@ const Settings = () => {
             channels: r.channels?.length ? r.channels : ["email"],
           })),
       } as any)
-      .eq("id", user.id);
+      .eq("id", tenantId);
     if (error) {
       setSaving(false);
       toast.error("保存に失敗しました");
       return;
     }
     // 段階削除時の未送信ジョブクリーンアップ
-    const { data: cancelled } = await supabase.rpc("cancel_orphan_reactivation_jobs" as any, { _owner_id: user.id });
+    const { data: cancelled } = await supabase.rpc("cancel_orphan_reactivation_jobs" as any, { _owner_id: tenantId });
     setSaving(false);
     if (cancelled && Number(cancelled) > 0) {
       toast.success(`設定を保存しました（削除した段階の未送信ジョブ${cancelled}件もキャンセル）`);
@@ -215,8 +220,11 @@ const Settings = () => {
   };
 
   const setupRichMenu = async () => {
+    if (!tenantId || !locationId) { toast.error("店舗を選択してください"); return; }
     setSettingMenu(true);
-    const { data, error } = await supabase.functions.invoke("line-setup-rich-menu", { body: {} });
+    const { data, error } = await supabase.functions.invoke("line-setup-rich-menu", {
+      body: { owner_id: tenantId, location_id: locationId },
+    });
     setSettingMenu(false);
     if (error || !(data as any)?.success) {
       toast.error((data as any)?.message || error?.message || "リッチメニュー設定に失敗しました");
@@ -240,10 +248,13 @@ const Settings = () => {
   };
 
   const sendLineTest = async () => {
+    if (!tenantId || !locationId) { toast.error("店舗を選択してください"); return; }
     if (!form.line_channel_access_token.trim()) { toast.error("先にチャネルアクセストークンを保存してください"); return; }
     if (!lineTestUserId.trim()) { toast.error("送信先のLINE UserIDを入力してください"); return; }
     setTestingLine(true);
-    const { data, error } = await supabase.functions.invoke("line-test-push", { body: { lineUserId: lineTestUserId.trim() } });
+    const { data, error } = await supabase.functions.invoke("line-test-push", {
+      body: { lineUserId: lineTestUserId.trim(), owner_id: tenantId, location_id: locationId },
+    });
     setTestingLine(false);
     if (error || !(data as any)?.success) {
       toast.error((data as any)?.message || error?.message || "送信に失敗しました");
@@ -253,9 +264,12 @@ const Settings = () => {
   };
 
   const sendSmsTest = async () => {
+    if (!tenantId) { toast.error("店舗情報を取得できませんでした"); return; }
     if (!smsTestPhone.trim()) { toast.error("送信先の携帯番号を入力してください"); return; }
     setTestingSms(true);
-    const { data, error } = await supabase.functions.invoke("sms-test-send", { body: { phone: smsTestPhone.trim() } });
+    const { data, error } = await supabase.functions.invoke("sms-test-send", {
+      body: { phone: smsTestPhone.trim(), owner_id: tenantId, location_id: locationId },
+    });
     setTestingSms(false);
     if (error || !(data as any)?.success) {
       toast.error((data as any)?.message || error?.message || "送信に失敗しました", { duration: 8000 });
@@ -276,9 +290,9 @@ const Settings = () => {
   };
 
   const deleteTestData = async () => {
-    if (!user) return;
+    if (!user || !tenantId) return;
     setDeleting(true);
-    const { data, error } = await supabase.rpc("delete_test_data" as any, { _owner_id: user.id });
+    const { data, error } = await supabase.rpc("delete_test_data" as any, { _owner_id: tenantId });
     setDeleting(false);
     if (error || !(data as any)?.success) { toast.error("削除に失敗しました"); return; }
     const d = data as any;

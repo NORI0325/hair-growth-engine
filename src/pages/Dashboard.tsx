@@ -13,8 +13,10 @@ import {
   Calendar, Inbox, AlertTriangle, Cake, UserPlus, Sparkles,
   TrendingUp, Clock, ArrowRight, Crown,
 } from "lucide-react";
-import { calculateVipTier, tierInfo, type VipTier } from "@/lib/vip";
+import { tierInfo, type VipTier } from "@/lib/vip";
 import { useCurrentLocationId } from "@/hooks/useLocations";
+import { useTenantId } from "@/hooks/useTenant";
+import { addDaysToDateKey, dateKeyInJst, monthStartInJst } from "@/lib/jst-date";
 
 // --------------- 型 ---------------
 interface TodayBooking {
@@ -33,6 +35,17 @@ interface BirthdayCustomer {
   id: string; full_name: string; birthday: string;
 }
 interface RevenueDay { date: string; revenue: number; bookings: number; }
+interface TodayBookingRow {
+  id: string;
+  booking_time: string;
+  menu: string;
+  status: string;
+  revenue: number | null;
+  total_price: number | null;
+  customers: { full_name?: string | null } | null;
+}
+interface TrendBookingRow { booking_date: string; revenue: number | null; status: string }
+interface WeekBookingRow { booking_date: string; status: string }
 
 interface DashboardData {
   today: TodayBooking[];
@@ -54,31 +67,30 @@ interface DashboardData {
 
 // --------------- 共通 ---------------
 const fmtYen = (n: number) => `¥${n.toLocaleString()}`;
-const ymd = (d: Date) => d.toISOString().split("T")[0];
-const todayKey = ymd(new Date());
+type RpcResult = PromiseLike<{ data: unknown; error: { message: string } | null }>;
+const callDashboardRpc = (name: string, args: Record<string, unknown>): RpcResult =>
+  (supabase.rpc as unknown as (fn: string, params: Record<string, unknown>) => RpcResult)(name, args);
 
 const Dashboard = () => {
   const { user } = useAuth();
   const locationId = useCurrentLocationId();
+  const tenantId = useTenantId();
+  const todayKey = dateKeyInJst();
   const [data, setData] = useState<DashboardData | null>(null);
 
   useEffect(() => {
-    if (!user || !locationId) return;
+    if (!user || !tenantId || !locationId) return;
     const load = async () => {
       const now = new Date();
-      const startOfMonth = ymd(new Date(now.getFullYear(), now.getMonth(), 1));
-      const trendStart = new Date(); trendStart.setDate(trendStart.getDate() - 29);
-      const trendStartKey = ymd(trendStart);
-      const weekEnd = new Date(); weekEnd.setDate(weekEnd.getDate() + 6);
-      const weekEndKey = ymd(weekEnd);
-
-      const atRiskFromKey = ymd(new Date(Date.now() - 180 * 86400000));
-      const atRiskToKey = ymd(new Date(Date.now() - 90 * 86400000));
-      const currentMonth = now.getMonth() + 1;
+      const startOfMonth = monthStartInJst(now);
+      const trendStartKey = addDaysToDateKey(todayKey, -29);
+      const weekEndKey = addDaysToDateKey(todayKey, 6);
+      const atRiskFromKey = addDaysToDateKey(todayKey, -180);
+      const atRiskToKey = addDaysToDateKey(todayKey, -90);
 
       const [
         todayRes, monthBookingsRes, monthCompletedRes, unreadRes, pendingRes,
-        atRiskRes, allCustomersRes, campaignBookingsRes, weekRes,
+        atRiskRes, customerInsightsRes, campaignBookingsRes, weekRes,
       ] = await Promise.all([
         // 今日の予約
         supabase.from("bookings")
@@ -105,10 +117,11 @@ const Dashboard = () => {
           .eq("location_id", locationId).eq("is_test", false)
           .gte("last_visit_date", atRiskFromKey).lt("last_visit_date", atRiskToKey)
           .order("total_spent", { ascending: false }).limit(5),
-        // 全顧客（VIP & 誕生日抽出用）
-        supabase.from("customers")
-          .select("id, full_name, visit_count, total_spent, birthday")
-          .eq("location_id", locationId).eq("is_test", false).limit(5000),
+        // 顧客数・VIP・誕生日はDB集計し、APIの行数上限に依存しない
+        callDashboardRpc("dashboard_customer_insights_v1", {
+          _owner_id: tenantId,
+          _location_id: locationId,
+        }),
         // 配信経由予約
         supabase.from("bookings").select("id", { count: "exact", head: true })
           .eq("location_id", locationId).eq("is_test", false)
@@ -121,7 +134,7 @@ const Dashboard = () => {
       ]);
 
       // ----- 今日の予約 -----
-      const today: TodayBooking[] = (todayRes.data || []).map((b: any) => ({
+      const today: TodayBooking[] = ((todayRes.data || []) as unknown as TodayBookingRow[]).map((b) => ({
         id: b.id,
         booking_time: b.booking_time,
         menu: b.menu,
@@ -140,12 +153,11 @@ const Dashboard = () => {
       // ----- 売上トレンド (直近30日) -----
       const dayMap: Record<string, RevenueDay> = {};
       for (let i = 29; i >= 0; i--) {
-        const d = new Date(); d.setDate(d.getDate() - i);
-        const k = ymd(d);
+        const k = addDaysToDateKey(todayKey, -i);
         dayMap[k] = { date: k, revenue: 0, bookings: 0 };
       }
       let monthRevenue = 0;
-      (monthCompletedRes.data || []).forEach((b: any) => {
+      ((monthCompletedRes.data || []) as TrendBookingRow[]).forEach((b) => {
         if (dayMap[b.booking_date]) {
           if (b.status !== "cancelled") dayMap[b.booking_date].bookings++;
           if (b.status === "completed") {
@@ -159,31 +171,34 @@ const Dashboard = () => {
       const revenueTrend = Object.values(dayMap);
 
       // ----- VIP分布 & 誕生月 -----
-      const vipDistribution: Record<VipTier, number> = { platinum: 0, gold: 0, silver: 0, bronze: 0 };
-      const birthdays: BirthdayCustomer[] = [];
-      (allCustomersRes.data || []).forEach((c: any) => {
-        const t = calculateVipTier(c.visit_count || 0, c.total_spent || 0);
-        vipDistribution[t]++;
-        if (c.birthday) {
-          const m = new Date(c.birthday).getMonth() + 1;
-          if (m === currentMonth) birthdays.push({ id: c.id, full_name: c.full_name, birthday: c.birthday });
-        }
-      });
-      birthdays.sort((a, b) => new Date(a.birthday).getDate() - new Date(b.birthday).getDate());
+      if (customerInsightsRes.error) {
+        console.warn("[dashboard] customer insights failed", { message: customerInsightsRes.error.message, locationId });
+      }
+      const customerInsights = (customerInsightsRes.data || {}) as {
+        total_customers?: number | string;
+        vip_distribution?: Partial<Record<VipTier, number | string>>;
+        birthdays?: BirthdayCustomer[];
+      };
+      const vipDistribution: Record<VipTier, number> = {
+        platinum: Number(customerInsights.vip_distribution?.platinum || 0),
+        gold: Number(customerInsights.vip_distribution?.gold || 0),
+        silver: Number(customerInsights.vip_distribution?.silver || 0),
+        bronze: Number(customerInsights.vip_distribution?.bronze || 0),
+      };
+      const birthdays = Array.isArray(customerInsights.birthdays) ? customerInsights.birthdays : [];
 
       // ----- 来週ヒートマップ -----
       const weekMap: Record<string, number> = {};
       for (let i = 0; i < 7; i++) {
-        const d = new Date(); d.setDate(d.getDate() + i);
-        weekMap[ymd(d)] = 0;
+        weekMap[addDaysToDateKey(todayKey, i)] = 0;
       }
-      (weekRes.data || []).forEach((b: any) => {
+      ((weekRes.data || []) as WeekBookingRow[]).forEach((b) => {
         if (weekMap[b.booking_date] !== undefined) weekMap[b.booking_date]++;
       });
       const weekdayJa = ["日", "月", "火", "水", "木", "金", "土"];
       const weekOccupancy = Object.entries(weekMap).map(([k, v]) => ({
         date: k,
-        weekday: weekdayJa[new Date(k).getDay()],
+        weekday: weekdayJa[new Date(`${k}T00:00:00+09:00`).getDay()],
         count: v,
       }));
 
@@ -199,14 +214,14 @@ const Dashboard = () => {
         monthlyRevenue: monthRevenue,
         monthlyBookings: monthBookingsRes.count || 0,
         campaignBookings: campaignBookingsRes.count || 0,
-        totalCustomers: allCustomersRes.data?.length || 0,
+        totalCustomers: Number(customerInsights.total_customers || 0),
         vipDistribution,
         revenueTrend,
         weekOccupancy,
       });
     };
     load();
-  }, [user, locationId]);
+  }, [user, tenantId, locationId, todayKey]);
 
   const maxRevenue = useMemo(() => {
     if (!data) return 1;
@@ -469,7 +484,7 @@ const Dashboard = () => {
             <div className="space-y-2">
               {data.atRisk.map(c => {
                 const days = c.last_visit_date
-                  ? Math.floor((Date.now() - new Date(c.last_visit_date).getTime()) / 86400000)
+                  ? Math.floor((new Date(`${todayKey}T00:00:00+09:00`).getTime() - new Date(`${c.last_visit_date}T00:00:00+09:00`).getTime()) / 86400000)
                   : 0;
                 return (
                   <div key={c.id} className="flex items-center justify-between py-3 border-b border-border/50">

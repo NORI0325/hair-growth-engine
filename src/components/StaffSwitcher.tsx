@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useTenantId } from "@/hooks/useTenant";
+import { useCurrentLocationId } from "@/hooks/useLocations";
 import { useActiveStaff } from "@/hooks/useActiveStaff";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -14,6 +16,8 @@ import { toast } from "sonner";
  */
 export const StaffSwitcher = () => {
   const { user } = useAuth();
+  const tenantId = useTenantId();
+  const locationId = useCurrentLocationId();
   const { active, setStaff } = useActiveStaff();
   const [open, setOpen] = useState(false);
   const [pin, setPin] = useState("");
@@ -22,12 +26,13 @@ export const StaffSwitcher = () => {
   useEffect(() => { if (!open) setPin(""); }, [open]);
 
   const submit = async (code: string) => {
-    if (!user || code.length < 4) return;
+    if (!tenantId || !locationId || code.length < 4) return;
     setBusy(true);
     const { data } = await supabase
       .from("staff")
       .select("id,name,pin_code")
-      .eq("owner_id", user.id)
+      .eq("owner_id", tenantId)
+      .eq("location_id", locationId)
       .eq("active", true)
       .eq("pin_code", code)
       .maybeSingle();

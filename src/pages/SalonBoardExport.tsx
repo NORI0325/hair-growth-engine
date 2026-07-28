@@ -7,6 +7,8 @@ import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
+import { useTenantId } from "@/hooks/useTenant";
+import { useCurrentLocationId } from "@/hooks/useLocations";
 import { HeroFlow, StepDownload, StepDevMode, StepLoadUnpacked, StepScan } from "@/components/salonboard/StepIllustration";
 import HandsOnChecklist from "@/components/salonboard/HandsOnChecklist";
 import ExtensionDownloadConsentDialog from "@/components/salonboard/ExtensionDownloadConsentDialog";
@@ -31,22 +33,25 @@ const STEPS = [
 
 const SalonBoardExport = () => {
   const { user } = useAuth();
+  const tenantId = useTenantId();
+  const locationId = useCurrentLocationId();
   const [downloading, setDownloading] = useState(false);
   const [consentOpen, setConsentOpen] = useState(false);
   const [logs, setLogs] = useState<ImportLog[]>([]);
 
   const loadLogs = async () => {
-    if (!user) return;
+    if (!tenantId || !locationId) return;
     const { data } = await supabase
       .from("salonboard_import_logs")
       .select("id, created_at, total_received, inserted_count, updated_count, skipped_count, status, error")
-      .eq("owner_id", user.id)
+      .eq("owner_id", tenantId)
+      .eq("location_id", locationId)
       .order("created_at", { ascending: false })
       .limit(10);
     setLogs(data || []);
   };
 
-  useEffect(() => { loadLogs(); }, [user]);
+  useEffect(() => { loadLogs(); }, [tenantId, locationId]);
 
   const openDownloadConsent = () => {
     setConsentOpen(true);
@@ -71,7 +76,7 @@ const SalonBoardExport = () => {
           Authorization: `Bearer ${session.session.access_token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(consents),
+        body: JSON.stringify({ ...consents, tenant_id: tenantId }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
