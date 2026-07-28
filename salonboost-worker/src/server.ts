@@ -1,5 +1,5 @@
 import "dotenv/config";
-import express from "express";
+import express, { type Response } from "express";
 import { z } from "zod";
 import { bearerAuth } from "./auth.js";
 import { withContext, shutdownBrowser } from "./browser.js";
@@ -15,6 +15,10 @@ import { WorkerError } from "./errorMapper.js";
 import { postCallback } from "./callback.js";
 import { fetchSession, saveSession } from "./sessionStore.js";
 import { logger } from "./logger.js";
+import { assertWorkerConfiguration } from "./config.js";
+import { operationLockKey, withOperationLock } from "./operationLock.js";
+
+assertWorkerConfiguration();
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
@@ -22,15 +26,30 @@ app.use(express.json({ limit: "1mb" }));
 app.get("/healthz", (_req, res) => res.json({ ok: true }));
 
 const JobSchema = z.object({
-  job_id: z.string(),
-  store_id: z.string().min(1),                 // = owner_id
-  location_id: z.string().nullable().optional(),
-  reservation_id: z.string().nullable().optional(),
+  job_id: z.string().uuid(),
+  store_id: z.string().uuid(),                 // = owner_id
+  location_id: z.string().uuid(),
+  reservation_id: z.string().uuid().nullable().optional(),
   target_channel: z.literal("salonboard"),
   job_type: z.enum(["create", "update", "cancel"]),
   reservation: z.record(z.any()),
   async_callback: z.boolean().optional(),
 });
+
+function sendWorkerFailure(res: Response, error: unknown, operation: string) {
+  if (error instanceof WorkerError) {
+    const status = error.errorType === "captcha_required" ? 423
+      : error.errorType === "login_failed" || error.errorType === "session_expired" ? 401
+      : error.errorType === "invalid_time" || error.errorType === "mapping_not_found" || error.errorType === "duplicate_risk" ? 409
+      : error.errorType === "network_error" ? 503
+      : error.errorType === "external_site_changed" ? 502
+      : 500;
+    logger.warn({ operation, error_type: error.errorType }, "worker operation rejected");
+    return res.status(status).json({ success: false, error_type: error.errorType, message: error.message });
+  }
+  logger.error({ operation, err: error instanceof Error ? error.message : String(error) }, "worker operation failed");
+  return res.status(500).json({ success: false, error_type: "unknown_error", message: "worker operation failed" });
+}
 
 app.post("/api/sync-job", bearerAuth, async (req, res) => {
   const parsed = JobSchema.safeParse(req.body);
@@ -54,37 +73,34 @@ app.post("/api/sync-job", bearerAuth, async (req, res) => {
     const result = await runJob(job);
     res.json({ success: true, ...result });
   } catch (e) {
-    if (e instanceof WorkerError) {
-      res.json({ success: false, error_type: e.errorType, message: e.message });
-    } else {
-      logger.error({ err: e }, "job failed");
-      res.json({ success: false, error_type: "unknown_error", message: e instanceof Error ? e.message : String(e) });
-    }
+    sendWorkerFailure(res, e, "sync-job");
   }
 });
 
 // ===== 初期設定用：サロンボード側スタッフ・メニュー一覧取得 =====
 const FetchSchema = z.object({
-  store_id: z.string().min(1),
-  location_id: z.string().nullable().optional(),
+  store_id: z.string().uuid(),
+  location_id: z.string().uuid(),
 });
 
 async function withSalonboardSession<T>(
   storeId: string, locationId: string | null,
   run: (page: import("playwright").Page) => Promise<T>,
 ): Promise<T> {
-  const creds = await fetchSession(storeId, locationId).catch((e) => {
-    throw new WorkerError("login_failed", `session fetch failed: ${e instanceof Error ? e.message : String(e)}`);
-  });
-  return await withContext({ storageState: creds.storage_state }, async (ctx) => {
-    const { page, freshLogin } = await loginSalonboard(ctx, { login_id: creds.login_id, password: creds.password });
-    if (freshLogin) {
-      try {
-        const state = await ctx.storageState();
-        await saveSession(storeId, locationId, state, "ok");
-      } catch (e) { logger.warn({ e }, "saveSession failed"); }
-    }
-    return await run(page);
+  return await withOperationLock(operationLockKey(storeId, locationId), async () => {
+    const creds = await fetchSession(storeId, locationId).catch((e) => {
+      throw new WorkerError("login_failed", `session fetch failed: ${e instanceof Error ? e.message : String(e)}`);
+    });
+    return await withContext({ storageState: creds.storage_state }, async (ctx) => {
+      const { page, freshLogin } = await loginSalonboard(ctx, { login_id: creds.login_id, password: creds.password });
+      if (freshLogin) {
+        try {
+          const state = await ctx.storageState();
+          await saveSession(storeId, locationId, state, "ok");
+        } catch (e) { logger.warn({ err: e instanceof Error ? e.message : String(e) }, "saveSession failed"); }
+      }
+      return await run(page);
+    });
   });
 }
 
@@ -96,8 +112,7 @@ app.post("/api/salonboard/fetch-staff", bearerAuth, async (req, res) => {
     const staff = await withSalonboardSession(parsed.data.store_id, parsed.data.location_id ?? null, fetchSalonboardStaff);
     res.json({ success: true, staff });
   } catch (e) {
-    if (e instanceof WorkerError) res.json({ success: false, error_type: e.errorType, message: e.message });
-    else { logger.error({ err: e }, "fetch-staff failed"); res.json({ success: false, error_type: "unknown_error", message: e instanceof Error ? e.message : String(e) }); }
+    sendWorkerFailure(res, e, "fetch-staff");
   }
 });
 
@@ -109,16 +124,15 @@ app.post("/api/salonboard/fetch-menus", bearerAuth, async (req, res) => {
     const menus = await withSalonboardSession(parsed.data.store_id, parsed.data.location_id ?? null, fetchSalonboardMenus);
     res.json({ success: true, menus });
   } catch (e) {
-    if (e instanceof WorkerError) res.json({ success: false, error_type: e.errorType, message: e.message });
-    else { logger.error({ err: e }, "fetch-menus failed"); res.json({ success: false, error_type: "unknown_error", message: e instanceof Error ? e.message : String(e) }); }
+    sendWorkerFailure(res, e, "fetch-menus");
   }
 });
 
 // ===== 同期確認用：サロンボード側の予約を読み取り専用で検索 =====
 const FindSchema = z.object({
-  store_id: z.string().min(1),
-  location_id: z.string().nullable().optional(),
-  date: z.string().min(8),
+  store_id: z.string().uuid(),
+  location_id: z.string().uuid(),
+  date: z.string().regex(/^\d{8}$/),
   time: z.union([z.string(), z.number()]).optional(),
   customer_name: z.string().optional(),
   stylist_id: z.union([z.string(), z.number()]).optional(),
@@ -140,16 +154,15 @@ app.post("/api/salonboard/find-reservation", bearerAuth, async (req, res) => {
     );
     res.json({ success: true, items });
   } catch (e) {
-    if (e instanceof WorkerError) res.json({ success: false, error_type: e.errorType, message: e.message });
-    else { logger.error({ err: e }, "find-reservation failed"); res.json({ success: false, error_type: "unknown_error", message: e instanceof Error ? e.message : String(e) }); }
+    sendWorkerFailure(res, e, "find-reservation");
   }
 });
 
 // ===== 当日のサロンボード予約一覧（手動差分チェック用） =====
 const ListDaySchema = z.object({
-  store_id: z.string().min(1),
-  location_id: z.string().nullable().optional(),
-  date: z.string().min(8),
+  store_id: z.string().uuid(),
+  location_id: z.string().uuid(),
+  date: z.string().regex(/^\d{8}$/),
 });
 
 app.post("/api/salonboard/list-day-reservations", bearerAuth, async (req, res) => {
@@ -163,30 +176,14 @@ app.post("/api/salonboard/list-day-reservations", bearerAuth, async (req, res) =
     );
     res.json({ success: true, items: result.items, ...result.diagnostics, diagnostics: result.diagnostics });
   } catch (e) {
-    if (e instanceof WorkerError) res.json({ success: false, error_type: e.errorType, message: e.message });
-    else { logger.error({ err: e }, "list-day-reservations failed"); res.json({ success: false, error_type: "unknown_error", message: e instanceof Error ? e.message : String(e) }); }
+    sendWorkerFailure(res, e, "list-day-reservations");
   }
 });
 
 async function runJob(job: z.infer<typeof JobSchema>) {
-  // 店舗別の認証情報・保存セッションを取得
-  const creds = await fetchSession(job.store_id, job.location_id ?? null).catch((e) => {
-    throw new WorkerError("login_failed", `session fetch failed: ${e instanceof Error ? e.message : String(e)}`);
-  });
-
   let result: { external_reservation_id?: string | null } = {};
   try {
-    result = await withContext({ storageState: creds.storage_state }, async (ctx) => {
-      const { page, freshLogin } = await loginSalonboard(ctx, { login_id: creds.login_id, password: creds.password });
-
-      // freshLoginならstorageStateを保存
-      if (freshLogin) {
-        try {
-          const state = await ctx.storageState();
-          await saveSession(job.store_id, job.location_id ?? null, state, "ok");
-        } catch (e) { logger.warn({ e }, "saveSession failed"); }
-      }
-
+    result = await withSalonboardSession(job.store_id, job.location_id, async (page) => {
       switch (job.job_type) {
         case "create": return await createReservation(page, job.reservation as any);
         case "update": return await updateReservation(page, job.reservation as any);
@@ -202,7 +199,7 @@ async function runJob(job: z.infer<typeof JobSchema>) {
     const message = e instanceof Error ? e.message : String(e);
     // 認証起因なら保存セッションを invalidate
     if (errorType === "login_failed" || errorType === "captcha_required") {
-      await saveSession(job.store_id, job.location_id ?? null, null, "invalid", message).catch(() => {});
+      await saveSession(job.store_id, job.location_id, null, "invalid", message).catch(() => {});
     }
     if (job.async_callback) {
       await postCallback({ job_id: job.job_id, success: false, error_type: errorType, message });

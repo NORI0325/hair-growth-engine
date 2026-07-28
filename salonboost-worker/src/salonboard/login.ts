@@ -106,7 +106,7 @@ export async function loginSalonboard(
   let snap = await snapshot(page);
   logger.info(`currentUrl: ${snap.url}`);
   logger.info(`title: ${snap.title}`);
-  logger.info(`body snippet: ${snap.body.substring(0, 500)}`);
+  logger.debug({ body_length: snap.body.length }, "salonboard page body captured");
 
   if (isCaptcha(snap.body)) {
     logger.warn("captcha_required");
@@ -160,7 +160,7 @@ export async function loginSalonboard(
   snap = await snapshot(page);
   logger.info(`currentUrl: ${snap.url}`);
   logger.info(`title: ${snap.title}`);
-  logger.info(`body snippet: ${snap.body.substring(0, 500)}`);
+  logger.debug({ body_length: snap.body.length }, "salonboard page body captured");
 
   if (isCaptcha(snap.body)) {
     logger.warn("captcha_required");
@@ -190,7 +190,7 @@ export async function loginSalonboard(
   snap = await snapshot(page);
   logger.info(`currentUrl: ${snap.url}`);
   logger.info(`title: ${snap.title}`);
-  logger.info(`body snippet: ${snap.body.substring(0, 500)}`);
+  logger.debug({ body_length: snap.body.length }, "salonboard page body captured");
 
   if (isSessionExpired(snap.title, snap.body) || !looksLikeHome(snap.url, snap.title, snap.body)) {
     logger.warn("login_failed");

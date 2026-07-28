@@ -178,12 +178,12 @@ function addWarning(item: DayReservation, warning: string): void {
   if (!item.needs_review_reason) item.needs_review_reason = warning;
 }
 
-function extractReserveId(text: string | null | undefined): string | null {
+export function extractReserveId(text: string | null | undefined): string | null {
   const raw = text || "";
   const idByName = raw.match(/(?:reserveId|rsvId|reserve_id|reservationId|reserveNo)["'=:\s]*(BF\d{8,})/i);
   if (idByName?.[1]) return idByName[1].toUpperCase();
-  const bf = raw.match(/\bBF\d{8,}\b/i);
-  if (bf?.[0]) return bf[0].toUpperCase();
+  const bf = raw.match(/(?:^|[^A-Z0-9])(BF\d{8,})(?!\d)/i);
+  if (bf?.[1]) return bf[1].toUpperCase();
   return null;
 }
 
@@ -250,12 +250,12 @@ function parseClock(text: string | null | undefined): string | null {
   return match ? `${match[1].padStart(2, "0")}:${match[2]}` : null;
 }
 
-function parseCompactClock(text: string | null | undefined): string | null {
+export function parseCompactClock(text: string | null | undefined): string | null {
   const match = (text || "").trim().match(/^(\d{1,2})(\d{2})$/);
   return match ? `${match[1].padStart(2, "0")}:${match[2]}` : null;
 }
 
-function parseTimeRangeAndDuration(text: string | null | undefined): {
+export function parseTimeRangeAndDuration(text: string | null | undefined): {
   start: string | null;
   end: string | null;
   duration: number | null;

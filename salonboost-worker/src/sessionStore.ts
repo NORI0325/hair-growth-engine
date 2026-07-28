@@ -1,5 +1,6 @@
 // 本アプリ(SalonBoost) と通信して、店舗別の認証情報・保存セッションを取得/保存
 import { logger } from "./logger.js";
+import { allowEnvironmentCredentialFallback } from "./config.js";
 
 const rawCallback = process.env.CALLBACK_URL || "";
 const baseUrl = rawCallback.replace(/\/sync-worker-callback\/?$/, "");
@@ -22,6 +23,9 @@ export interface SessionInfo {
 
 export async function fetchSession(owner_id: string, location_id: string | null): Promise<SessionInfo> {
   if (!baseUrl) {
+    if (!allowEnvironmentCredentialFallback()) {
+      throw new Error("session store is not configured and credential fallback is disabled");
+    }
     logger.warn({ owner_id, location_id }, "[sessionStore.fetchSession] baseUrl empty — using env fallback credentials (no DB lookup)");
     return {
       login_id: process.env.SALONBOARD_USER_ID || null,
