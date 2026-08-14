@@ -78,11 +78,20 @@ export async function getLineCredentials(
   return null;
 }
 
+// 緊急停止スイッチ: MESSAGING_KILL_SWITCH=true の間はLINE配信を一切行わない
+export function isMessagingKillSwitchOn(): boolean {
+  return (Deno.env.get("MESSAGING_KILL_SWITCH") ?? "").toLowerCase() === "true";
+}
+
 export async function sendLinePush(
   token: string,
   userId: string,
   text: string
 ): Promise<{ ok: boolean; status?: number; err?: string }> {
+  if (isMessagingKillSwitchOn()) {
+    console.warn("[line-push] blocked by MESSAGING_KILL_SWITCH");
+    return { ok: false, err: "messaging_kill_switch" };
+  }
   try {
     const res = await fetch("https://api.line.me/v2/bot/message/push", {
       method: "POST",
@@ -111,6 +120,10 @@ export async function replyLine(
   replyToken: string,
   text: string
 ): Promise<{ ok: boolean; err?: string }> {
+  if (isMessagingKillSwitchOn()) {
+    console.warn("[line-reply] blocked by MESSAGING_KILL_SWITCH");
+    return { ok: false, err: "messaging_kill_switch" };
+  }
   try {
     const res = await fetch("https://api.line.me/v2/bot/message/reply", {
       method: "POST",

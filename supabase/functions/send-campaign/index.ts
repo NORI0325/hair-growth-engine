@@ -21,6 +21,10 @@ const isValidLineUserId = (s: string | null | undefined) => !!s && /^U[0-9a-f]{3
 
 // LINE Push送信
 const sendLine = async (token: string, userId: string, text: string): Promise<{ ok: boolean; error?: string }> => {
+  if ((Deno.env.get("MESSAGING_KILL_SWITCH") ?? "").toLowerCase() === "true") {
+    console.warn("[send-campaign] LINE blocked by MESSAGING_KILL_SWITCH");
+    return { ok: false, error: "messaging_kill_switch" };
+  }
   try {
     const res = await fetch("https://api.line.me/v2/bot/message/push", {
       method: "POST",
