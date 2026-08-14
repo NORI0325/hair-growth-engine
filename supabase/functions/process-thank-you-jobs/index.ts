@@ -4,6 +4,10 @@ import { sendSmsWithLog } from "../_shared/twilio-sms.ts";
 
 // LINE Messaging API: Push Message
 async function sendLinePush(token: string, userId: string, text: string): Promise<{ ok: boolean; err?: string }> {
+  if ((Deno.env.get("MESSAGING_KILL_SWITCH") ?? "").toLowerCase() === "true") {
+    console.warn("[process-thank-you-jobs] LINE blocked by MESSAGING_KILL_SWITCH");
+    return { ok: false, err: "messaging_kill_switch" };
+  }
   try {
     const res = await fetch("https://api.line.me/v2/bot/message/push", {
       method: "POST",
