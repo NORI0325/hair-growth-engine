@@ -730,6 +730,10 @@ Deno.serve(async (req) => {
             type: "action",
             action: { type: "postback", label: c.label, data: `inq:${c.intent}`, displayText: c.label },
           }));
+          if ((Deno.env.get("MESSAGING_KILL_SWITCH") ?? "").toLowerCase() === "true") {
+            console.warn("[line-webhook] reply blocked by MESSAGING_KILL_SWITCH");
+            continue;
+          }
           await fetch("https://api.line.me/v2/bot/message/reply", {
             method: "POST",
             headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
